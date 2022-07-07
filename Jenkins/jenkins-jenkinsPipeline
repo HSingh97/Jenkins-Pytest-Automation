@@ -1,0 +1,21 @@
+pipeline {
+    agent {}
+
+    stages {
+        stage('Hello') {
+            steps {
+                echo 'Hello World'
+            }
+        }
+        stage('Install Dependencies') {
+            steps {
+                pip3 install pytest
+            }
+        }
+        stage('') {
+            steps {
+                pytest code1.py -v
+            }
+        }
+    }
+}
