@@ -4,7 +4,13 @@ pipeline {
     stages {
         stage('Hello') {
             steps {
-                echo 'Hello World'
+                script {
+                if ( Hello_World == True ){
+                    echo 'Hello World'
+                    }
+                else{
+                    echo 'Skipping'
+                }
             }
         }
         stage('Install Dependencies') {
@@ -14,7 +20,13 @@ pipeline {
         }
         stage('Running Script') {
             steps {
-                sh 'pytest code1.py -v'
+                script {
+                    if ( Pytest == True ){
+                        sh 'pytest code1.py -v'                        }
+                    else{
+                        echo 'Skipping'
+                    }
+
             }
         }
     }
