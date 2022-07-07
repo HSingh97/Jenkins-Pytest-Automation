@@ -1,5 +1,4 @@
 pipeline {
-    agent { node { label "linux"} }
 
     stages {
         stage('Prepare tests') {
