@@ -5,23 +5,22 @@ pipeline {
         stage('Prepare tests') {
             steps {
                 script {
-                   switch(Target_Stand) {
-		     case "Automation PC":
-		        env.TARGET_SLAVE="automation_pc"
-		        break
-		     case "PC2":
-		        env.TARGET_SLAVE="pc2"
-		        break
-		     default:
-		        env.TARGET_SLAVE="pc2"
-		        break
-
-		   }
-		   echo "----------------------------------------"
-		   echo "--- TARGET STAND: ${Target_Stand}"
-		   echo "----------------------------------------"
-      	      }
-      	  }
+                switch(Target_Stand) {
+                     case "Automation PC":
+                        env.TARGET_SLAVE="automation_pc"
+                        break
+                     case "PC2":
+                        env.TARGET_SLAVE="pc2"
+                        break
+                     default:
+                        env.TARGET_SLAVE="pc2"
+                        break
+                    }
+                   echo "----------------------------------------"
+                   echo "--- TARGET STAND: ${Target_Stand}"
+                   echo "----------------------------------------"
+      	        }
+      	    }
         }
 
         stage('Hello') {
