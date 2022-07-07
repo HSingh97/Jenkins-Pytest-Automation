@@ -7,24 +7,24 @@ pipeline {
                 script {
                 switch(Target_Stand) {
                      case "Automation PC":
-                        env.TARGET_SLAVE="automation_pc"
+                        TARGET_SLAVE="automation_pc"
                         break
                      case "PC2":
-                        env.TARGET_SLAVE="pc2"
+                        TARGET_SLAVE="pc2"
                         break
                      default:
-                        env.TARGET_SLAVE="pc2"
+                        TARGET_SLAVE="pc2"
                         break
                     }
                    echo "----------------------------------------"
-                   echo "--- TARGET STAND: ${Target_Stand}"
+                   echo "--- TARGET STAND: ${TARGET_SLAVE}"
                    echo "----------------------------------------"
       	        }
       	    }
         }
 
         stage('Hello') {
-            agent { label env.Target_Stand }
+            agent { label TARGET_SLAVE }
             steps {
                 script {
                 if ( Hello_World == True ){
@@ -37,13 +37,13 @@ pipeline {
             }
         }
         stage('Install Dependencies') {
-            agent { label env.Target_Stand }
+            agent { label TARGET_SLAVE }
             steps {
                 sh 'pip3 install pytest'
             }
         }
         stage('Running Script') {
-            agent { label env.Target_Stand }
+            agent { label TARGET_SLAVE }
             steps {
                 script {
                     if ( Pytest == True ){
