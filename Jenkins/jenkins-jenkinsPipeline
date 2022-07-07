@@ -6,8 +6,7 @@ pipeline {
             steps {
                 script {
                 if ( Hello_World == True ){
-                    echo 'Hello World'
-                    }
+                    echo 'Hello World' }
                 else{
                     echo 'Skipping'
                 }
@@ -22,11 +21,10 @@ pipeline {
             steps {
                 script {
                     if ( Pytest == True ){
-                        sh 'pytest code1.py -v'                        }
+                        sh 'pytest code1.py -v' }
                     else{
-                        echo 'Skipping'
-                    }
-
+                        echo 'Skipping' }
+                }
             }
         }
     }
