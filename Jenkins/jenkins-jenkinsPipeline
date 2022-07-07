@@ -12,10 +12,24 @@ pipeline {
                 sh 'pip3 install pytest'
             }
         }
-        stage('') {
+        stage('Running Script') {
             steps {
                 sh 'pytest code1.py -v'
             }
+        }
+    }
+
+    post {
+        always {
+            echo 'Script Done!'
+        }
+
+        success {
+            echo 'Script Success'
+        }
+
+        failure {
+            echo 'Script Failure'
         }
     }
 }
