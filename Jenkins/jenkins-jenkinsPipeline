@@ -49,7 +49,18 @@ pipeline {
         stage('Install Dependencies') {
             agent { label TARGET_SLAVE }
             steps {
-                sh 'pip3 install pytest'
+                script {
+                    if ( PYTEST == "true" ){
+                        echo "----------------------------------------"
+                        echo "PYTEST Selected, Installing Dependencies"
+                        echo "----------------------------------------"
+                        sh 'pip3 install pytest'
+
+                        }
+                    else{
+                        echo 'Skipping'
+                        }
+                }
             }
         }
         stage('Running Script') {
