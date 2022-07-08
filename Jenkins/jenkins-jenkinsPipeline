@@ -14,16 +14,10 @@ pipeline {
         stage('Hello') {
             agent any
             steps {
-                script {
-                if ( Hello_World == True ){
                     echo 'Hello World'
-                    }
-                else{
-                    echo 'Skipping'
-                    }
-                }
             }
         }
+
         stage('Install Dependencies') {
             agent any
             steps {
