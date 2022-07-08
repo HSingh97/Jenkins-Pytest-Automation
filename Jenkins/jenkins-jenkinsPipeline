@@ -1,32 +1,67 @@
 pipeline {
-    agent any
+    agent { node { label "pc2"} }
+    options { ansiColor('xterm') }
 
     stages {
         stage('Prepare tests') {
             steps {
                 script {
+                switch(TARGET_STAND) {
+                     case "Automation PC":
+                        TARGET_SLAVE="automation_pc"
+                        break
+                     case "PC2":
+                        TARGET_SLAVE="pc2"
+                        break
+                     default:
+                        TARGET_SLAVE="pc2"
+                        break
+                    }
                    echo "----------------------------------------"
+                   echo "--- TARGET STAND: ${TARGET_SLAVE}"
                    echo "----------------------------------------"
       	        }
       	    }
         }
 
         stage('Hello') {
+            agent { label TARGET_SLAVE }
             steps {
+                script {
+                if ( HELLO_WORLD == True ){
+                    echo "----------------------------------------"
+                    echo "Hello World Selected"
+                    echo "----------------------------------------"
                     echo 'Hello World'
+                    }
+                else{
+                    echo 'Skipping'
+                    }
+                }
             }
         }
-
         stage('Install Dependencies') {
+            agent { label TARGET_SLAVE }
             steps {
                 sh 'pip3 install pytest'
             }
         }
         stage('Running Script') {
+            agent { label TARGET_SLAVE }
             steps {
+                script {
+                    if ( PYTEST == True ){
+                        echo "----------------------------------------"
+                        echo "PYTEST Selected"
+                        echo "----------------------------------------"
                         sh 'pytest code1.py -v'
-            }
 
+                        }
+                    else{
+                        echo 'Skipping'
+                        }
+                }
+            }
         }
     }
     post {
