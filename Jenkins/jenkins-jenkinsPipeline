@@ -22,7 +22,14 @@ pipeline {
       	        }
       	    }
         }
-
+        stage('Print string'){
+            agent { label TARGET_SLAVE }
+            steps {
+                echo "----------------------------------------"
+                echo STRINGSS
+                echo "----------------------------------------"
+            }
+        }
         stage('Hello') {
             agent { label TARGET_SLAVE }
             steps {
