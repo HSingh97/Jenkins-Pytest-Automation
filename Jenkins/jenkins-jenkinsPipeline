@@ -1,6 +1,5 @@
 pipeline {
     agent { node { label "pc2"} }
-    options { ansiColor('xterm') }
 
     stages {
         stage('Prepare tests') {
