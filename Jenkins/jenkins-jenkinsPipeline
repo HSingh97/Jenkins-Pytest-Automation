@@ -5,20 +5,20 @@ pipeline {
         stage('Prepare tests') {
             steps {
                 script {
-                switch(TARGET_STAND) {
-                     case "Automation PC":
-                        TARGET_SLAVE="automation_pc"
-                        break
-                     case "PC2":
-                        TARGET_SLAVE="pc2"
-                        break
-                     default:
-                        TARGET_SLAVE="pc2"
-                        break
+                    switch(TARGET_STAND) {
+                         case "Automation PC":
+                            TARGET_SLAVE="automation_pc"
+                            break
+                         case "PC2":
+                            TARGET_SLAVE="pc2"
+                            break
+                         default:
+                            TARGET_SLAVE="pc2"
+                            break
                     }
-                   echo "----------------------------------------"
-                   echo "--- TARGET STAND: ${TARGET_SLAVE}"
-                   echo "----------------------------------------"
+                    echo "----------------------------------------"
+                    echo "--- TARGET STAND: ${TARGET_SLAVE}"
+                    echo "----------------------------------------"
       	        }
       	    }
         }
@@ -34,15 +34,15 @@ pipeline {
             agent { label TARGET_SLAVE }
             steps {
                 script {
-                if ( HELLO_WORLD == True ){
-                    echo "----------------------------------------"
-                    echo "Hello World Selected"
-                    echo "----------------------------------------"
-                    echo 'Hello World'
-                    }
-                else{
-                    echo 'Skipping'
-                    }
+                    if ( HELLO_WORLD == True ){
+                        echo "----------------------------------------"
+                        echo "Hello World Selected"
+                        echo "----------------------------------------"
+                        echo 'Hello World'
+                        }
+                    else{
+                        echo 'Skipping'
+                        }
                 }
             }
         }
