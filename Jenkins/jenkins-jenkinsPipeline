@@ -6,7 +6,6 @@ pipeline {
             steps {
                 script {
                    echo "----------------------------------------"
-                   echo "--- TARGET STAND: ${TARGET_SLAVE}"
                    echo "----------------------------------------"
       	        }
       	    }
