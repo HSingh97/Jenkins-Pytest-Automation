@@ -56,7 +56,7 @@ pipeline {
             agent { label TARGET_SLAVE }
             steps {
                 script {
-                    if ( PYTEST == True ){
+                    if ( PYTEST == "true" ){
                         echo "----------------------------------------"
                         echo "PYTEST Selected"
                         echo "----------------------------------------"
