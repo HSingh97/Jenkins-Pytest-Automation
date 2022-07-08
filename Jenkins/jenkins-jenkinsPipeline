@@ -12,30 +12,21 @@ pipeline {
         }
 
         stage('Hello') {
-            agent any
             steps {
                     echo 'Hello World'
             }
         }
 
         stage('Install Dependencies') {
-            agent any
             steps {
                 sh 'pip3 install pytest'
             }
         }
         stage('Running Script') {
-            agent any
             steps {
-                script {
-                    if ( Pytest == True ){
                         sh 'pytest code1.py -v'
-                        }
-                    else{
-                        echo 'Skipping'
-                        }
-                }
             }
+
         }
     }
     post {
