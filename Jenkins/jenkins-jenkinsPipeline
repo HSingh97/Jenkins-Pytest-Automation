@@ -34,7 +34,7 @@ pipeline {
             agent { label TARGET_SLAVE }
             steps {
                 script {
-                    if ( HELLO_WORLD == True ){
+                    if ( HELLO_WORLD == "true" ){
                         echo "----------------------------------------"
                         echo "Hello World Selected"
                         echo "----------------------------------------"
