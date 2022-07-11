@@ -1,0 +1,85 @@
+pipeline {
+    agent { node { label "pc2"} }
+
+    stages {
+        stage('Prepare tests') {
+            steps {
+                script {
+                    switch(TARGET_STAND) {
+                         case "Automation PC":
+                            TARGET_SLAVE="automation_pc"
+                            break
+                         case "PC2":
+                            TARGET_SLAVE="pc2"
+                            break
+                         default:
+                            TARGET_SLAVE="pc2"
+                            break
+                    }
+                    echo "----------------------------------------"
+                    echo "--- TARGET STAND: ${TARGET_SLAVE}"
+                    echo "----------------------------------------"
+      	        }
+      	    }
+        }
+        stage('Install Dependencies') {
+            agent { label TARGET_SLAVE }
+            steps {
+                script {
+                    if ( PYTEST == "true" ){
+                        echo "----------------------------------------"
+                        echo "PYTEST Selected, Installing Dependencies"
+                        echo "----------------------------------------"
+                        sh 'pip3 install pytest'
+                        sh 'pip3 install selenium'
+                        sh 'pip3 install selenium==4.2.0'
+
+                        }
+                    else{
+                        echo "-----------------------------------------"
+                        echo 'Skipping'
+                        echo "-----------------------------------------"
+                        }
+                }
+            }
+        }
+        stage('Testing') {
+            agent { label TARGET_SLAVE }
+            steps {
+                script {
+                    if ( PYTEST == "true" ){
+                        echo "----------------------------------------"
+                        echo "PYTEST Selected"
+                        echo "----------------------------------------"
+                        sh 'pytest -v -s testCases/test_login.py'
+
+                        }
+                    else{
+                        echo "-----------------------------------------"
+                        echo 'Skipping'
+                        echo "-----------------------------------------"
+                        }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            echo "-----------------------------------------"
+            echo 'Script Done!'
+            echo "-----------------------------------------"
+        }
+
+        success {
+            echo "-----------------------------------------"
+            echo 'Script Success'
+            echo "-----------------------------------------"
+        }
+
+        failure {
+            echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
+        }
+    }
+}
