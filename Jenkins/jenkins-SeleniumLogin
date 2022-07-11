@@ -31,7 +31,6 @@ pipeline {
                         echo "PYTEST Selected, Installing Dependencies"
                         echo "----------------------------------------"
                         sh 'pip3 install pytest'
-                        sh 'pip3 uninstall selenium'
                         sh 'pip3 install selenium==4.2.0'
 
                         }
