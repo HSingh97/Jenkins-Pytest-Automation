@@ -30,10 +30,7 @@ pipeline {
                         echo "----------------------------------------"
                         echo "PYTEST Selected, Installing Dependencies"
                         echo "----------------------------------------"
-                        sh 'sudo apt install software-properties-common -y'
-                        sh 'sudo add-apt-repository ppa:deadsnakes/ppa -y'
-                        sh 'sudo apt update'
-                        sh 'sudo apt install python3.10 -y'
+                        sh 'sbase install chromedriver'
                         sh 'pip3 install pytest'
                         sh 'pip3 install selenium==4.2.0'
                         sh 'pip3 install seleniumbase'
