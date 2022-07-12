@@ -32,6 +32,7 @@ pipeline {
                         echo "----------------------------------------"
                         sh 'pip3 install pytest'
                         sh 'pip3 install selenium==4.2.0'
+                        sh 'pip3 install seleniumbase'
 
                         }
                     else{
