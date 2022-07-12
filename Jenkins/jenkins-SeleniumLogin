@@ -31,8 +31,8 @@ pipeline {
                         echo "PYTEST Selected, Installing Dependencies"
                         echo "----------------------------------------"
                         sh 'pip3 install pytest'
-                        sh 'pip3 install pyvirtualdisplay'
                         sh 'pip3 install selenium==4.2.0'
+                        sh 'pip3 install virtualenv'
                         }
                     else{
                         echo "-----------------------------------------"
@@ -50,6 +50,8 @@ pipeline {
                         echo "----------------------------------------"
                         echo "PYTEST Selected"
                         echo "----------------------------------------"
+                        sh 'virtualenv python'
+                        sh 'source mypython/local/bin/activate'
                         sh 'pytest -v -s testCases/test_login.py'
 
                         }
