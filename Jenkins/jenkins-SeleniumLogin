@@ -30,7 +30,7 @@ pipeline {
                         echo "----------------------------------------"
                         echo "PYTEST Selected, Installing Dependencies"
                         echo "----------------------------------------"
-                        sh 'sbase install chromedriver'
+                        sh 'sbase install chromedriver 98'
                         sh 'pip3 install pytest'
                         sh 'pip3 install selenium==4.2.0'
                         sh 'pip3 install seleniumbase'
