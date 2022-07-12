@@ -2,6 +2,7 @@ import time
 from selenium import webdriver
 from pageObjects.LoginPage import LoginPage
 from selenium.webdriver.chrome.options import Options
+from pyvirtualdisplay import Display
 
 
 class Test_001_Login:
@@ -10,10 +11,13 @@ class Test_001_Login:
     password = "admin"
 
     def test_HomePageTitle(self):
-        # chrome_options = Options()
-        # chrome_options.add_argument('--headless')
-        # chrome_options.add_argument('--no-sandbox')
-        # chrome_options.add_argument('--disable-dev-shm-usage')
+
+        # display = Display(visible=0, size=(800, 800))
+        # display.start()
+        chrome_options = Options()
+        chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
         self.driver = webdriver.Chrome(executable_path=r"/tftpboot/chromedriver_linux64/chromedriver")
         self.driver.get(self.URL)
         current_title = self.driver.title
