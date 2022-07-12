@@ -12,8 +12,8 @@ class Test_001_Login:
 
     def test_HomePageTitle(self):
 
-        # display = Display(visible=0, size=(800, 800))
-        # display.start()
+        display = Display(visible=0, size=(800, 800))
+        display.start()
         chrome_options = Options()
         chrome_options.add_argument('--headless')
         chrome_options.add_argument('--no-sandbox')
