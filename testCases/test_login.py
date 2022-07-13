@@ -2,6 +2,8 @@ import time
 from selenium import webdriver
 from pageObjects.LoginPage import LoginPage
 from selenium.webdriver.chrome.options import Options
+from selenium import webdriver
+from webdriver_manager.chrome import ChromeDriverManager
 
 
 class Test_001_Login:
@@ -15,17 +17,17 @@ class Test_001_Login:
         chrome_options.add_argument('--headless')
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
-        self.driver = webdriver.Chrome(executable_path=r'/tftpboot/chromedriver_linux64')
+        self.driver = webdriver.Chrome(ChromeDriverManager().install())
         self.driver.get(self.URL)
         current_title = self.driver.title
 
         if current_title == "Sify - LuCI":
             assert True
-            self.driver.save_screenshot(".\\Screenshots\\" + current_title + ".png")
+            # self.driver.save_screenshot(".\\Screenshots\\" + current_title + ".png")
             self.driver.close()
 
         else:
-            self.driver.save_screenshot(".\\Screenshots\\"+"test_homePageTitle.png")
+            # self.driver.save_screenshot(".\\Screenshots\\"+"test_homePageTitle.png")
             self.driver.close()
             assert False
 
@@ -41,10 +43,10 @@ class Test_001_Login:
 
         if current_title == "Sify - Home - LuCI":
             assert True
-            self.driver.save_screenshot(".\\Screenshots\\" + current_title + ".png")
+            # self.driver.save_screenshot(".\\Screenshots\\" + current_title + ".png")
             self.driver.close()
 
         else:
-            self.driver.save_screenshot(".\\Screenshots\\" + "test_homePageTitle.png")
+            # self.driver.save_screenshot(".\\Screenshots\\" + "test_homePageTitle.png")
             self.driver.close()
             assert False
