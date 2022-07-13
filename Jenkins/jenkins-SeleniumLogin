@@ -12,6 +12,9 @@ pipeline {
                          case "PC2":
                             TARGET_SLAVE="pc2"
                             break
+                         case "Local":
+                            TARGET_SLAVE="Build-In Node"
+                            break
                          default:
                             TARGET_SLAVE="pc2"
                             break
