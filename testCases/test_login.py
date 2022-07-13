@@ -15,7 +15,7 @@ class Test_001_Login:
         chrome_options.add_argument('--headless')
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
-        self.driver = webdriver.Chrome()
+        self.driver = webdriver.Chrome(executable_path=r'/tftpboot/chromedriver_linux64')
         self.driver.get(self.URL)
         current_title = self.driver.title
 
