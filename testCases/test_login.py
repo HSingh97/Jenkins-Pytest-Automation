@@ -1,10 +1,5 @@
 import time
-from selenium import webdriver
 from pageObjects.LoginPage import LoginPage
-from selenium.webdriver.chrome.options import Options
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 
 
 class Test_001_Login:
@@ -12,13 +7,10 @@ class Test_001_Login:
     username = "admin"
     password = "admin"
 
-    def test_HomePageTitle(self):
+    def test_HomePageTitle(self, setup):
 
-        chrome_options = Options()
-        chrome_options.add_argument('--headless')
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument('--disable-dev-shm-usage')
-        self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+        self.driver = setup
+
         self.driver.get(self.URL)
         current_title = self.driver.title
 
@@ -32,13 +24,9 @@ class Test_001_Login:
             self.driver.close()
             assert False
 
-    def test_Login(self):
+    def test_Login(self, setup):
 
-        chrome_options = Options()
-        chrome_options.add_argument('--headless')
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument('--disable-dev-shm-usage')
-        self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+        self.driver = setup
 
         self.driver.get(self.URL)
         time.sleep(2)
