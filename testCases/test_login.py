@@ -1,6 +1,7 @@
 import time
 from pageObjects.LoginPage import LoginPage
 from testCases.configsetup import setup
+import pytest
 
 
 class Test_001_Login:
