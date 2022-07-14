@@ -47,7 +47,7 @@ pipeline {
                 }
             }
         }
-        stage('Testing') {
+        stage('Access') {
             agent { label TARGET_SLAVE }
             steps {
                 script {
@@ -55,7 +55,26 @@ pipeline {
                         echo "----------------------------------------"
                         echo "PYTEST Selected"
                         echo "----------------------------------------"
-                        sh 'pytest -v -s testCases/test_login.py'
+                        sh 'pytest -v -s testCases/test_login.py::Test_001_Login::test_HomePageTitle'
+
+                        }
+                    else{
+                        echo "-----------------------------------------"
+                        echo 'Skipping'
+                        echo "-----------------------------------------"
+                        }
+                }
+            }
+        }
+        stage('Login') {
+            agent { label TARGET_SLAVE }
+            steps {
+                script {
+                    if ( PYTEST == "true" ){
+                        echo "----------------------------------------"
+                        echo "PYTEST Selected"
+                        echo "----------------------------------------"
+                        sh 'pytest -v -s testCases/test_login.py::Test_001_Login::test_Login'
 
                         }
                     else{

@@ -33,7 +33,13 @@ class Test_001_Login:
             assert False
 
     def test_Login(self):
-        self.driver = webdriver.Chrome()
+
+        chrome_options = Options()
+        chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+
         self.driver.get(self.URL)
         time.sleep(2)
         self.lp = LoginPage(self.driver)
