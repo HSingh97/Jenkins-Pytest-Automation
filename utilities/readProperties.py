@@ -1,5 +1,3 @@
-import configparser
-import configobj
 from configobj import ConfigObj
 
 config = ConfigObj(".\\Configurations\\config.ini")
