@@ -1,6 +1,8 @@
 import configparser
+import configobj
+from configobj import ConfigObj
 
-config = configparser.RawConfigParser()
+config = ConfigObj(".\\Configurations\\config.ini")
 
 
 class readConfig:
@@ -16,5 +18,5 @@ class readConfig:
 
     @staticmethod
     def get_passwd():
-        passwd = config.get('common info', 'passwd')
+        passwd = config.get('common info', 'password')
         return passwd
