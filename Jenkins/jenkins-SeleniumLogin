@@ -57,7 +57,6 @@ pipeline {
                         echo "PYTEST Selected"
                         echo "----------------------------------------"
                         sh 'pytest -v -s testCases/test_login.py::Test_001_Login::test_HomePageTitle'
-
                         }
                     else{
                         echo "-----------------------------------------"
