@@ -1,9 +1,11 @@
-from configobj import ConfigObj
+from configparser import ConfigParser
 
-config = ConfigObj(".\\Configurations\\config.ini")
+config = ConfigParser()
+config.read("..//Configurations//config.ini")
 
 
 class readConfig:
+
     @staticmethod
     def getIPaddr():
         ipaddr = config.get('common info', 'ip_addr')

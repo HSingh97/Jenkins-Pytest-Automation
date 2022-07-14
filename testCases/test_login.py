@@ -7,17 +7,12 @@ import pytest
 
 class Test_001_Login:
     URL = "http://"+readConfig.getIPaddr()+"/cgi-bin/luci"
-    print(URL)
     username = readConfig.get_username()
     password = readConfig.get_passwd()
 
     def test_HomePageTitle(self, setup):
 
         self.driver = setup
-        print(readConfig.getIPaddr())
-        print(self.URL)
-        print(self.username)
-        print(self.password)
         self.driver.get(self.URL)
         current_title = self.driver.title
 
