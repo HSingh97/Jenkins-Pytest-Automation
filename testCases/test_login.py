@@ -1,13 +1,14 @@
 import time
 from pageObjects.LoginPage import LoginPage
+from utilities.readProperties import readConfig
 from testCases.configsetup import setup
 import pytest
 
 
 class Test_001_Login:
-    URL = "http://10.0.0.1/cgi-bin/luci"
-    username = "admin"
-    password = "admin"
+    URL = "http://"+readConfig.getIPaddr()+"/cgi-bin/luci"
+    username = readConfig.get_username()
+    password = readConfig.get_passwd()
 
     def test_HomePageTitle(self, setup):
 
