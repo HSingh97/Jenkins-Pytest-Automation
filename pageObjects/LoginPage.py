@@ -10,9 +10,9 @@ class LoginPage:
         self.driver.find_element_by_name(self.username_id).clear()
         self.driver.find_element_by_name(self.username_id).send_keys(username)
 
-    def setPassword(self, username):
+    def setPassword(self, password):
         self.driver.find_element_by_name(self.password_id).clear()
-        self.driver.find_element_by_name(self.password_id).send_keys(username)
+        self.driver.find_element_by_name(self.password_id).send_keys(password)
 
     def clickLogin(self):
         self.driver.find_element_by_xpath(self.button_xpath).click()
