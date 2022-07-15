@@ -1,32 +1,17 @@
 pipeline {
-    agent { node { label "pc2"} }
+    agent { node { label "${TARGET_STAND}"} }
 
     stages {
         stage('Prepare tests') {
             steps {
                 script {
-                    switch(TARGET_STAND) {
-                         case "Automation PC":
-                            TARGET_SLAVE="automation_pc"
-                            break
-                         case "PC2":
-                            TARGET_SLAVE="pc2"
-                            break
-                         case "Local":
-                            TARGET_SLAVE="Local"
-                            break
-                         default:
-                            TARGET_SLAVE="pc2"
-                            break
-                    }
                     echo "----------------------------------------"
-                    echo "--- TARGET STAND: ${TARGET_SLAVE}"
+                    echo "--- TARGET STAND: ${TARGET_STAND}"
                     echo "----------------------------------------"
       	        }
       	    }
         }
         stage('Install Dependencies') {
-            agent { label TARGET_SLAVE }
             steps {
                 script {
                     if ( PYTEST == "true" ){
@@ -49,7 +34,6 @@ pipeline {
             }
         }
         stage('Access') {
-            agent { label TARGET_SLAVE }
             steps {
                 script {
                     if ( PYTEST == "true" ){
@@ -67,7 +51,6 @@ pipeline {
             }
         }
         stage('Login') {
-            agent { label TARGET_SLAVE }
             steps {
                 script {
                     if ( PYTEST == "true" ){
