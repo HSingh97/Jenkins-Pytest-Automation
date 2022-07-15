@@ -16,7 +16,7 @@ class Test_001_Login:
         self.driver.get(self.URL)
         current_title = self.driver.title
 
-        if current_title == "Sify - LuCI":
+        if current_title == "Sify - LuCI" or "KeyWest":
             assert True
             # self.driver.save_screenshot(".\\Screenshots\\" + current_title + ".png")
             self.driver.close()
@@ -38,7 +38,7 @@ class Test_001_Login:
         self.lp.clickLogin()
         current_title = self.driver.title
 
-        if current_title == "Sify - Home - LuCI":
+        if current_title == "Sify - Home - LuCI" or "KeyWest - Home":
             assert True
             # self.driver.save_screenshot(".\\Screenshots\\" + current_title + ".png")
             self.driver.close()
