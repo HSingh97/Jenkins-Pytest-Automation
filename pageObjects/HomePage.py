@@ -20,7 +20,7 @@ class HomePage:
     wireless_5Ghz_LinkText = "5 GHz Radio"
     wireless_2_4Ghz_LinkText = "2.4 GHz Radio"
     wireless_qos_LinkText = "QoS"
-    
+
     network_ipconfig_LinkText = "IP Configuration"
     network_radius_LinkText = "RADIUS"
     network_vlan_LinkText = "VLAN"
@@ -81,7 +81,7 @@ class HomePage:
     def clickQuickStart(self):
         self.driver.find_element_by_xpath(self.quickStartSection_xpath).click()
         time.sleep(1)
-        
+
     # ----------------------------- Sub - Sections -----------------------------------
 
 
@@ -93,7 +93,7 @@ class HomePage:
         time.sleep(1)
 
     def clickWireless24Ghz(self):
-        self.driver.find_element_by_link_text(self).click()
+        self.driver.find_element_by_link_text(self.wireless_2_4Ghz_LinkText).click()
         time.sleep(1)
 
     def clickQOS(self):
@@ -109,15 +109,15 @@ class HomePage:
         time.sleep(1)
 
     def clickVLAN(self):
-        self.driver.find_element_by_link_text(self).click()
+        self.driver.find_element_by_link_text(self.network_vlan_LinkText).click()
         time.sleep(1)
 
     def clickEthernet(self):
-        self.driver.find_element_by_link_text(self).click()
+        self.driver.find_element_by_link_text(self.network_ethernet_LinkText).click()
         time.sleep(1)
 
     def clickDHCPServer(self):
-        self.driver.find_element_by_link_text(self).click()
+        self.driver.find_element_by_link_text(self.network_dhcp_LinkText).click()
         time.sleep(1)
 
     def clickRadius(self):
