@@ -1,11 +1,11 @@
 import time
-from pageObjects.LoginPage import LoginPage
+from pageObjects.HomePage import HomePage
 from utilities.readProperties import readConfig
 from testCases.configsetup import setup
 import pytest
 
 
-class Test_001_Login:
+class Test_002_Reboot:
     URL = "http://"+readConfig.getIPaddr()+"/cgi-bin/luci"
     username = readConfig.get_username()
     password = readConfig.get_passwd()
@@ -19,6 +19,7 @@ class Test_001_Login:
         if current_title == "Sify - LuCI" or "KeyWest":
             assert True
             # self.driver.save_screenshot(".\\Screenshots\\" + current_title + ".png")
+            self.driver.close()
 
         else:
             # self.driver.save_screenshot(".\\Screenshots\\"+"test_homePageTitle.png")
