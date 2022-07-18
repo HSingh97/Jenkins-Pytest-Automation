@@ -8,6 +8,8 @@ class HomePage:
     homeButton_xpath_KW = "/html/body/header/div/div/div[2]/div[4]/ul/li/a/i"
     rebootButton_xpath = "//*[@id='header_reboot']/i"
     applyButton_xpath = "//*[@id='header_apply']/i"
+    superApplyButton_ID = "super_apply"
+    superRebootButton_LinkText = "Perform reboot"
 
     # -------------------------------- Sections --------------------------------------
     quickStartSection_xpath = "/html/body/header/div/div/div[1]/ul/li[1]/a"
@@ -58,6 +60,10 @@ class HomePage:
 
     def clickApply(self):
         self.driver.find_element_by_xpath(self.applyButton_xpath).click()
+        time.sleep(1)
+
+    def clickSuperReboot(self):
+        self.driver.find_element_by_link_text(self.superRebootButton_LinkText).click()
         time.sleep(1)
 
     # -------------------------------- Sections --------------------------------------

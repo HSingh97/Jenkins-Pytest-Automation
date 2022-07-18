@@ -5,45 +5,44 @@ from testCases.configsetup import setup
 import pytest
 
 
-class Test_001_Login:
-    URL = "http://"+readConfig.getIPaddr()+"/cgi-bin/luci"
-    username = readConfig.get_username()
-    password = readConfig.get_passwd()
+URL = "http://"+readConfig.getIPaddr()+"/cgi-bin/luci"
+username = readConfig.get_username()
+password = readConfig.get_passwd()
 
-    def test_HomePageTitle(self, setup):
+driver = setup
 
-        self.driver = setup
-        self.driver.get(self.URL)
-        current_title = self.driver.title
 
-        if current_title == "Sify - LuCI" or "KeyWest":
-            assert True
-            # self.driver.save_screenshot(".\\Screenshots\\" + current_title + ".png")
-            self.driver.close()
+def test_HomePageTitle(driver):
 
-        else:
-            # self.driver.save_screenshot(".\\Screenshots\\"+"test_homePageTitle.png")
-            self.driver.close()
-            assert False
+    driver.get(URL)
+    current_title = driver.title
 
-    def test_Login(self, setup):
+    if current_title == "Sify - LuCI" or "KeyWest":
+        assert True
+        # driver.save_screenshot(".\\Screenshots\\" + current_title + ".png")
 
-        self.driver = setup
+    else:
+        # driver.save_screenshot(".\\Screenshots\\"+"test_homePageTitle.png")
+        driver.close()
+        assert False
 
-        self.driver.get(self.URL)
-        time.sleep(2)
-        self.lp = LoginPage(self.driver)
-        self.lp.setUserName(self.username)
-        self.lp.setPassword(self.password)
-        self.lp.clickLogin()
-        current_title = self.driver.title
 
-        if current_title == "Sify - Home - LuCI" or "KeyWest - Home":
-            assert True
-            # self.driver.save_screenshot(".\\Screenshots\\" + current_title + ".png")
-            self.driver.close()
+def test_Login(driver):
 
-        else:
-            # self.driver.save_screenshot(".\\Screenshots\\" + "test_homePageTitle.png")
-            self.driver.close()
-            assert False
+    driver.get(URL)
+    time.sleep(2)
+    lp = LoginPage(driver)
+    lp.setUserName(username)
+    lp.setPassword(password)
+    lp.clickLogin()
+    current_title = driver.title
+
+    if current_title == "Sify - Home - LuCI" or "KeyWest - Home":
+        assert True
+        # driver.save_screenshot(".\\Screenshots\\" + current_title + ".png")
+        driver.close()
+
+    else:
+        # driver.save_screenshot(".\\Screenshots\\" + "test_homePageTitle.png")
+        driver.close()
+        assert False

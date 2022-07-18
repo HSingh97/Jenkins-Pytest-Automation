@@ -1,49 +1,57 @@
 import time
 from pageObjects.HomePage import HomePage
+from pageObjects.LoginPage import LoginPage
 from utilities.readProperties import readConfig
 from testCases.configsetup import setup
+import platform
+import subprocess
 import pytest
 
 
-class Test_002_Reboot:
-    URL = "http://"+readConfig.getIPaddr()+"/cgi-bin/luci"
-    username = readConfig.get_username()
-    password = readConfig.get_passwd()
+URL = "http://"+readConfig.getIPaddr()+"/cgi-bin/luci"
+username = readConfig.get_username()
+password = readConfig.get_passwd()
 
-    def test_HomePageTitle(self, setup):
+driver = setup
 
-        self.driver = setup
-        self.driver.get(self.URL)
-        current_title = self.driver.title
 
-        if current_title == "Sify - LuCI" or "KeyWest":
-            assert True
-            # self.driver.save_screenshot(".\\Screenshots\\" + current_title + ".png")
-            self.driver.close()
+def test_Reboot(driver):
 
-        else:
-            # self.driver.save_screenshot(".\\Screenshots\\"+"test_homePageTitle.png")
-            self.driver.close()
-            assert False
+    driver.get(URL)
+    time.sleep(2)
+    lp = LoginPage(driver)
+    lp.setUserName(username)
+    lp.setPassword(password)
+    lp.clickLogin()
+    hp = HomePage(driver)
+    hp.clickReboot()
+    hp.clickSuperReboot()
+    time.sleep(60)
 
-    def test_Login(self, setup):
+    wait = 0
+    while wait < 50:
+        output = ping(readConfig.getIPaddr())
 
-        self.driver = setup
-
-        self.driver.get(self.URL)
-        time.sleep(2)
-        self.lp = LoginPage(self.driver)
-        self.lp.setUserName(self.username)
-        self.lp.setPassword(self.password)
-        self.lp.clickLogin()
-        current_title = self.driver.title
-
-        if current_title == "Sify - Home - LuCI" or "KeyWest - Home":
-            assert True
-            # self.driver.save_screenshot(".\\Screenshots\\" + current_title + ".png")
-            self.driver.close()
+        if not output:
+            wait += 3
 
         else:
-            # self.driver.save_screenshot(".\\Screenshots\\" + "test_homePageTitle.png")
-            self.driver.close()
-            assert False
+            print("Reachable")
+            break
+
+
+    if output != 1:
+        assert False
+
+    else:
+        assert True
+
+    driver.close()
+
+
+
+def ping(host):
+    param = '-n' if platform.system().lower() == 'windows' else '-c'
+    command = ['ping', param, '3', host]
+
+    return subprocess.call(command) == 0
