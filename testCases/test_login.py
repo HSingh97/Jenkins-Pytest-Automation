@@ -19,6 +19,7 @@ class Test_001_Login:
         if current_title == "Sify - LuCI" or "KeyWest":
             assert True
             # self.driver.save_screenshot(".\\Screenshots\\" + current_title + ".png")
+            self.driver.close()
 
         else:
             # self.driver.save_screenshot(".\\Screenshots\\"+"test_homePageTitle.png")
