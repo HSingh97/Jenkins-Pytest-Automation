@@ -6,7 +6,7 @@ import pytest
 
 
 def pytest_adoption(parser):
-    parser.addoption("--ip_addr", action="store", help="input IP Address")
+    parser.adoption("--ipaddr", action="store", help="input IP Address")
 
 
 @pytest.fixture()
@@ -21,8 +21,7 @@ def setup():
 
 @pytest.fixture()
 def get_parameter(request):
-    params = {}
-    params['ip_addr'] = request.config.getoption('--ip_addr')
-    if params['ip_addr'] is None:
+    params = {'ipaddr': request.config.getoption('--ipaddr')}
+    if params['ipaddr'] is None:
         pytest.skip()
     return params

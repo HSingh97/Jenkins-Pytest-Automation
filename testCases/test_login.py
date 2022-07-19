@@ -13,8 +13,8 @@ driver = setup
 
 
 def test_HomePageTitle(driver, get_parameter):
-    print(get_parameter['ip_addr'])
-    URL = "http://" + get_parameter['ip_addr'] + "/cgi-bin/luci"
+    print(get_parameter['ipaddr'])
+    URL = "http://" + get_parameter['ipaddr'] + "/cgi-bin/luci"
     driver.get(URL)
     current_title = driver.title
 
@@ -30,7 +30,7 @@ def test_HomePageTitle(driver, get_parameter):
 
 def test_Login(driver, get_parameter):
 
-    URL = "http://" + get_parameter['ip_addr'] + "/cgi-bin/luci"
+    URL = "http://" + get_parameter['ipaddr'] + "/cgi-bin/luci"
     driver.get(URL)
     time.sleep(2)
     lp = LoginPage(driver)
