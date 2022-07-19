@@ -42,7 +42,7 @@ pipeline {
                         echo "PYTEST Selected"
                         echo "----------------------------------------"
                         echo "${IP_ADDRESS}"
-                        sh 'pytest -v -s testCases/test_login.py::test_HomePageTitle'
+                        sh 'pytest -v -s testCases/test_login.py::test_HomePageTitle --ip_addr=${IP_ADDRESS}'
                         }
                     else{
                         echo "-----------------------------------------"

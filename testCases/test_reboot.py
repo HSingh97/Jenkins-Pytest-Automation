@@ -8,15 +8,15 @@ import subprocess
 import pytest
 
 
-URL = "http://"+readConfig.getIPaddr()+"/cgi-bin/luci"
 username = readConfig.get_username()
 password = readConfig.get_passwd()
 
 driver = setup
 
 
-def test_Reboot(driver):
+def test_Reboot(driver, get_parameter):
 
+    URL = "http://" + get_parameter['ip_addr'] + "/cgi-bin/luci"
     driver.get(URL)
     time.sleep(2)
     lp = LoginPage(driver)

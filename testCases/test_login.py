@@ -12,8 +12,9 @@ password = readConfig.get_passwd()
 driver = setup
 
 
-def test_HomePageTitle(driver):
-
+def test_HomePageTitle(driver, get_parameter):
+    print(get_parameter['ip_addr'])
+    URL = "http://" + get_parameter['ip_addr'] + "/cgi-bin/luci"
     driver.get(URL)
     current_title = driver.title
 
@@ -27,8 +28,9 @@ def test_HomePageTitle(driver):
         assert False
 
 
-def test_Login(driver):
+def test_Login(driver, get_parameter):
 
+    URL = "http://" + get_parameter['ip_addr'] + "/cgi-bin/luci"
     driver.get(URL)
     time.sleep(2)
     lp = LoginPage(driver)
