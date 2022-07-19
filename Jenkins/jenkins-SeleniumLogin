@@ -28,7 +28,7 @@ pipeline {
                         }
                     else{
                         echo "-----------------------------------------"
-                        echo ${IP_ADDRESS}
+                        echo "${IP_ADDRESS}"
                         echo 'Skipping'
                         echo "-----------------------------------------"
                         }
