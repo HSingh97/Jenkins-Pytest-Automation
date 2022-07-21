@@ -19,10 +19,11 @@ def test_HomePageTitle(driver):
 
     if current_title == "Sify - LuCI" or "KeyWest":
         assert True
-        # driver.save_screenshot(".\\Screenshots\\" + current_title + ".png")
+        time.sleep(2)
+        driver.save_screenshot("Screenshots\\" + current_title + ".png")
 
     else:
-        # driver.save_screenshot(".\\Screenshots\\"+"test_homePageTitle.png")
+        driver.save_screenshot("Screenshots\\"+"test_homePageTitle.png")
         driver.close()
         assert False
 
@@ -39,10 +40,11 @@ def test_Login(driver):
 
     if current_title == "Sify - Home - LuCI" or "KeyWest - Home":
         assert True
-        # driver.save_screenshot(".\\Screenshots\\" + current_title + ".png")
+        time.sleep(2)
+        driver.save_screenshot("Screenshots\\" + current_title + ".png")
         driver.close()
 
     else:
-        # driver.save_screenshot(".\\Screenshots\\" + "test_homePageTitle.png")
+        driver.save_screenshot("Screenshots\\" + "test_homePageTitle.png")
         driver.close()
         assert False

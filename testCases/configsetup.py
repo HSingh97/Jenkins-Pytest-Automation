@@ -12,4 +12,6 @@ def setup():
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+    driver.set_window_position(0, 0)
+    driver.set_window_size(1920, 1080)
     return driver
