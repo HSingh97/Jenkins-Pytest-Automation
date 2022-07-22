@@ -44,7 +44,7 @@ pipeline {
                         echo "----------------------------------------"
                         echo "PYTEST Selected"
                         echo "----------------------------------------"
-                        sh 'pytest -v -s testCases/test_login.py::test_HomePageTitle '
+                        sh 'pytest -v -s testCases/test_login.py::test_HomePageTitle'
                         }
                     else{
                         echo "-----------------------------------------"
@@ -62,9 +62,7 @@ pipeline {
                         echo "PYTEST Selected"
                         echo "----------------------------------------"
                         sh "mkdir -p artifacts"
-                        sh "touch ${workspace}/artifacts/login-device.log"
-                        sh "pwd"
-                        sh 'pytest -v -s testCases/test_login.py::test_Login | tee -a ${workspace}/artifacts/login-device.log'
+                        sh "pytest -v -s testCases/test_login.py::test_Login | tee -a ${workspace}/artifacts/login-device.log"
                         archiveArtifacts('artifacts/**/*')
                         }
                     else{
