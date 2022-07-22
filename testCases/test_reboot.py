@@ -5,6 +5,7 @@ from utilities.readProperties import readConfig
 from testCases.configsetup import setup
 from utilities.serial_Logging import *
 import platform
+import warnings
 import subprocess
 import pytest
 
@@ -15,6 +16,13 @@ password = readConfig.get_passwd()
 serial_port = readConfig.getSerialPort()
 serial_port_log = readConfig.getSerialLogs()
 driver = setup
+
+
+def warn(*args, **kwargs):
+    pass
+
+
+warnings.warn = warn
 
 
 def test_Reboot(driver):
