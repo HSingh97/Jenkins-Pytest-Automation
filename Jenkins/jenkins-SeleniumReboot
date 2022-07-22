@@ -82,7 +82,10 @@ pipeline {
                         echo "----------------------------------------"
                         sh "mkdir -p artifacts"
                         for (int i = 1; i <= REBOOT_COUNT.toInteger() ; i++) {
-                            sh 'pytest -v -s testCases/test_reboot.py::test_Reboot 2>&1 | tee -a ${workspace}/artifacts/reboot-radio.log'
+                            sh "pytest -v -s testCases/test_reboot.py::test_Reboot 2>&1 | tee -a ${workspace}/artifacts/reboot-radio.log"
+                            archiveArtifacts('tests/SerialLogs_Device.log')
+
+
                         }
                         archiveArtifacts('artifacts/**/*')
                         }
