@@ -20,3 +20,13 @@ class readConfig:
     def get_passwd():
         passwd = config.get('common info', 'password')
         return passwd
+
+    @staticmethod
+    def getSerialPort():
+        ipaddr = config.get('serial details', 'device_RS232_PORT')
+        return ipaddr
+
+    @staticmethod
+    def getSerialLogs():
+        ipaddr = config.get('serial details', 'device_RS232_LOG')
+        return ipaddr

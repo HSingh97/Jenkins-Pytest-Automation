@@ -3,6 +3,7 @@ from pageObjects.HomePage import HomePage
 from pageObjects.LoginPage import LoginPage
 from utilities.readProperties import readConfig
 from testCases.configsetup import setup
+from utilities.serial_Logging import *
 import platform
 import subprocess
 import pytest
@@ -11,11 +12,13 @@ import pytest
 URL = "http://"+readConfig.getIPaddr()+"/cgi-bin/luci"
 username = readConfig.get_username()
 password = readConfig.get_passwd()
-
+serial_port = readConfig.getSerialPort()
+serial_port_log = readConfig.getSerialLogs()
 driver = setup
 
 
 def test_Reboot(driver):
+    serial_logging_start(serial_port, serial_port_log)
 
     driver.get(URL)
     time.sleep(2)
@@ -46,6 +49,7 @@ def test_Reboot(driver):
     else:
         assert True
 
+    serial_logging_stop()
     driver.close()
 
 
