@@ -2,6 +2,8 @@ import time
 from pageObjects.LoginPage import LoginPage
 from utilities.readProperties import readConfig
 from testCases.configsetup import setup
+import warnings
+
 import pytest
 
 
@@ -10,6 +12,13 @@ username = readConfig.get_username()
 password = readConfig.get_passwd()
 
 driver = setup
+
+
+def warn(*args, **kwargs):
+    pass
+
+
+warnings.warn = warn
 
 
 def test_HomePageTitle(driver):
