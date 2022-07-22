@@ -1,3 +1,12 @@
+// Functions
+
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
+
+// Main Pipeline
+
 pipeline {
     agent { node { label "${TARGET_STAND}"} }
 
@@ -52,8 +61,9 @@ pipeline {
                         echo "----------------------------------------"
                         echo "PYTEST Selected"
                         echo "----------------------------------------"
-                        sh 'pytest -v -s testCases/test_login.py::test_Login'
-
+                        sh "mkdir -p artifacts"
+                        sh 'pytest -v -s testCases/test_login.py::test_Login 2>&1 | tee -a ${workspace}/artifacts/login-device.log;'
+                        archiveArtifacts('artifacts/**/*')
                         }
                     else{
                         echo "-----------------------------------------"
@@ -70,9 +80,11 @@ pipeline {
                         echo "----------------------------------------"
                         echo "PYTEST Selected"
                         echo "----------------------------------------"
+                        sh "mkdir -p artifacts"
                         for (int i = 1; i <= REBOOT_COUNT.toInteger() ; i++) {
-                            sh 'pytest -v -s testCases/test_reboot.py::test_Reboot'
+                            sh 'pytest -v -s testCases/test_reboot.py::test_Reboot 2>&1 | tee -a ${workspace}/artifacts/reboot-radio.log;'
                         }
+                        archiveArtifacts('artifacts/**/*')
                         }
                     else{
                         echo "-----------------------------------------"
