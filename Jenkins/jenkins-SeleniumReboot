@@ -62,6 +62,7 @@ pipeline {
                         echo "PYTEST Selected"
                         echo "----------------------------------------"
                         sh "mkdir -p artifacts"
+                        sh "touch login-device.log"
                         sh 'pytest -v -s testCases/test_login.py::test_Login | tee -a ${workspace}/artifacts/login-device.log'
                         archiveArtifacts('artifacts/**/*')
                         }
