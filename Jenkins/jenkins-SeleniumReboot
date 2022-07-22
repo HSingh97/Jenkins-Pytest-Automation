@@ -62,7 +62,7 @@ pipeline {
                         echo "PYTEST Selected"
                         echo "----------------------------------------"
                         sh "mkdir -p artifacts"
-                        sh "pytest -v -s testCases/test_login.py::test_Login 2>&1 | tee -a ${workspace}/artifacts/login-device.log"
+                        sh "pytest -v -s testCases/test_login.py::test_Login 2>&1 | tee ${workspace}/artifacts/login-device.log"
                         archiveArtifacts('artifacts/**/*')
                         }
                     else{
@@ -83,9 +83,10 @@ pipeline {
                         sh "mkdir -p artifacts"
                         for (int i = 1; i <= REBOOT_COUNT.toInteger() ; i++) {
                             sh "pytest -v -s testCases/test_reboot.py::test_Reboot 2>&1 | tee -a ${workspace}/artifacts/reboot-radio.log"
-                            archiveArtifacts('SerialLogs_AP.log')
+                            sh "echo Iteration : ${i} 2>&1 | tee -a ${workspace}/SerialLogs_AP.log"
                         }
                         archiveArtifacts('artifacts/**/*')
+                        archiveArtifacts('SerialLogs_AP.log')
                         }
                     else{
                         echo "-----------------------------------------"
