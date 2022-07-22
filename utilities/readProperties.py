@@ -22,11 +22,11 @@ class readConfig:
         return passwd
 
     @staticmethod
-    def getSerialPort():
-        ipaddr = config.get('serial details', 'AP_RS232_PORT')
+    def getSerialPortDevice():
+        ipaddr = config.get('serial details', 'DEVICE_RS232_PORT')
         return ipaddr
 
     @staticmethod
-    def getSerialLogs():
-        ipaddr = config.get('serial details', 'AP_RS232_LOG')
+    def getSerialLogsDevice():
+        ipaddr = config.get('serial details', 'DEVICE_RS232_LOG')
         return ipaddr

@@ -86,7 +86,7 @@ pipeline {
                             sh "echo Iteration : ${i} 2>&1 | tee -a ${workspace}/SerialLogs_AP.log"
                         }
                         archiveArtifacts('artifacts/**/*')
-                        archiveArtifacts('SerialLogs_AP.log')
+                        archiveArtifacts('SerialLogs_Device.log')
                         }
                     else{
                         echo "-----------------------------------------"
