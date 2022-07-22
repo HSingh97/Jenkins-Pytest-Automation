@@ -24,6 +24,7 @@ pipeline {
                     sh 'pip3 install configobj'
                     sh 'sudo apt install -y chromium-browser'
                     sh 'sudo apt-get install chromium-driver -y'
+                    sh 'pip3 install pyserial'
                 }
             }
         }
