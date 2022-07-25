@@ -48,8 +48,9 @@ pipeline {
                         echo "Downloading the Build"
                         echo "----------------------------------------"
                         sh "mkdir -p artifacts"
-                        sh "cd ${workspace}/TestData && wget --no-verbose --no-parent --recursive --level=1 -A '*-B*[0-9]-enc.img' --no-directories https://cdn.keywestnetworks.com/${BUILD_BRANCH}/${BUILD_NUM}/ 2>&1 || true  | tee -a ${workspace}/artifacts/flashing-device.log"
-                        sh "cd ${workspace}/TestData && mv -f \$(ls *-B*[0-9].img) nor-ipq40xx-single.img 2>&1 | tee -a ${workspace}/artifacts/flashing-device.log"
+                        sh "cd testData"
+                        sh "cd ${workspace}/testData && wget --no-verbose --no-parent --recursive --level=1 -A '*-B*[0-9]-enc.img' --no-directories https://cdn.keywestnetworks.com/${BUILD_BRANCH}/${BUILD_NUM}/ 2>&1 || true  | tee -a ${workspace}/artifacts/flashing-device.log"
+                        sh "cd ${workspace}/testData && mv -f \$(ls *-B*[0-9].img) nor-ipq40xx-single.img 2>&1 | tee -a ${workspace}/artifacts/flashing-device.log"
                         archiveArtifacts('artifacts/**/*')
                     }
                 }

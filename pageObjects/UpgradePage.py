@@ -6,7 +6,7 @@ class UpgradePage:
     chooseImage_xpath = "//*[@id='image']"
     upgradeButton_xpath = "//*[@id='kwnupgrade']/div/div[3]/div/input[2]"
     proceedButton_xpath = ""
-    firmware_path = "TestData/nor-ipq40xx-single.img"
+    firmware_path = "testData/nor-ipq40xx-single.img"
 
     def __init__(self, driver):
         self.driver = driver
