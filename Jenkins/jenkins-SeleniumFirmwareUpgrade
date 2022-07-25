@@ -79,7 +79,7 @@ pipeline {
         stage('Firmware Upgrade') {
             steps {
                 script {
-                    if ( PYTEST_FIRMWARE == "true" ){
+                    if ( PYTEST_ACCESS == "true" ){
                         echo "----------------------------------------"
                         echo "PYTEST Selected"
                         echo "----------------------------------------"
