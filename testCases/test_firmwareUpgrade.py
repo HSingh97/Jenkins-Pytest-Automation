@@ -41,8 +41,8 @@ def test_Upgrade(driver):
     lp.clickLogin()
 
     hp = HomePage(driver)
-    hp.managementSection_LinkText()
-    hp.management_Upgrade_Reset_LinkText()
+    hp.clickManagementSection()
+    hp.clickUpgradeReset()
 
     up = UpgradePage(driver)
     up.selectImageFile()
