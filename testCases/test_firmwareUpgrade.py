@@ -28,7 +28,7 @@ def warn(*args, **kwargs):
 warnings.warn = warn
 
 
-def test_Reboot(driver):
+def test_Upgrade(driver):
     # Start Serial Console logging for specific port
     serial_logging_start(serial_port, serial_port_log)
 
