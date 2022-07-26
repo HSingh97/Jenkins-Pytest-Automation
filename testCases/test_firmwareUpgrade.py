@@ -39,9 +39,9 @@ def test_Upgrade(driver):
     lp.setUserName(username)
     lp.setPassword(password)
     lp.clickLogin()
+    time.sleep(2)
 
     hp = HomePage(driver)
-
     print(hp.getMemory())
     print(hp.getCPU())
 

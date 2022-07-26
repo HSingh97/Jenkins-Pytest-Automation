@@ -194,14 +194,15 @@ class HomePage:
     # ---------- Home Page Details ------------
 
     def getCPU(self):
-        time.sleep(1)
+        time.sleep(3)
         data = self.driver.find_element_by_id(self.cpu_id).text
         output = data.split(" ")
         return output[1]
 
     def getMemory(self):
-        time.sleep(1)
+        time.sleep(3)
         data = self.driver.find_element_by_id(self.memory_id).text
         output = data.split(" ")
+        print(output[3])
         return str(output[3])
 
