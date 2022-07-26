@@ -42,7 +42,10 @@ def test_Upgrade(driver):
 
     hp = HomePage(driver)
 
-    if hp.getMemory() > 10:
+    print(hp.getMemory())
+    print(hp.getCPU())
+
+    if str(hp.getMemory()) > str(10):
         print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
         print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
         print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
