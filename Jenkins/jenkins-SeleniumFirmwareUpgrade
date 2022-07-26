@@ -49,10 +49,8 @@ pipeline {
                         echo "----------------------------------------"
                         sh "mkdir -p artifacts"
                         sh "pwd"
-                        sh "cd ${workspace}/testData"
-                        sh "pwd"
-                        sh "cd ${workspace}/testData && wget --no-verbose --no-parent --recursive --level=1 -A '*-B*[0-9]-enc.img' --no-directories https://cdn.keywestnetworks.com/${BUILD_BRANCH}/${BUILD_NUM}/ 2>&1 || true  | tee -a ${workspace}/artifacts/flashing-device.log"
-                        sh "cd ${workspace}/testData && mv -f \$(ls *-B*[0-9].img) nor-ipq40xx-single.img 2>&1 | tee -a ${workspace}/artifacts/flashing-device.log"
+                        sh "cd flasher && wget --no-verbose --no-parent --recursive --level=1 -A '*-B*[0-9]-enc.img' --no-directories https://cdn.keywestnetworks.com/${BUILD_BRANCH}/${BUILD_NUM}/ 2>&1 | tee -a ${workspace}/artifacts/flashing-device.log"
+                        sh "cd flasher && mv -f \$(ls *-B*[0-9].img) nor-ipq40xx-single.img 2>&1 | tee -a ${workspace}/artifacts/flashing-device.log"
                         archiveArtifacts('artifacts/**/*')
                     }
                 }
