@@ -42,22 +42,31 @@ def test_Upgrade(driver):
     time.sleep(2)
 
     hp = HomePage(driver)
-    print(hp.getMemory())
-    print(hp.getCPU())
 
-    if str(hp.getMemory()) > str(10):
+    if str(hp.getMemory()) > str(60):
         print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
-        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
-        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
-        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
-        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
-        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
-        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
-        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
-        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
-        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
-        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
-        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
+        hp.clickReboot()
+        hp.clickSuperReboot()
+        time.sleep(60)
+
+        wait = 0
+        while wait < 150:
+            output = ping(readConfig.getIPaddr())
+
+            if not output:
+                wait += 3
+
+            else:
+                print("Reachable")
+                print("Proceeding to Upgrade Firmware")
+                time.sleep(5)
+                driver.get(URL)
+                time.sleep(2)
+                lp.setUserName(username)
+                lp.setPassword(password)
+                lp.clickLogin()
+                time.sleep(4)
+                break
 
     hp.clickManagementSection()
     hp.clickUpgradeReset()
@@ -65,12 +74,12 @@ def test_Upgrade(driver):
     up = UpgradePage(driver)
     up.selectImageFile()
     up.clickUpgrade()
-    # up.clickProceed()
+    up.clickProceed()
 
-    # time.sleep(400)
+    time.sleep(400)
 
     wait = 0
-    while wait < 20:
+    while wait < 200:
         output = ping(readConfig.getIPaddr())
 
         if not output:

@@ -41,7 +41,7 @@ pipeline {
         stage('Download Firmware'){
             steps {
                 script {
-                    if ( PYTEST_ACCESS == "true" ){
+                    if ( PYTEST_FIRMWARE == "true" ){
                         echo "----------------------------------------"
                         echo "Firmware Upgrade Selected"
                         echo "----------------------------------------"
