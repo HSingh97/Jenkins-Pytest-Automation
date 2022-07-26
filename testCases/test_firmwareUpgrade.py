@@ -47,12 +47,12 @@ def test_Reboot(driver):
     up = UpgradePage(driver)
     up.selectImageFile()
     up.clickUpgrade()
-    up.clickProceed()
+    # up.clickProceed()
 
-    time.sleep(450)
+    time.sleep(4)
 
     wait = 0
-    while wait < 200:
+    while wait < 2:
         output = ping(readConfig.getIPaddr())
 
         if not output:
