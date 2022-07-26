@@ -204,4 +204,3 @@ class HomePage:
         data = self.driver.find_element_by_id(self.memory_id).text
         output = data.split(" ")
         return str(output[3])
-
