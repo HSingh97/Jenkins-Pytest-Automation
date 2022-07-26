@@ -51,9 +51,10 @@ pipeline {
                         sh "pwd"
                         dir('flasher') {
                             sh "wget --no-verbose --no-parent --recursive --level=1 -A '*-B*[0-9]-enc.img' --no-directories https://cdn.keywestnetworks.com/${BUILD_BRANCH}/${BUILD_NUM}/ 2>&1 | tee -a ${workspace}/artifacts/flashing-device.log"
-                            sh "mv -f \$(ls *-B*[0-9]-enc.img) nor-ipq40xx-single.img 2>&1 | tee -a ${workspace}/artifacts/flashing-device.log"
-                            archiveArtifacts('artifacts/**/*')
+                            sh "mv -f \$(ls *-B*[0-9]-enc.img) nor-ipq40xx-single-enc.img 2>&1 | tee -a ${workspace}/artifacts/flashing-device.log"
+                            // archiveArtifacts('artifacts/**/*')
                         }
+                        archiveArtifacts('artifacts/**/*')
                     }
                 }
             }
