@@ -47,12 +47,12 @@ def test_Upgrade(driver):
     up = UpgradePage(driver)
     up.selectImageFile()
     up.clickUpgrade()
-    # up.clickProceed()
+    up.clickProceed()
 
-    time.sleep(4)
+    time.sleep(400)
 
     wait = 0
-    while wait < 2:
+    while wait < 200:
         output = ping(readConfig.getIPaddr())
 
         if not output:
