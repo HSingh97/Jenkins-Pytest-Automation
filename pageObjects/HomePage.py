@@ -203,5 +203,5 @@ class HomePage:
         time.sleep(1)
         data = self.driver.find_element_by_id(self.memory_id).text()
         output = data.split(" ")
-        return output[3]
+        return str(output[3])
 
