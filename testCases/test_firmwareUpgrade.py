@@ -41,18 +41,33 @@ def test_Upgrade(driver):
     lp.clickLogin()
 
     hp = HomePage(driver)
+
+    if hp.getMemory() > 10:
+        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
+        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
+        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
+        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
+        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
+        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
+        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
+        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
+        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
+        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
+        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
+        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
+
     hp.clickManagementSection()
     hp.clickUpgradeReset()
 
     up = UpgradePage(driver)
     up.selectImageFile()
     up.clickUpgrade()
-    up.clickProceed()
+    # up.clickProceed()
 
-    time.sleep(400)
+    # time.sleep(400)
 
     wait = 0
-    while wait < 200:
+    while wait < 20:
         output = ping(readConfig.getIPaddr())
 
         if not output:

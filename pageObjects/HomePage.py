@@ -41,6 +41,19 @@ class HomePage:
     monitor_liveTraffic_LinkText = "Live Traffic"
     monitor_Tools_LinkText = "Tools"
 
+    # ----------------------------- HomePage - Details -----------------------------------
+
+    memory_id = "cpu_mem"
+    cpu_id = "cpu_mem"
+    firmware_id = "desc"
+    gps_id = "gps"
+    temperature_id = "temperature"
+    uptime_id = "uptime"
+    localtime_id = "localtime"
+    bootloader_id = "bl_ver"
+    hardwareVersion_xpath = "//*[@id='maincontent']/div/div[2]/table/tbody/tr[1]/td[1]/fieldset/table/tbody/tr[2]/td[2]"
+    model_xpath = "//*[@id='maincontent']/div/div[2]/table/tbody/tr[1]/td[1]/fieldset/table/tbody/tr[4]/td[2]"
+
 
     def __init__(self, driver):
         self.driver = driver
@@ -177,3 +190,18 @@ class HomePage:
     def clickTools(self):
         self.driver.find_element_by_link_text(self.monitor_Tools_LinkText).click()
         time.sleep(1)
+
+    # ---------- Home Page Details ------------
+
+    def getCPU(self):
+        time.sleep(1)
+        data = self.driver.find_element_by_id(self.cpu_id).text()
+        output = data.split(" ")
+        return output[1]
+
+    def getMemory(self):
+        time.sleep(1)
+        data = self.driver.find_element_by_id(self.memory_id).text()
+        output = data.split(" ")
+        return output[3]
+
