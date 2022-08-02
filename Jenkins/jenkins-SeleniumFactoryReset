@@ -1,0 +1,126 @@
+
+// Functions
+
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
+
+// Main Pipeline
+
+pipeline {
+    agent { node { label "${TARGET_STAND}"} }
+
+    stages {
+        stage('Prepare tests') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "--- TARGET STAND: ${TARGET_STAND}"
+                    echo "----------------------------------------"
+      	        }
+      	    }
+        }
+        stage('Install Python Dependencies') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "PYTEST Selected, Installing Dependencies"
+                    echo "----------------------------------------"
+                    sh 'apt-get -y install python3-pip'
+                    sh 'pip3 install pytest'
+                    sh 'pip3 install selenium==4.2.0'
+                    sh 'pip3 install webdriver-manager'
+                    sh 'pip3 install configobj'
+                    sh 'sudo apt install -y chromium-browser'
+                    sh 'sudo apt-get install chromium-driver -y'
+                    sh 'pip3 install pyserial'
+                }
+            }
+        }
+        stage('Download Firmware'){
+            steps {
+                script {
+                    if ( PYTEST_FIRMWARE == "true" ){
+                        echo "----------------------------------------"
+                        echo "Firmware Upgrade Selected"
+                        echo "----------------------------------------"
+                        echo "Downloading the Build"
+                        echo "----------------------------------------"
+                        sh "mkdir -p artifacts"
+                        sh "pwd"
+                        dir('flasher') {
+                            sh "wget --no-verbose --no-parent --recursive --level=1 -A '*-B*[0-9]-enc.img' --no-directories https://cdn.keywestnetworks.com/${BUILD_BRANCH}/${BUILD_NUM}/ 2>&1 | tee ${workspace}/artifacts/flashing-device.log"
+                            sh "mv -f \$(ls *-B*[0-9]-enc.img) nor-ipq40xx-single-enc.img 2>&1 | tee -a ${workspace}/artifacts/flashing-device.log"
+                            archiveArtifacts('nor-ipq40xx-single-enc.img')
+                        }
+                        archiveArtifacts('artifacts/**/*')
+                    }
+                }
+            }
+        }
+        stage('Access & Login') {
+            steps {
+                script {
+                    if ( PYTEST_ACCESS == "true" ){
+                        echo "----------------------------------------"
+                        echo "PYTEST Selected"
+                        echo "----------------------------------------"
+                        sh "mkdir -p artifacts"
+                        sh "pytest -v -s testCases/test_factoryReset.py::test_Login 2>&1 | tee ${workspace}/artifacts/login-device.log"
+                        archiveArtifacts('artifacts/**/*')
+                        }
+                    else{
+                        echo "-----------------------------------------"
+                        echo 'Skipping'
+                        echo "-----------------------------------------"
+                        }
+                }
+            }
+        }
+
+        stage('Firmware Upgrade') {
+            steps {
+                script {
+                    if ( PYTEST_FIRMWARE == "true" ){
+                        echo "----------------------------------------"
+                        echo "PYTEST Selected"
+                        echo "----------------------------------------"
+                        echo "Flashing the Firmware"
+                        echo "----------------------------------------"
+                        sh "mkdir -p artifacts"
+                        for (int i = 1; i <= UPGRADE_COUNT.toInteger() ; i++) {
+                            sh "pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade 2>&1 | tee ${workspace}/artifacts/firmware-upgrade-device.log"
+                        }
+                        archiveArtifacts('artifacts/**/*')
+                        archiveArtifacts('SerialLogs_Device.log')
+                        }
+                    else{
+                        echo "-----------------------------------------"
+                        echo 'Skipping'
+                        echo "-----------------------------------------"
+                        }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            echo "-----------------------------------------"
+            echo 'Script Done!'
+            echo "-----------------------------------------"
+        }
+
+        success {
+            echo "-----------------------------------------"
+            echo 'Script Success'
+            echo "-----------------------------------------"
+        }
+
+        failure {
+            echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
+        }
+    }
+}
