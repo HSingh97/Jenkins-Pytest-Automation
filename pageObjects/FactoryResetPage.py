@@ -1,6 +1,5 @@
 import time
 from selenium.common.exceptions import NoSuchElementException
-from pathlib import Path
 
 
 class ResetPage:
