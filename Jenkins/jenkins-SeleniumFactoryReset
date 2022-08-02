@@ -38,27 +38,6 @@ pipeline {
                 }
             }
         }
-        stage('Download Firmware'){
-            steps {
-                script {
-                    if ( PYTEST_FIRMWARE == "true" ){
-                        echo "----------------------------------------"
-                        echo "Firmware Upgrade Selected"
-                        echo "----------------------------------------"
-                        echo "Downloading the Build"
-                        echo "----------------------------------------"
-                        sh "mkdir -p artifacts"
-                        sh "pwd"
-                        dir('flasher') {
-                            sh "wget --no-verbose --no-parent --recursive --level=1 -A '*-B*[0-9]-enc.img' --no-directories https://cdn.keywestnetworks.com/${BUILD_BRANCH}/${BUILD_NUM}/ 2>&1 | tee ${workspace}/artifacts/flashing-device.log"
-                            sh "mv -f \$(ls *-B*[0-9]-enc.img) nor-ipq40xx-single-enc.img 2>&1 | tee -a ${workspace}/artifacts/flashing-device.log"
-                            archiveArtifacts('nor-ipq40xx-single-enc.img')
-                        }
-                        archiveArtifacts('artifacts/**/*')
-                    }
-                }
-            }
-        }
         stage('Access & Login') {
             steps {
                 script {
@@ -79,18 +58,18 @@ pipeline {
             }
         }
 
-        stage('Firmware Upgrade') {
+        stage('Factory Reset') {
             steps {
                 script {
-                    if ( PYTEST_FIRMWARE == "true" ){
+                    if ( PYTEST_FACTORY_RESET == "true" ){
                         echo "----------------------------------------"
                         echo "PYTEST Selected"
                         echo "----------------------------------------"
-                        echo "Flashing the Firmware"
+                        echo "Factory Resetting the Device"
                         echo "----------------------------------------"
                         sh "mkdir -p artifacts"
                         for (int i = 1; i <= UPGRADE_COUNT.toInteger() ; i++) {
-                            sh "pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade 2>&1 | tee ${workspace}/artifacts/firmware-upgrade-device.log"
+                            sh "pytest -v -s testCases/test_factoryReset.py::test_FactoryReset 2>&1 | tee ${workspace}/artifacts/factory-reset-device.log"
                         }
                         archiveArtifacts('artifacts/**/*')
                         archiveArtifacts('SerialLogs_Device.log')
