@@ -1,4 +1,5 @@
 import time
+from selenium.common.exceptions import NoSuchElementException
 
 
 class HomePage:
@@ -60,46 +61,96 @@ class HomePage:
 
     # ----------------------------------- Buttons --------------------------------------
     def clickReboot(self):
-        self.driver.find_element_by_xpath(self.rebootButton_xpath).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_xpath(self.rebootButton_xpath)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickHomeSify(self):
-        self.driver.find_element_by_name(self.homeButton_xpath_Sify).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_name(self.homeButton_xpath_Sify)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickHomeKW(self):
-        self.driver.find_element_by_name(self.homeButton_xpath_KW).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_name(self.homeButton_xpath_KW)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickApply(self):
-        self.driver.find_element_by_xpath(self.applyButton_xpath).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_xpath(self.applyButton_xpath)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickSuperReboot(self):
-        self.driver.find_element_by_link_text(self.superRebootButton_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.superRebootButton_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     # -------------------------------- Sections --------------------------------------
 
     def clickWirelessSection(self):
-        self.driver.find_element_by_link_text(self.wirelessSection_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.wirelessSection_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickNetworkSection(self):
-        self.driver.find_element_by_link_text(self.networkSection_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.networkSection_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickManagementSection(self):
-        self.driver.find_element_by_link_text(self.managementSection_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.managementSection_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickMonitorSection(self):
-        self.driver.find_element_by_link_text(self.monitorSection_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.monitorSection_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickQuickStart(self):
-        self.driver.find_element_by_xpath(self.quickStartSection_xpath).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_xpath(self.quickStartSection_xpath)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     # ----------------------------- Sub - Sections -----------------------------------
 
@@ -108,88 +159,178 @@ class HomePage:
 
 
     def clickWireless5Ghz(self):
-        self.driver.find_element_by_link_text(self.wireless_5Ghz_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.wireless_5Ghz_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickWireless24Ghz(self):
-        self.driver.find_element_by_link_text(self.wireless_2_4Ghz_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.wireless_2_4Ghz_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickQOS(self):
-        self.driver.find_element_by_link_text(self.wireless_qos_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.wireless_qos_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
 
     # --------- Network ----------
 
 
     def clickIPConfig(self):
-        self.driver.find_element_by_link_text(self.network_ipconfig_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.network_ipconfig_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickVLAN(self):
-        self.driver.find_element_by_link_text(self.network_vlan_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.network_vlan_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickEthernet(self):
-        self.driver.find_element_by_link_text(self.network_ethernet_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.network_ethernet_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickDHCPServer(self):
-        self.driver.find_element_by_link_text(self.network_dhcp_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.network_dhcp_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickRadius(self):
-        self.driver.find_element_by_link_text(self.network_radius_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.network_radius_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickFiltering(self):
-        self.driver.find_element_by_link_text(self.network_filtering_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.network_filtering_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickSOAM(self):
-        self.driver.find_element_by_link_text(self.network_SOAM_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.network_SOAM_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
 
     # --------- Management ----------
 
 
     def clickSystem(self):
-        self.driver.find_element_by_link_text(self.management_System_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.management_System_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickServices(self):
-        self.driver.find_element_by_link_text(self.management_Services_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.management_Services_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickUpgradeReset(self):
-        self.driver.find_element_by_link_text(self.management_Upgrade_Reset_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.management_Upgrade_Reset_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
 
     # --------- Monitor ----------
 
 
     def clickStatistics(self):
-        self.driver.find_element_by_link_text(self.monitor_Statistics_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.monitor_Statistics_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickLANTable(self):
-        self.driver.find_element_by_link_text(self.monitor_LANTable_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.monitor_LANTable_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickLogs(self):
-        self.driver.find_element_by_link_text(self.monitor_Logs_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.monitor_Logs_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickLiveTraffic(self):
-        self.driver.find_element_by_link_text(self.monitor_liveTraffic_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.monitor_liveTraffic_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     def clickTools(self):
-        self.driver.find_element_by_link_text(self.monitor_Tools_LinkText).click()
-        time.sleep(1)
+        try:
+            elem = self.driver.find_element_by_link_text(self.monitor_Tools_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
 
     # ---------- Home Page Details ------------
 
