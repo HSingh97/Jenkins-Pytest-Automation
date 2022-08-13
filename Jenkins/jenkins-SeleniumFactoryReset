@@ -46,7 +46,7 @@ pipeline {
                         echo "PYTEST Selected"
                         echo "----------------------------------------"
                         sh "mkdir -p artifacts"
-                        sh "pytest -v -s testCases/test_factoryReset.py::test_Login 2>&1 | tee ${workspace}/artifacts/login-device.log"
+                        sh "pytest -v -s testCases/test_login.py::test_Login 2>&1 | tee ${workspace}/artifacts/login-device.log"
                         archiveArtifacts('artifacts/**/*')
                         }
                     else{
@@ -68,7 +68,7 @@ pipeline {
                         echo "Factory Resetting the Device"
                         echo "----------------------------------------"
                         sh "mkdir -p artifacts"
-                        for (int i = 1; i <= UPGRADE_COUNT.toInteger() ; i++) {
+                        for (int i = 1; i <= RESET_COUNT.toInteger() ; i++) {
                             sh "pytest -v -s testCases/test_factoryReset.py::test_FactoryReset 2>&1 | tee ${workspace}/artifacts/factory-reset-device.log"
                         }
                         archiveArtifacts('artifacts/**/*')
