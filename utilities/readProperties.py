@@ -12,6 +12,11 @@ class readConfig:
         return ipaddr
 
     @staticmethod
+    def getRemoteIPaddr():
+        ipaddr = config.get('common info', 'remote_ip_addr')
+        return ipaddr
+
+    @staticmethod
     def get_username():
         usrname = config.get('common info', 'username')
         return usrname
