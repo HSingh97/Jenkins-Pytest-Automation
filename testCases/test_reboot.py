@@ -1,11 +1,12 @@
 import time
+import warnings
+import pytest
 from pageObjects.HomePage import HomePage
-from pageObjects.LoginPage import LoginPage
 from utilities.readProperties import readConfig
 from testCases.configsetup import setup
 from utilities.serial_Logging import *
-import warnings
-import pytest
+from preMadeFunctions import pingFunction
+from preMadeFunctions import accessWeb
 
 
 URL = "http://"+readConfig.getIPaddr()+"/cgi-bin/luci"
@@ -16,22 +17,11 @@ serial_port_log = readConfig.getSerialLogsDevice()
 driver = setup
 
 
-def warn(*args, **kwargs):
-    pass
-
-
-warnings.warn = warn
-
-
 def test_Reboot(driver):
     serial_logging_start(serial_port, serial_port_log)
 
-    driver.get(URL)
-    time.sleep(2)
-    lp = LoginPage(driver)
-    lp.setUserName(username)
-    lp.setPassword(password)
-    lp.clickLogin()
+    accessWeb.access_and_login(driver, URL, username, password)
+
     hp = HomePage(driver)
     hp.clickReboot()
     hp.clickSuperReboot()
@@ -39,7 +29,7 @@ def test_Reboot(driver):
 
     wait = 0
     while wait < 50:
-        output = preMadeFunctions.ping.Ping(readConfig.getIPaddr())
+        output = pingFunction.Ping(readConfig.getIPaddr())
 
         if not output:
             wait += 3
@@ -58,3 +48,9 @@ def test_Reboot(driver):
     serial_logging_stop()
     driver.close()
 
+
+def warn(*args, **kwargs):
+    pass
+
+
+warnings.warn = warn

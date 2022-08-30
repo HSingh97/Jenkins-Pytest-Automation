@@ -7,6 +7,7 @@ import pytest
 from pageObjects.HomePage import HomePage
 from pageObjects.LoginPage import LoginPage
 from pageObjects.UpgradePage import UpgradePage
+from preMadeFunctions import accessWeb, pingFunction
 from utilities.readProperties import readConfig
 from testCases.configsetup import setup
 from utilities.serial_Logging import *
@@ -20,25 +21,12 @@ serial_port_log = readConfig.getSerialLogsDevice()
 driver = setup
 
 
-# Ignore Warnings
-def warn(*args, **kwargs):
-    pass
-
-
-warnings.warn = warn
-
-
 def test_Upgrade(driver):
     # Start Serial Console logging for specific port
     serial_logging_start(serial_port, serial_port_log)
 
-    driver.get(URL)
-    time.sleep(2)
+    accessWeb.access_and_login(driver, URL, username, password)
 
-    lp = LoginPage(driver)
-    lp.setUserName(username)
-    lp.setPassword(password)
-    lp.clickLogin()
     time.sleep(2)
 
     hp = HomePage(driver)
@@ -51,7 +39,7 @@ def test_Upgrade(driver):
 
         wait = 0
         while wait < 150:
-            output = ping(readConfig.getIPaddr())
+            output = pingFunction.Ping(readConfig.getIPaddr())
 
             if not output:
                 wait += 3
@@ -60,11 +48,7 @@ def test_Upgrade(driver):
                 print("Reachable")
                 print("Proceeding to Upgrade Firmware")
                 time.sleep(5)
-                driver.get(URL)
-                time.sleep(2)
-                lp.setUserName(username)
-                lp.setPassword(password)
-                lp.clickLogin()
+                accessWeb.access_and_login(driver, URL, username, password)
                 time.sleep(4)
                 break
 
@@ -80,7 +64,7 @@ def test_Upgrade(driver):
 
     wait = 0
     while wait < 200:
-        output = ping(readConfig.getIPaddr())
+        output = pingFunction.Ping(readConfig.getIPaddr())
 
         if not output:
             wait += 3
@@ -103,9 +87,9 @@ def test_Upgrade(driver):
     driver.close()
 
 
-# Ping Device with specific IP
-def ping(host):
-    param = '-n' if platform.system().lower() == 'windows' else '-c'
-    command = ['ping', param, '3', host]
+# Ignore Warnings
+def warn(*args, **kwargs):
+    pass
 
-    return subprocess.call(command) == 0
+
+warnings.warn = warn

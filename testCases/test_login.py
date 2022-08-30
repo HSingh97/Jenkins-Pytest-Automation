@@ -15,13 +15,6 @@ password = readConfig.get_passwd()
 driver = setup
 
 
-def warn(*args, **kwargs):
-    pass
-
-
-warnings.warn = warn
-
-
 def test_HomePageTitle(driver):
 
     driver.get(URL)
@@ -53,3 +46,10 @@ def test_Login(driver):
         driver.save_screenshot("Screenshots\\" + "test_homePageTitle.png")
         driver.close()
         assert False
+
+
+def warn(*args, **kwargs):
+    pass
+
+
+warnings.warn = warn
