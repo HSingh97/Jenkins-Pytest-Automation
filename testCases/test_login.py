@@ -2,6 +2,7 @@ import time
 from pageObjects.LoginPage import LoginPage
 from utilities.readProperties import readConfig
 from testCases.configsetup import setup
+from preMadeFunctions import accessWeb
 import warnings
 
 import pytest
@@ -39,12 +40,7 @@ def test_HomePageTitle(driver):
 
 def test_Login(driver):
 
-    driver.get(URL)
-    time.sleep(2)
-    lp = LoginPage(driver)
-    lp.setUserName(username)
-    lp.setPassword(password)
-    lp.clickLogin()
+    accessWeb.access_and_login(URL, username, password)
     current_title = driver.title
 
     if current_title == "Sify - Home - LuCI" or "KeyWest - Home":
