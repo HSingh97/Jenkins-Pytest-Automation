@@ -1,11 +1,8 @@
 from pageObjects.LoginPage import LoginPage
-from utilities.readProperties import readConfig
-from testCases.configsetup import setup
 import time
 
 
-def access_and_login(URL, username, password):
-    driver = setup
+def access_and_login(driver, URL, username, password):
     driver.get(URL)
     time.sleep(2)
 

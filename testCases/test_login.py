@@ -40,7 +40,7 @@ def test_HomePageTitle(driver):
 
 def test_Login(driver):
 
-    accessWeb.access_and_login(URL, username, password)
+    accessWeb.access_and_login(driver, URL, username, password)
     current_title = driver.title
 
     if current_title == "Sify - Home - LuCI" or "KeyWest - Home":

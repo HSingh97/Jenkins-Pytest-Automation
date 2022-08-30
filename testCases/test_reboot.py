@@ -4,9 +4,7 @@ from pageObjects.LoginPage import LoginPage
 from utilities.readProperties import readConfig
 from testCases.configsetup import setup
 from utilities.serial_Logging import *
-import platform
 import warnings
-import subprocess
 import pytest
 
 
@@ -41,7 +39,7 @@ def test_Reboot(driver):
 
     wait = 0
     while wait < 50:
-        output = ping(readConfig.getIPaddr())
+        output = preMadeFunctions.ping.Ping(readConfig.getIPaddr())
 
         if not output:
             wait += 3
@@ -60,10 +58,3 @@ def test_Reboot(driver):
     serial_logging_stop()
     driver.close()
 
-
-
-def ping(host):
-    param = '-n' if platform.system().lower() == 'windows' else '-c'
-    command = ['ping', param, '3', host]
-
-    return subprocess.call(command) == 0
