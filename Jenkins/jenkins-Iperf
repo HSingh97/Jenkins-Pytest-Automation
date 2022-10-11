@@ -11,23 +11,95 @@ def archiveArtifacts(pattern) {
 pipeline {
     agent { node { label "${TARGET_STAND}"} }
 
-    parameters {
-            checkboxParameter(name: 'Platforms1', format: 'JSON',
-                    pipelineSubmitContent: '{"CheckboxParameter": [{"key": "MCS0","value": "MCS0"},{"key": "MCS1","value": "MCS1"},{"key": "MCS2","value": "MCS2"}]}', description: '')
-            checkboxParameter(name: 'Platforms2', format: 'YAML',
-                    pipelineSubmitContent: "CheckboxParameter: \n  - key: monday\n    value: monday\n  - key: tuesday\n    value: tuesday\n", description: '')
-    }
     stages {
-        stage('Hello') {
+        stage('Prepare tests') {
             steps {
-                echo 'Hello World'
+                script {
+                    echo "----------------------------------------"
+                    echo "--- TARGET STAND: ${TARGET_STAND}"
+                    echo "----------------------------------------"
+      	        }
+      	    }
+        }
+        stage('Install Python Dependencies') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "PYTEST Selected, Installing Dependencies"
+                    echo "----------------------------------------"
+                    sh 'apt-get -y install python3-pip'
+                    sh 'pip3 install pytest'
+                    sh 'pip3 install selenium==4.2.0'
+                    sh 'pip3 install webdriver-manager'
+                    sh 'pip3 install configobj'
+                    sh 'sudo apt install -y chromium-browser'
+                    sh 'sudo apt-get install chromium-driver -y'
+                    sh 'pip3 install pyserial'
+                }
             }
         }
-        stage('Next Step'){
+        stage('Access & Login') {
             steps {
-                echo 'Second stage being run'
+                script {
+                    if ( PYTEST_ACCESS == "true" ){
+                        echo "----------------------------------------"
+                        echo "PYTEST Selected"
+                        echo "----------------------------------------"
+                        sh "mkdir -p artifacts"
+                        sh "pytest -v -s testCases/test_login.py::test_Login 2>&1 | tee ${workspace}/artifacts/login-device.log"
+                        archiveArtifacts('artifacts/**/*')
+                        }
+                    else{
+                        echo "-----------------------------------------"
+                        echo 'Skipping'
+                        echo "-----------------------------------------"
+                        }
+                }
             }
         }
 
+        stage('Iperf Test') {
+            steps {
+                script {
+                    if ( PYTEST_FACTORY_RESET == "true" ){
+                        echo "----------------------------------------"
+                        echo "PYTEST Selected"
+                        echo "----------------------------------------"
+                        echo "Running the iPerf"
+                        echo "----------------------------------------"
+                        sh "mkdir -p artifacts"
+                        for (int i = 1; i <= RESET_COUNT.toInteger() ; i++) {
+                            sh "pytest -v -s testCases/test_LinkTestIperf.py::test_iperf 2>&1 | tee ${workspace}/artifacts/iperfresults-device.log"
+                        }
+                        archiveArtifacts('artifacts/**/*')
+                        archiveArtifacts('SerialLogs_Device.log')
+                        }
+                    else{
+                        echo "-----------------------------------------"
+                        echo 'Skipping'
+                        echo "-----------------------------------------"
+                        }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            echo "-----------------------------------------"
+            echo 'Script Done!'
+            echo "-----------------------------------------"
+        }
+
+        success {
+            echo "-----------------------------------------"
+            echo 'Script Success'
+            echo "-----------------------------------------"
+        }
+
+        failure {
+            echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
+        }
     }
 }
