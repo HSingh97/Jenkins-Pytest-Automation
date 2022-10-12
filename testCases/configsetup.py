@@ -15,10 +15,15 @@ def setup():
     if platform.system() == "Linux" and platform.machine() == "armv7l":
         # if raspberry pi
         chrome_options.BinaryLocation = ("/usr/bin/chromium-browser")
-        driver = webdriver.Chrome("/usr/bin/chromedriver")
+        service = Service("/usr/bin/chromedriver")
 
     else:
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+        service = Service(ChromeDriverManager().install())
+
+    driver = webdriver.Chrome(
+        service=service,
+        options=chrome_options
+    )
 
     driver.set_window_position(0, 0)
     driver.set_window_size(1920, 1080)
