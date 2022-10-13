@@ -27,14 +27,7 @@ pipeline {
                     echo "----------------------------------------"
                     echo "PYTEST Selected, Installing Dependencies"
                     echo "----------------------------------------"
-                    sh 'apt-get -y install python3-pip'
-                    sh 'pip3 install pytest'
-                    sh 'pip3 install selenium==4.2.0'
-                    sh 'pip3 install webdriver-manager'
-                    sh 'pip3 install configobj'
-                    sh 'sudo apt install -y chromium-browser'
-                    sh 'sudo apt-get install chromium-driver -y'
-                    sh 'pip3 install pyserial'
+                    sh "sh requirements.txt"
                 }
             }
         }
