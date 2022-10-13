@@ -27,7 +27,7 @@ pipeline {
                     echo "----------------------------------------"
                     echo "PYTEST Selected, Installing Dependencies"
                     echo "----------------------------------------"
-                    sh "sh requirements.txt"
+                    sh "sh utilities/requirements.txt"
                 }
             }
         }
