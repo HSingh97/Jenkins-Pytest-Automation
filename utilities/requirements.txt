@@ -6,3 +6,4 @@ pip3 install configobj
 sudo apt-get install -y chromium-browser
 sudo apt-get install chromium-driver -y
 pip3 install pyserial
+pip3 install requests
