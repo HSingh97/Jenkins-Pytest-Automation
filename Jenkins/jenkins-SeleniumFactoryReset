@@ -54,7 +54,7 @@ pipeline {
         stage('Factory Reset') {
             steps {
                 script {
-                    if ( PYTEST_FACTORY_RESET == "true" ){
+                    if ( PYTEST_RESET == "true" ){
                         echo "----------------------------------------"
                         echo "PYTEST Selected"
                         echo "----------------------------------------"
