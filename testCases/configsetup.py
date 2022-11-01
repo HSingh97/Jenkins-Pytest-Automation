@@ -18,6 +18,7 @@ def setup():
         service = Service("/usr/bin/chromedriver")
 
     else:
+        # if other OS
         service = Service(ChromeDriverManager().install())
 
     driver = webdriver.Chrome(
