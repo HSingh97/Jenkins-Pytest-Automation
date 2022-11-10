@@ -24,6 +24,8 @@ def test_Disconnect_Connect(driver):
     accessWeb.access_and_login(driver, URL, username, password)
 
     hp = HomePage(driver)
+    time.sleep(2)
+    hp.clickMonitorSection()
     hp.clickStatistics()
     time.sleep(1)
     
