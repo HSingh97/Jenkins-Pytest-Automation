@@ -1,0 +1,97 @@
+
+// Functions
+
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
+
+// Main Pipeline
+
+pipeline {
+    agent { node { label "${TARGET_STAND}"} }
+
+    stages {
+        stage('Prepare tests') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "--- TARGET STAND: ${TARGET_STAND}"
+                    echo "----------------------------------------"
+      	        }
+      	    }
+        }
+        stage('Install Python Dependencies') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "PYTEST Selected, Installing Dependencies"
+                    echo "----------------------------------------"
+                    sh "sh utilities/requirements.txt"
+                }
+            }
+        }
+        stage('Access & Login') {
+            steps {
+                script {
+                    if ( PYTEST_ACCESS == "true" ){
+                        echo "----------------------------------------"
+                        echo "PYTEST Selected"
+                        echo "----------------------------------------"
+                        sh "mkdir -p artifacts"
+                        sh "pytest -v -s testCases/test_login.py::test_Login 2>&1 | tee ${workspace}/artifacts/login-device.log"
+                        archiveArtifacts('artifacts/**/*')
+                        }
+                    else{
+                        echo "-----------------------------------------"
+                        echo 'Skipping'
+                        echo "-----------------------------------------"
+                        }
+                }
+            }
+        }
+        stage('Disconnect & Connect') {
+            steps {
+                script {
+                    if ( PYTEST_DISCONNECT == "true" ){
+                        echo "----------------------------------------"
+                        echo "PYTEST Selected"
+                        echo "----------------------------------------"
+                        echo "Disconnecting the Remote Device"
+                        echo "----------------------------------------"
+                        sh "mkdir -p artifacts"
+                        for (int i = 1; i <= DISCONNECT_COUNT.toInteger() ; i++) {
+                            sh "pytest -v -s testCases/test_disconnect.py::test_Disconnect_Connect 2>&1 | tee ${workspace}/artifacts/disconnect-device.log"
+                        }
+                        archiveArtifacts('artifacts/**/*')
+                        archiveArtifacts('SerialLogs_Device.log')
+                        }
+                    else{
+                        echo "-----------------------------------------"
+                        echo 'Skipping'
+                        echo "-----------------------------------------"
+                        }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            echo "-----------------------------------------"
+            echo 'Script Done!'
+            echo "-----------------------------------------"
+        }
+
+        success {
+            echo "-----------------------------------------"
+            echo 'Script Success'
+            echo "-----------------------------------------"
+        }
+
+        failure {
+            echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
+        }
+    }
+}
