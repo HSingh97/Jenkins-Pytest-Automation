@@ -28,6 +28,7 @@ def test_Disconnect_Connect(driver):
     time.sleep(1)
     
     sp = StatsPage(driver)
+    time.sleep(2)
     sp.clickDetailedStats()
     time.sleep(3)
     sp.clickDisconnect()
