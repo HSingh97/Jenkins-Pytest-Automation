@@ -30,7 +30,8 @@ def test_Disconnect_Connect(driver):
     time.sleep(1)
     
     sp = StatsPage(driver)
-    print("Link Uptime Before Disconnection : {}".format(sp.getUptime()))
+    uptime_output = sp.getUptime()
+    print("Link Uptime Before Disconnection : {}".format(uptime_output))
     time.sleep(2)
     sp.clickDetailedStats()
     time.sleep(3)
@@ -52,9 +53,8 @@ def test_Disconnect_Connect(driver):
     hp.clickMonitorSection()
     hp.clickStatistics()
     time.sleep(1)
-
-    sp = StatsPage(driver)
-    print("Link Uptime After Disconnection : {}".format(sp.getUptime()))
+    uptime_output_1 = sp.getUptime()
+    print("Link Uptime After Disconnection : {}".format(uptime_output_1))
     time.sleep(2)
 
     if output != 1:
