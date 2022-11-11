@@ -44,7 +44,8 @@ class StatsPage:
         time.sleep(2)
         try:
             elem = self.driver.find_element_by_xpath(self.uptime_xpath)
-            return elem.text(self)
+            output = elem.text
+            return output
         except NoSuchElementException:
             print("No Such Element Found")
             pass
@@ -53,7 +54,7 @@ class StatsPage:
         time.sleep(2)
         try:
             elem = self.driver.find_element_by_xpath(self.macaddress_xpath)
-            return elem.text(self)
+            return elem.text()
         except NoSuchElementException:
             print("No Such Element Found")
             pass
