@@ -57,8 +57,6 @@ pipeline {
                         echo "----------------------------------------"
                         echo "PYTEST Selected"
                         echo "----------------------------------------"
-                        echo "Disconnecting the Remote Device"
-                        echo "----------------------------------------"
                         sh "mkdir -p artifacts"
                         for (int i = 1; i <= DISCONNECT_COUNT.toInteger() ; i++) {
                             sh "pytest -v -s testCases/test_disconnect.py::test_Disconnect_Connect 2>&1 | tee ${workspace}/artifacts/disconnect-device.log"

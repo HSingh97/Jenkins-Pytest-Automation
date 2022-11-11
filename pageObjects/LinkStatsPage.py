@@ -54,7 +54,7 @@ class StatsPage:
         time.sleep(2)
         try:
             elem = self.driver.find_element_by_xpath(self.macaddress_xpath)
-            return elem.text()
+            return elem.text
         except NoSuchElementException:
             print("No Such Element Found")
             pass
@@ -63,7 +63,44 @@ class StatsPage:
         time.sleep(2)
         try:
             elem = self.driver.find_element_by_xpath(self.linkid_xpath)
-            return elem.text()
+            return elem.text
         except NoSuchElementException:
             print("No Such Element Found")
             pass
+
+    def getLocalA1(self):
+        time.sleep(2)
+        try:
+            elem = self.driver.find_element_by_xpath(self.localsignal_A1_xpath)
+            return elem.text
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
+
+    def getLocalA2(self):
+        time.sleep(2)
+        try:
+            elem = self.driver.find_element_by_xpath(self.localsignal_A2_xpath)
+            return elem.text
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
+
+    def getRemoteA1(self):
+        time.sleep(2)
+        try:
+            elem = self.driver.find_element_by_xpath(self.remotesignal_A1_xpath)
+            return elem.text
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
+
+    def getRemoteA2(self):
+        time.sleep(2)
+        try:
+            elem = self.driver.find_element_by_xpath(self.remotesignal_A2_xpath)
+            return elem.text
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
+

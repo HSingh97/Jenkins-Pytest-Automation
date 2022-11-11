@@ -39,7 +39,7 @@ def test_Disconnect_Connect(driver):
 
     wait = 0
     while wait < 50:
-        output = pingFunction.Ping(readConfig.getIPaddr())
+        output = pingFunction.Ping(readConfig.getRemoteIPaddr())
 
         if not output:
             wait += 3
