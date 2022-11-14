@@ -37,6 +37,10 @@ def test_Disconnect_Connect(driver):
     time.sleep(3)
     sp.clickDisconnect()
 
+    print("Waiting for Link to form back")
+    time.sleep(30)
+    print("Checking Ping")
+
     wait = 0
     while wait < 50:
         output = pingFunction.Ping(readConfig.getRemoteIPaddr())
