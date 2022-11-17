@@ -15,9 +15,16 @@ class StatsPage:
     localsignal_A2_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[8]"
     remotesignal_A1_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[9]"
     remotesignal_A2_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[10]"
+    txStats_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[11]"
+    rxStats_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[12]"
+
 
     # ************************ Detailed Link Stats ******************************
     disconnect_xpath = "//*[@id='maincontent']/div/div[1]/input[2]"
+    local_rtx_xpath = "//*[@id='l_rtx']"
+    remote_rtx_xpath = "//*[@id='r_rtx']"
+    dropped_local_xpath = "//*[@id='l_dropped']"
+    dropped_remote_xpath = "//*[@id='r_dropped']"
 
     def __init__(self, driver):
         self.driver = driver

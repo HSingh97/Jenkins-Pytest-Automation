@@ -36,6 +36,7 @@ def test_Disconnect_Connect(driver):
     sp.clickDetailedStats()
     time.sleep(3)
     sp.clickDisconnect()
+    time.sleep(2)
 
     print("Waiting for Link to form back")
     time.sleep(30)
