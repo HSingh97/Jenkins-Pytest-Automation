@@ -25,6 +25,8 @@ class StatsPage:
     remote_rtx_xpath = "//*[@id='r_rtx']"
     dropped_local_xpath = "//*[@id='l_dropped']"
     dropped_remote_xpath = "//*[@id='r_dropped']"
+    local_retries_xpath = "//*[@id='l_retry']"
+    remote_retries_xpath = "//*[@id='r_retry']"
 
     def __init__(self, driver):
         self.driver = driver
@@ -111,3 +113,56 @@ class StatsPage:
             print("No Such Element Found")
             pass
 
+    def getLocalRTX(self):
+        time.sleep(2)
+        try:
+            elem = self.driver.find_element_by_xpath(self.local_rtx_xpath)
+            return elem.text
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
+
+    def getRemoteRTX(self):
+        time.sleep(2)
+        try:
+            elem = self.driver.find_element_by_xpath(self.remote_rtx_xpath)
+            return elem.text
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
+
+    def getLocalDropped(self):
+        time.sleep(2)
+        try:
+            elem = self.driver.find_element_by_xpath(self.dropped_local_xpath)
+            return elem.text
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
+
+    def getRemoteDropped(self):
+        time.sleep(2)
+        try:
+            elem = self.driver.find_element_by_xpath(self.dropped_remote_xpath)
+            return elem.text
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
+
+    def getLocalRetries(self):
+        time.sleep(2)
+        try:
+            elem = self.driver.find_element_by_xpath(self.local_retries_xpath)
+            return elem.text
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
+
+    def getRemoteRetries(self):
+        time.sleep(2)
+        try:
+            elem = self.driver.find_element_by_xpath(self.remote_retries_xpath)
+            return elem.text
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
