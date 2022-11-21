@@ -33,6 +33,7 @@ def test_Reboot(driver):
 
         if not output:
             wait += 3
+            time.sleep(3)
 
         else:
             print("Reachable")

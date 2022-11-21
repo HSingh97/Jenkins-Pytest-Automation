@@ -58,6 +58,7 @@ def test_FactoryReset(driver):
 
         if not output:
             wait += 3
+            time.sleep(3)
 
         else:
             print("Reachable")
