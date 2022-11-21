@@ -34,7 +34,7 @@ pipeline {
         stage('Hard Reboot') {
             steps {
                 script {
-                    if ( PYTEST_RESET == "true" ){
+                    if ( PYTEST_PDU == "true" ){
                         echo "----------------------------------------"
                         echo "PYTEST Selected"
                         echo "----------------------------------------"
