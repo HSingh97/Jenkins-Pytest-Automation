@@ -1,0 +1,78 @@
+
+// Functions
+
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
+
+// Main Pipeline
+
+pipeline {
+    agent { node { label "${TARGET_STAND}"} }
+
+    stages {
+        stage('Prepare tests') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "--- TARGET STAND: ${TARGET_STAND}"
+                    echo "----------------------------------------"
+      	        }
+      	    }
+        }
+        stage('Install Python Dependencies') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "PYTEST Selected, Installing Dependencies"
+                    echo "----------------------------------------"
+                    sh "sh utilities/requirements.txt"
+                }
+            }
+        }
+        stage('Hard Reboot') {
+            steps {
+                script {
+                    if ( PYTEST_RESET == "true" ){
+                        echo "----------------------------------------"
+                        echo "PYTEST Selected"
+                        echo "----------------------------------------"
+                        echo "Factory Resetting the Device"
+                        echo "----------------------------------------"
+                        sh "mkdir -p artifacts"
+                        for (int i = 1; i <= RESET_COUNT.toInteger() ; i++) {
+                            sh "pytest -v -s testCases/test_PDULocal::test_DyingGasp 2>&1 | tee ${workspace}/artifacts/hard-reboot-device.log"
+                        }
+                        archiveArtifacts('artifacts/**/*')
+                        archiveArtifacts('SerialLogs_Device.log')
+                        }
+                    else{
+                        echo "-----------------------------------------"
+                        echo 'Skipping'
+                        echo "-----------------------------------------"
+                        }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            echo "-----------------------------------------"
+            echo 'Script Done!'
+            echo "-----------------------------------------"
+        }
+
+        success {
+            echo "-----------------------------------------"
+            echo 'Script Success'
+            echo "-----------------------------------------"
+        }
+
+        failure {
+            echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
+        }
+    }
+}
