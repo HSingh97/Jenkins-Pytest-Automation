@@ -39,7 +39,7 @@ def test_Disconnect_Connect(driver):
     time.sleep(2)
 
     print("Waiting for Link to form back")
-    time.sleep(30)
+    time.sleep(15)
     print("Checking Ping")
 
     wait = 0
