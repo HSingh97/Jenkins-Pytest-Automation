@@ -7,5 +7,5 @@ sudo apt-get install -y chromium-browser
 sudo apt-get install chromium-driver -y
 pip3 install pyserial
 pip3 install requests
-pip3 install paramiko
+# pip3 install paramiko
 pip3 install pexpect
