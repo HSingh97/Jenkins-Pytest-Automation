@@ -41,7 +41,7 @@ pipeline {
                         echo "Factory Resetting the Device"
                         echo "----------------------------------------"
                         sh "mkdir -p artifacts"
-                        for (int i = 1; i <= RESET_COUNT.toInteger() ; i++) {
+                        for (int i = 1; i <= REBOOT_COUNT.toInteger() ; i++) {
                             sh "pytest -v -s testCases/test_PDULocal::test_DyingGasp 2>&1 | tee ${workspace}/artifacts/hard-reboot-device.log"
                         }
                         archiveArtifacts('artifacts/**/*')
