@@ -42,7 +42,7 @@ pipeline {
                         echo "----------------------------------------"
                         sh "mkdir -p artifacts"
                         for (int i = 1; i <= REBOOT_COUNT.toInteger() ; i++) {
-                            sh "pytest -v -s testCases/test_PDULocal.py::test_DyingGasp 2>&1 | tee ${workspace}/artifacts/hard-reboot-device.log"
+                            sh "pytest -v -s testCases/test_PDULocal.py::test_DyingGasp -i 10.0.0.1 2>&1 | tee ${workspace}/artifacts/hard-reboot-device.log"
                         }
                         archiveArtifacts('artifacts/**/*')
                         archiveArtifacts('SerialLogs_Device.log')
