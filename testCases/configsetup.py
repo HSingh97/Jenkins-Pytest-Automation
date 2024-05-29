@@ -1,9 +1,36 @@
-from selenium import webdriver
+import pytest
 import platform
+import subprocess
+import re
+from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
-import pytest
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+
+
+def get_chrome_version():
+    version = ""
+    try:
+        if platform.system() == "Linux":
+            result = subprocess.run(['google-chrome', '--version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            version = result.stdout.decode('utf-8')
+        elif platform.system() == "Darwin":
+            result = subprocess.run(['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '--version'],
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            version = result.stdout.decode('utf-8')
+        elif platform.system() == "Windows":
+            result = subprocess.run(
+                ['reg', 'query', 'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\BLBeacon', '/v', 'version'],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            version = result.stdout.decode('utf-8')
+            version = re.search(r'(\d+\.\d+\.\d+\.\d+)', version).group(1)
+    except Exception as e:
+        logging.error(f"Error fetching Chrome version: {e}")
+    version_match = re.search(r'\d+\.\d+\.\d+\.\d+', version)
+    return version_match.group(0) if version_match else None
 
 
 @pytest.fixture()
@@ -14,13 +41,20 @@ def setup():
     chrome_options.add_argument('--disable-dev-shm-usage')
 
     if platform.system() == "Linux" and platform.machine() == "armv7l":
-        # if raspberry pi
-        chrome_options.binary_location = ("/usr/bin/chromium-browser")
+        # if running on Raspberry Pi
+        chrome_options.binary_location = "/usr/bin/chromium-browser"
         service = Service("/usr/bin/chromedriver")
-
     else:
-        # if other OS
-        service = Service(ChromeDriverManager().install())
+        chrome_version = get_chrome_version()
+        if not chrome_version:
+            raise ValueError("Failed to determine Chrome version")
+        logging.debug(f"Detected Chrome version: {chrome_version}")
+        try:
+            # Dynamically get the corresponding ChromeDriver version
+            service = Service(ChromeDriverManager().install())
+        except ValueError as e:
+            logging.error(f"Failed to install ChromeDriver: {e}")
+            raise e
 
     driver = webdriver.Chrome(
         service=service,
@@ -29,6 +63,7 @@ def setup():
 
     driver.set_window_position(0, 0)
     driver.set_window_size(1920, 1080)
-    yield driver
+
+    yield driver  # Provide the fixture value
 
     driver.quit()
