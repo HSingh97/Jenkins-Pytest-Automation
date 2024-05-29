@@ -18,9 +18,9 @@ def setup():
         chrome_options.binary_location = ("/usr/bin/chromium-browser")
         service = Service("/usr/bin/chromedriver")
 
-    # else:
-    #     # if other OS
-    #     service = Service(ChromeDriverManager().install())
+    else:
+        # if other OS
+        service = Service(ChromeDriverManager().install())
 
     driver = webdriver.Chrome(
         service=service,
