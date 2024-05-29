@@ -12,25 +12,28 @@ logging.basicConfig(level=logging.DEBUG)
 
 
 def get_chrome_version():
-    version = ""
     try:
         if platform.system() == "Linux":
             result = subprocess.run(['google-chrome', '--version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            version = result.stdout.decode('utf-8')
+            version = result.stdout.decode('utf-8').strip()
         elif platform.system() == "Darwin":
             result = subprocess.run(['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '--version'],
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            version = result.stdout.decode('utf-8')
+            version = result.stdout.decode('utf-8').strip()
         elif platform.system() == "Windows":
             result = subprocess.run(
                 ['reg', 'query', 'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\BLBeacon', '/v', 'version'],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            version = result.stdout.decode('utf-8')
+            version = result.stdout.decode('utf-8').strip()
             version = re.search(r'(\d+\.\d+\.\d+\.\d+)', version).group(1)
+        else:
+            raise Exception("Unsupported OS")
     except Exception as e:
         logging.error(f"Error fetching Chrome version: {e}")
-    version_match = re.search(r'\d+\.\d+\.\d+\.\d+', version)
-    return version_match.group(0) if version_match else None
+        return None
+
+    version_match = re.search(r'(\d+\.\d+\.\d+)', version)
+    return version_match.group(1) if version_match else None
 
 
 @pytest.fixture()
@@ -50,8 +53,7 @@ def setup():
             raise ValueError("Failed to determine Chrome version")
         logging.debug(f"Detected Chrome version: {chrome_version}")
         try:
-            # Dynamically get the corresponding ChromeDriver version
-            service = Service(ChromeDriverManager().install())
+            service = Service(ChromeDriverManager(version=chrome_version).install())
         except ValueError as e:
             logging.error(f"Failed to install ChromeDriver: {e}")
             raise e
