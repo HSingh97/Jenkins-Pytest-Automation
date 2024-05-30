@@ -28,12 +28,12 @@ def download_chromedriver(chromedriver_version):
         zip_ref.extractall('.')
 
     # Find the extracted chromedriver executable
-    extracted_files = zip_ref.namelist()
     chromedriver_path = None
-    for file in extracted_files:
-        if 'chromedriver' in file:
-            chromedriver_path = file
-            break
+    for root, dirs, files in os.walk('.'):
+        for file in files:
+            if 'chromedriver' in file and not file.endswith('.zip'):
+                chromedriver_path = os.path.join(root, file)
+                break
 
     if chromedriver_path is None:
         raise FileNotFoundError("chromedriver executable not found in the downloaded zip file")
@@ -57,4 +57,3 @@ def setup():
 
     driver = webdriver.Chrome(service=service, options=chrome_options)
     return driver
-
