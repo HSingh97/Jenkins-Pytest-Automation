@@ -6,14 +6,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 
-
-def get_chromedriver_version(chrome_version):
-    major_version = chrome_version.split('.')[0]
-    response = requests.get(
-        f'https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json')
-    response_json = response.json()
-    return response_json['channels']['Stable']['version']
-
+chromedriver_version = '125.0.6422.78'
 
 def download_chromedriver(chromedriver_version):
     base_url = f'https://storage.googleapis.com/chrome-for-testing-public/{chromedriver_version}/'
@@ -34,8 +27,19 @@ def download_chromedriver(chromedriver_version):
     with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
         zip_ref.extractall('.')
 
-    os.chmod('chromedriver', 0o755)
+    # Find the extracted chromedriver executable
+    extracted_files = zip_ref.namelist()
+    chromedriver_path = None
+    for file in extracted_files:
+        if 'chromedriver' in file:
+            chromedriver_path = file
+            break
 
+    if chromedriver_path is None:
+        raise FileNotFoundError("chromedriver executable not found in the downloaded zip file")
+
+    os.chmod(chromedriver_path, 0o755)
+    return chromedriver_path
 
 def setup():
     chrome_options = Options()
@@ -43,25 +47,13 @@ def setup():
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
 
-    # Fetch Chrome version
-    if platform.system() == "Linux":
-        version_output = os.popen("google-chrome --version").read().strip()
-    elif platform.system() == "Windows":
-        version_output = os.popen(
-            'reg query "HKEY_CURRENT_USER\\Software\\Google\\Chrome\\BLBeacon" /v version').read().strip()
-    else:  # macOS
-        version_output = os.popen(
-            "/Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --version").read().strip()
-
-    chrome_version = version_output.split()[-1]
-    chromedriver_version = get_chromedriver_version(chrome_version)
-    download_chromedriver(chromedriver_version)
+    chromedriver_path = download_chromedriver(chromedriver_version)
 
     if platform.system() == "Linux" and platform.machine() == "armv7l":
         chrome_options.binary_location = "/usr/bin/chromium-browser"
         service = Service("/usr/bin/chromedriver")
     else:
-        service = Service("./chromedriver")
+        service = Service(chromedriver_path)
 
     driver = webdriver.Chrome(service=service, options=chrome_options)
     return driver
