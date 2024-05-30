@@ -19,7 +19,9 @@ def setup():
         service = Service("/usr/bin/chromedriver")
     else:
         # Other OS setup
-        chromedriver_path = ChromeDriverManager().install()
+        custom_url = "https://storage.googleapis.com/chrome-for-testing-public/125.0.6422.76/linux64/chromedriver-linux64.zip"
+        driver_manager = CustomChromeDriverManager(url=custom_url)
+        chromedriver_path = driver_manager.install()
         service = Service(chromedriver_path)
 
     driver = webdriver.Chrome(service=service, options=chrome_options)
