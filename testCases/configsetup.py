@@ -6,6 +6,17 @@ from webdriver_manager.chrome import ChromeDriverManager
 import platform
 
 
+class CustomChromeDriverManager(ChromeDriverManager):
+    def __init__(self, version="latest", url=None):
+        super().__init__(version=version)
+        self.custom_url = url
+
+    def _get_driver_url(self, driver: ChromeDriver):
+        if self.custom_url:
+            return self.custom_url
+        return super()._get_driver_url(driver)
+
+
 @pytest.fixture()
 def setup():
     chrome_options = Options()
