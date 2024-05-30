@@ -1,7 +1,7 @@
 class LoginPage:
     username_id = "luci_username"
     password_id = "luci_password"
-    button_xpath = "/html/body/div/form/div[2]/input[1]"
+    button_xpath = "/html/body/div/div[2]/div/div[2]/form/div[2]/input[1]"
 
     def __init__(self, driver):
         self.driver = driver
