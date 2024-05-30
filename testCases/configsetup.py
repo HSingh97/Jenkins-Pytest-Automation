@@ -4,17 +4,6 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 import platform
 from webdriver_manager.chrome import ChromeDriverManager
-from webdriver_manager.core.driver import ChromeDriver
-
-class CustomChromeDriverManager(ChromeDriverManager):
-    def __init__(self, version="latest", url=None):
-        super().__init__(version=version)
-        self.custom_url = url
-
-    def _get_driver_url(self, driver: ChromeDriver):
-        if self.custom_url:
-            return self.custom_url
-        return super()._get_driver_url(driver)
 
 
 @pytest.fixture()
@@ -31,9 +20,16 @@ def setup():
     else:
         # Other OS setup with custom ChromeDriver URL
         custom_url = "https://storage.googleapis.com/chrome-for-testing-public/125.0.6422.76/linux64/chromedriver-linux64.zip"
-        driver_manager = CustomChromeDriverManager(url=custom_url)
-        chromedriver_path = driver_manager.install()
-        service = Service(chromedriver_path)
+        driver_path = "/path/to/downloaded/chromedriver"
+
+        # Download the ChromeDriver using the custom URL
+        import requests
+        response = requests.get(custom_url)
+        with open(driver_path, 'wb') as file:
+            file.write(response.content)
+
+        # Set up the service with the custom path
+        service = Service(driver_path)
 
     driver = webdriver.Chrome(service=service, options=chrome_options)
     driver.set_window_position(0, 0)
