@@ -2,9 +2,9 @@ import pytest
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 import platform
-
+from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.core.driver import ChromeDriver
 
 class CustomChromeDriverManager(ChromeDriverManager):
     def __init__(self, version="latest", url=None):
@@ -29,7 +29,7 @@ def setup():
         chrome_options.binary_location = "/usr/bin/chromium-browser"
         service = Service("/usr/bin/chromedriver")
     else:
-        # Other OS setup
+        # Other OS setup with custom ChromeDriver URL
         custom_url = "https://storage.googleapis.com/chrome-for-testing-public/125.0.6422.76/linux64/chromedriver-linux64.zip"
         driver_manager = CustomChromeDriverManager(url=custom_url)
         chromedriver_path = driver_manager.install()
