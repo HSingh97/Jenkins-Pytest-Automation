@@ -10,14 +10,13 @@ def Ping(host):
 
 def check_access(host):
     wait = 0
-    while wait < 50:
-        localping = Ping(readConfig.getIPaddr())
 
+    while wait < 50:
+        localping = Ping(host)
         if not localping:
             wait += 3
             time.sleep(3)
-
         else:
-            print("Able to Access, checking remote ping")
             return 1
+
     return 0
