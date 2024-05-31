@@ -40,7 +40,7 @@ pipeline {
                         sh "mkdir -p artifacts"
                         //echo ${workspace}
                         sh "pytest -v -s testCases/test_channelTest.py::test_channelconnectivity 2>&1 "
-                        archiveArtifacts('artifacts/**/*')
+                        //archiveArtifacts('artifacts/**/*')
                         }
                     else{
                         echo "-----------------------------------------"
