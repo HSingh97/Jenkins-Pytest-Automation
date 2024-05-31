@@ -25,7 +25,7 @@ def test_channelconnectivity():
     else:
         print("Unable to access Local Device")
 
-    get_linkstats.get_linkstats(readConfig.getIPaddr(), 1)
+    get_linkstats.get_linkstats(readConfig.getIPaddr(), 2)
 
     if pingFunction.check_access(readConfig.getRemoteIPaddr()) != 1:
         assert False
