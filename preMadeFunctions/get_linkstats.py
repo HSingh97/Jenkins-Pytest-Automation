@@ -4,6 +4,7 @@ import pexpect
 import time
 import subprocess
 import platform
+import re
 from optparse import OptionParser
 from datetime import datetime
 
