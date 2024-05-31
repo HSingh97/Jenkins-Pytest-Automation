@@ -38,12 +38,9 @@ pipeline {
                         echo "Starting Channel Testing"
                         echo "----------------------------------------"
                         sh "mkdir -p artifacts"
-                        //for (int i = 1; i <= REBOOT_COUNT.toInteger() ; i++) {
-                        sh "pytest -v -s testCases/test_channelTest.py::test_test_channelconnectivity 2>&1 | tee -a ${workspace}/artifacts/channel-connectivity.log"
-                            // sh "echo Iteration : ${i} 2>&1 | tee -a ${workspace}/SerialLogs_AP_${i}.log"
-                        //}
+                        echo ${workspace}
+                        sh "pytest -v -s testCases/test_channelTest.py::test_test_channelconnectivity 2>&1 "
                         archiveArtifacts('artifacts/**/*')
-                        //archiveArtifacts('SerialLogs_Device.log')
                         }
                     else{
                         echo "-----------------------------------------"
