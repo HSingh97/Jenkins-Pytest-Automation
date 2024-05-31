@@ -1,0 +1,76 @@
+// Functions
+
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
+
+// Main Pipeline
+
+pipeline {
+    agent { node { label "${TARGET_STAND}"} }
+
+    stages {
+        stage('Prepare tests') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "--- TARGET STAND: ${TARGET_STAND}"
+                    echo "----------------------------------------"
+      	        }
+      	    }
+        }
+        stage('Install Dependencies') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "PYTEST Selected, Installing Dependencies"
+                    echo "----------------------------------------"
+                    sh "sh utilities/requirements.txt"
+                }
+            }
+        }
+        stage('Channel Testing') {
+            steps {
+                script {
+                    if ( Bandwidth == "true" ){
+                        echo "----------------------------------------"
+                        echo "Starting Channel Testing"
+                        echo "----------------------------------------"
+                        sh "mkdir -p artifacts"
+                        //for (int i = 1; i <= REBOOT_COUNT.toInteger() ; i++) {
+                        sh "pytest -v -s testCases/test_channelTest.py::test_test_channelconnectivity 2>&1 | tee -a ${workspace}/artifacts/channel-connectivity.log"
+                            // sh "echo Iteration : ${i} 2>&1 | tee -a ${workspace}/SerialLogs_AP_${i}.log"
+                        //}
+                        archiveArtifacts('artifacts/**/*')
+                        //archiveArtifacts('SerialLogs_Device.log')
+                        }
+                    else{
+                        echo "-----------------------------------------"
+                        echo 'Skipping'
+                        echo "-----------------------------------------"
+                        }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            echo "-----------------------------------------"
+            echo 'Script Done!'
+            echo "-----------------------------------------"
+        }
+
+        success {
+            echo "-----------------------------------------"
+            echo 'Script Success'
+            echo "-----------------------------------------"
+        }
+
+        failure {
+            echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
+        }
+    }
+}
