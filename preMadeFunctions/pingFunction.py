@@ -1,5 +1,6 @@
 import platform
 import subprocess
+import time
 
 def Ping(host):
     param = '-n' if platform.system().lower() == 'windows' else '-c'
