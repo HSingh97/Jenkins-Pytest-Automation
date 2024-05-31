@@ -29,28 +29,28 @@ def get_linkstats(host, radio_ind):
         else:
             ip_address = "-"
 
-        localSNRA1 = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.13.{}.{}".format(local_ip, radio_oid, i)
+        localSNRA1 = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.13.{}.{}".format(host, radio_ind, i)
         localSNRA1_output = subprocess.check_output(localSNRA1, shell=True).decode("utf-8")
 
-        localSNRA2 = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.14.{}.{}".format(local_ip, radio_oid, i)
+        localSNRA2 = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.14.{}.{}".format(host, radio_ind, i)
         localSNRA2_output = subprocess.check_output(localSNRA2, shell=True).decode("utf-8")
 
-        remoteSNRA1 = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.15.{}.{}".format(local_ip, radio_oid, i)
+        remoteSNRA1 = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.15.{}.{}".format(host, radio_ind, i)
         remoteSNRA1_output = subprocess.check_output(remoteSNRA1, shell=True).decode("utf-8")
 
-        remoteSNRA2 = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.16.{}.{}".format(local_ip, radio_oid, i)
+        remoteSNRA2 = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.16.{}.{}".format(host, radio_ind, i)
         remoteSNRA2_output = subprocess.check_output(remoteSNRA2, shell=True).decode("utf-8")
 
-        txrate = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.10.{}.{}".format(local_ip, radio_oid, i)
+        txrate = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.10.{}.{}".format(host, radio_ind, i)
         txrate_output = subprocess.check_output(txrate, shell=True).decode("utf-8")
 
-        rxrate = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.9.{}.{}".format(local_ip, radio_oid, i)
+        rxrate = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.9.{}.{}".format(host, radio_ind, i)
         rxrate_output = subprocess.check_output(rxrate, shell=True).decode("utf-8")
 
-        local_rtxrate = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.47.{}.{}".format(local_ip, radio_oid, i)
+        local_rtxrate = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.47.{}.{}".format(host, radio_ind, i)
         local_rtxrate_output = subprocess.check_output(local_rtxrate, shell=True).decode("utf-8")
 
-        remote_rtxrate = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.48.{}.{}".format(local_ip, radio_oid,
+        remote_rtxrate = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.48.{}.{}".format(host, radio_ind,
                                                                                                   i)
         remote_rtxrate_output = subprocess.check_output(remote_rtxrate, shell=True).decode("utf-8")
 
