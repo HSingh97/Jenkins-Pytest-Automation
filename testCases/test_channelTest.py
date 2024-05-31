@@ -10,7 +10,7 @@ from preMadeFunctions import pingFunction
 from preMadeFunctions import accessWeb
 
 
-def test_channelconnectivity(driver):
+def test_channelconnectivity():
 
     time.sleep(2)
     print("Checking Local Ping")
@@ -45,7 +45,6 @@ def test_channelconnectivity(driver):
     else:
         assert True
 
-    driver.close()
 
 
 def warn(*args, **kwargs):
