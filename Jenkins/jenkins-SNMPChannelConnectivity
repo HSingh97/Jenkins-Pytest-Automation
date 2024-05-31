@@ -38,7 +38,7 @@ pipeline {
                         echo "Starting Channel Testing"
                         echo "----------------------------------------"
                         sh "mkdir -p artifacts"
-                        echo ${workspace}
+                        //echo ${workspace}
                         sh "pytest -v -s testCases/test_channelTest.py::test_test_channelconnectivity 2>&1 "
                         archiveArtifacts('artifacts/**/*')
                         }
