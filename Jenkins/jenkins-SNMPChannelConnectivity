@@ -44,10 +44,10 @@ pipeline {
                     def bandwidth = params.Bandwidth
                     def country = params.Country
 
-                    echo $localIP
-                    echo $remoteIP
-                    echo $bandwidth
-                    echo $country
+                    echo "Local IP Address: ${localIP}"
+                    echo "Remote IP Address: ${remoteIP}"
+                    echo "Bandwidth: ${bandwidth}"
+                    echo "Country: ${country}"
 
                     if ( Radio == "Radio1" ){
                         echo "-------- Started Channel Connectivity Test for Radio 1 --------- "
