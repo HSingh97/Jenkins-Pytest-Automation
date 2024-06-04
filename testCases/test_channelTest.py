@@ -25,6 +25,10 @@ def test_channelconnectivity():
     remote_ip = args.remote_ip
     bandwidth = args.bandwidth
     country = args.country
+    print("Countries : {} ".format(country))
+    print("Bandwidth : {} ".format(bandwidth))
+    print("Local/Remote IP : {}, {} ".format(local_ip, remote_ip))
+
     channel_list = get_channel_list(readConfig.getIPaddr(), "1", "5012", "HT20")
     time.sleep(2)
     print("Checking Local Ping")

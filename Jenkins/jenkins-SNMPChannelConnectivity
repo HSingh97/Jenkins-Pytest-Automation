@@ -49,13 +49,16 @@ pipeline {
                     echo "Bandwidth: ${bandwidth}"
                     echo "Country: ${country}"
 
-                    if ( Radio == "Radio1" ){
+                    // Splitting selected options into separate arguments
+                    def bandwidthArgs = bandwidth.split(',').collect { "--bandwidth $it" }.join(' ')
+                    def countryArgs = country.split(',').collect { "--country $it" }.join(' ')
+
+                    if (Radio == "Radio1") {
                         echo "-------- Started Channel Connectivity Test for Radio 1 --------- "
-                        sh "pytest -v -s --local-ip '$localIP' --remote-ip '$remoteIP' --bandwidth $bandwidth --country $country testCases/test_channelTest.py::test_channelconnectivity 2>&1 "
-                    }
-                    else{
+                        sh "pytest -v -s --local-ip '$localIP' --remote-ip '$remoteIP' $bandwidthArgs $countryArgs testCases/test_channelTest.py::test_channelconnectivity 2>&1"
+                    } else {
                         echo "-------- Started Channel Connectivity Test for Radio 2 --------- "
-                        sh "pytest -v -s --local-ip '$localIP' --remote-ip '$remoteIP' --bandwidth $bandwidth --country $country testCases/test_channelTest.py::test_channelconnectivity 2>&1 "
+                        sh "pytest -v -s --local-ip '$localIP' --remote-ip '$remoteIP' $bandwidthArgs $countryArgs testCases/test_channelTest.py::test_channelconnectivity 2>&1"
                     }
                     //echo ${workspace}
                     //archiveArtifacts('artifacts/**/*')
