@@ -59,7 +59,6 @@ pipeline {
                     }
                     //echo ${workspace}
                     //archiveArtifacts('artifacts/**/*')
-                    }
                 }
             }
         }
