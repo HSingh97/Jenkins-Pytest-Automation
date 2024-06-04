@@ -38,8 +38,12 @@ pipeline {
                         echo "Starting Channel Testing"
                         echo "----------------------------------------"
                         sh "mkdir -p artifacts"
+                        if ( Radio == "Radio1" ){
+                            sh "pytest -v -s testCases/test_channelTest.py::test_channelconnectivity 2>&1 "
+                        else{
+                            sh "pytest -v -s testCases/test_channelTest.py::test_channelconnectivity 2>&1 "
+                        }
                         //echo ${workspace}
-                        sh "pytest -v -s testCases/test_channelTest.py::test_channelconnectivity 2>&1 "
                         //archiveArtifacts('artifacts/**/*')
                         }
                     else{

@@ -11,6 +11,10 @@ def archiveArtifacts(pattern) {
 pipeline {
     agent { node { label "${TARGET_STAND}"} }
 
+    parameters{
+        string(name: "test", value: "")
+    }
+
     stages {
         stage('Prepare tests') {
             steps {
@@ -41,7 +45,8 @@ pipeline {
                         echo "Factory Resetting the Device"
                         echo "----------------------------------------"
                         sh "mkdir -p artifacts"
-                        for (int i = 1; i <= REBOOT_COUNT.toInteger() ; i++) {
+                        for (int i = 1; i <= params."Reboot Count".toInteger() ; i++) {
+                            echo "******* Iteration : ${i} *******"
                             sh "pytest -v -s testCases/test_PDULocal.py::test_DyingGasp -i 10.0.0.1 -u admin 2>&1 | tee ${workspace}/artifacts/hard-reboot-device.log"
                         }
                         archiveArtifacts('artifacts/**/*')
