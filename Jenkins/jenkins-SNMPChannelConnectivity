@@ -51,11 +51,11 @@ pipeline {
 
                     if ( Radio == "Radio1" ){
                         echo "-------- Started Channel Connectivity Test for Radio 1 --------- "
-                        sh "pytest -v -s testCases/test_channelTest.py::test_channelconnectivity 2>&1 "
+                        sh "pytest -v -s --local-ip '$localIP' --remote-ip '$remoteIP' --bandwidth $bandwidth --country $country testCases/test_channelTest.py::test_channelconnectivity 2>&1 "
                     }
                     else{
                         echo "-------- Started Channel Connectivity Test for Radio 2 --------- "
-                        sh "pytest -v -s testCases/test_channelTest.py::test_channelconnectivity 2>&1 "
+                        sh "pytest -v -s --local-ip '$localIP' --remote-ip '$remoteIP' --bandwidth $bandwidth --country $country testCases/test_channelTest.py::test_channelconnectivity 2>&1 "
                     }
                     //echo ${workspace}
                     //archiveArtifacts('artifacts/**/*')
