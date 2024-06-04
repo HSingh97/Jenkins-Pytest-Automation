@@ -38,11 +38,11 @@ pipeline {
                     echo "----------------------------------------"
                     sh "mkdir -p artifacts"
 
-                    def localIP = "'${params.LOCAL_IP_ADDRESS}'"
-                    def remoteIP = "'${params.REMOTE_IP_ADDRESS}'"
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
 
-                    def bandwidth = params.BANDWIDTH
-                    def country = params.COUNTRY
+                    def bandwidth = params.Bandwidth
+                    def country = params.Country
 
                     echo $localIP
                     echo $remoteIP
