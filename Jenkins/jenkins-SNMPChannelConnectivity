@@ -44,7 +44,7 @@ pipeline {
                     def bandwidth = params.Bandwidth
                     def country = params.Country
 
-                    echo $localIP
+                    echo $params['Local IP Address']
                     echo $remoteIP
                     echo $bandwidth
                     echo $country
