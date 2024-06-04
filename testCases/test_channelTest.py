@@ -8,8 +8,23 @@ from preMadeFunctions import pingFunction
 from preMadeFunctions import get_linkstats
 import os
 import paramiko
+import sys
+import argparse
+
+# Parse command line arguments
+parser = argparse.ArgumentParser()
+parser.add_argument("--local-ip", help="Local IP Address")
+parser.add_argument("--remote-ip", help="Remote IP Address")
+parser.add_argument("--bandwidth", help="Selected bandwidth")
+parser.add_argument("--country", help="Selected country")
+args = parser.parse_args()
+
 
 def test_channelconnectivity():
+    local_ip = args.local_ip
+    remote_ip = args.remote_ip
+    bandwidth = args.bandwidth
+    country = args.country
     channel_list = get_channel_list(readConfig.getIPaddr(), "1", "5012", "HT20")
     time.sleep(2)
     print("Checking Local Ping")

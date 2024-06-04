@@ -15,7 +15,7 @@ pipeline {
             steps {
                 script {
                     echo "----------------------------------------"
-                    echo "--- TARGET STAND: ${TARGET_STAND}"
+                    echo "---> TARGET STAND: ${TARGET_STAND} "
                     echo "----------------------------------------"
       	        }
       	    }
@@ -24,7 +24,7 @@ pipeline {
             steps {
                 script {
                     echo "----------------------------------------"
-                    echo "PYTEST Selected, Installing Dependencies"
+                    echo "         Installing Dependencies"
                     echo "----------------------------------------"
                     sh "sh utilities/requirements.txt"
                 }
@@ -33,24 +33,32 @@ pipeline {
         stage('Channel Testing') {
             steps {
                 script {
-                    if ( Bandwidth == "true" ){
-                        echo "----------------------------------------"
-                        echo "Starting Channel Testing"
-                        echo "----------------------------------------"
-                        sh "mkdir -p artifacts"
-                        if ( Radio == "Radio1" ){
-                            sh "pytest -v -s testCases/test_channelTest.py::test_channelconnectivity 2>&1 "
-                        else{
-                            sh "pytest -v -s testCases/test_channelTest.py::test_channelconnectivity 2>&1 "
-                        }
-                        //echo ${workspace}
-                        //archiveArtifacts('artifacts/**/*')
-                        }
+                    echo "----------------------------------------"
+                    echo "Starting Channel Testing"
+                    echo "----------------------------------------"
+                    sh "mkdir -p artifacts"
+
+                    def localIP = "'${params.LOCAL_IP_ADDRESS}'"
+                    def remoteIP = "'${params.REMOTE_IP_ADDRESS}'"
+
+                    def bandwidth = params.BANDWIDTH
+                    def country = params.COUNTRY
+
+                    echo $localIP
+                    echo $remoteIP
+                    echo $bandwidth
+                    echo $country
+
+                    if ( Radio == "Radio1" ){
+                        echo "-------- Started Channel Connectivity Test for Radio 1 --------- "
+                        sh "pytest -v -s testCases/test_channelTest.py::test_channelconnectivity 2>&1 "
                     else{
-                        echo "-----------------------------------------"
-                        echo 'Skipping'
-                        echo "-----------------------------------------"
-                        }
+                        echo "-------- Started Channel Connectivity Test for Radio 2 --------- "
+                        sh "pytest -v -s testCases/test_channelTest.py::test_channelconnectivity 2>&1 "
+                    }
+                    //echo ${workspace}
+                    //archiveArtifacts('artifacts/**/*')
+                    }
                 }
             }
         }

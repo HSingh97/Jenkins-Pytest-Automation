@@ -11,10 +11,6 @@ def archiveArtifacts(pattern) {
 pipeline {
     agent { node { label "${TARGET_STAND}"} }
 
-    parameters{
-        string(name: "test", value: "")
-    }
-
     stages {
         stage('Prepare tests') {
             steps {
