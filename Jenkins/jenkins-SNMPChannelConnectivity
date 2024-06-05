@@ -41,8 +41,8 @@ pipeline {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
 
-                    def bandwidth = params.Bandwidth
-                    def country = params.Country
+                    def bandwidths = params.Bandwidth
+                    def countries = params.Country
 
                     def selectedradio = params.Radio
 
