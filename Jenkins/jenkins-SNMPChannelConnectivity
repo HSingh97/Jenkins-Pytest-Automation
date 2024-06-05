@@ -53,7 +53,7 @@ pipeline {
 
                     for (country in countries) {
                         for (bandwidth in bandwidths) {
-                            echo "-------- Started Channel Connectivity Test for Radio 1 with Bandwidth: ${bandwidth} and Country: ${country} --------- "
+                            echo "-------- Started Channel Connectivity Test for ${selectedradio} with Bandwidth: ${bandwidth} and Country: ${country} --------- "
                             sh "pytest -v -s --radio '$selectedradio' --local-ip '$localIP' --remote-ip '$remoteIP' --bandwidth '$bandwidth' --country '$country' testCases/test_channelTest.py::test_channelconnectivity 2>&1"
                         }
                     }
