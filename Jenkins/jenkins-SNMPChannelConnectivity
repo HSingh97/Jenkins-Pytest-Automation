@@ -41,18 +41,18 @@ pipeline {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
 
-                    def bandwidthList = params.bandwidths.split(',')
-                    def countryList = params.countries.split(',')
+                    def bandwidths = params.Bandwidth
+                    def countries = params.Country
 
                     def selectedradio = params.Radio
 
                     echo "Local IP Address: ${localIP}"
                     echo "Remote IP Address: ${remoteIP}"
-                    echo "Bandwidth: ${params.bandwidth}"
-                    echo "Country: ${params.country}"
 
-                    for (country in countryList) {
-                        for (bandwidth in bandwidthList) {
+                    for (country in countries) {
+                        for (bandwidth in bandwidths) {
+                            echo "Bandwidth: ${bandwidth}"
+                            echo "Country: ${country}"
                             echo "-------- Started Channel Connectivity Test for ${selectedradio} with Bandwidth: ${bandwidth} and Country: ${country} --------- "
                             sh "pytest -v -s --radio '$selectedradio' --local-ip '$localIP' --remote-ip '$remoteIP' --bandwidth '$bandwidth' --country '$country' testCases/test_channelTest.py::test_channelconnectivity 2>&1"
                         }
