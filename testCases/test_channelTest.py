@@ -13,25 +13,55 @@ import argparse
 
 # Parse command line arguments
 parser = argparse.ArgumentParser()
+parser.add_argument("--radio", help="Selected Radio")
 parser.add_argument("--local-ip", help="Local IP Address")
 parser.add_argument("--remote-ip", help="Remote IP Address")
-parser.add_argument("--bandwidth", help="Selected bandwidth")
-parser.add_argument("--country", help="Selected country")
+parser.add_argument("--bandwidth", help="Selected Bandwidth")
+parser.add_argument("--country", help="Selected Country")
 args = parser.parse_args()
 
 
 def test_channelconnectivity():
+
+    # Initialisation of Pytest Arguments
+    selectedradio = args.radio
     local_ip = args.local_ip
     remote_ip = args.remote_ip
     bandwidth = args.bandwidth
     country = args.country
+
+    # Test
     print("Countries : {} ".format(country))
     print("Bandwidth : {} ".format(bandwidth))
     print("Local/Remote IP : {}, {} ".format(local_ip, remote_ip))
 
-    channel_list = get_channel_list(readConfig.getIPaddr(), "1", "5012", "HT20")
+    # Assigning country codes for diff Countries
+    if country == "US 5GHz All":
+        country_code = 5012
+    elif country == "US 5GHz Non-DFS":
+        country_code = 5011
+    elif country == "Europe":
+        country_code = 276
+    elif country == "Canada":
+        country_code = 124
+    else:
+        print("No Country Selected")
+        assert False
+
+    # Assigning Index for Radio1 or Radio2
+    if selectedradio == "Radio1":
+        radio_ind = 1
+    elif selectedradio == "Radio2":
+        radio_ind = 2
+    else:
+        print("No Radio Selected")
+        assert False
+
+    channel_list = get_channel_list(local_ip, radio_ind, country_code, bandwidth)
     time.sleep(2)
-    print("Checking Local Ping")
+
+    print(channel_list)
+    print("\nChecking Local Ping")
 
     if pingFunction.check_access(readConfig.getIPaddr()):
         print("Able to Access, checking remote ping")
