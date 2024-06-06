@@ -13,7 +13,7 @@ import argparse
 
 
 def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
-    print(f"Selected Radio: {radio}")
+    print(f"\n\nSelected Radio: {radio}")
     print(f"Local IP Address: {local_ip}")
     print(f"Remote IP Address: {remote_ip}")
     print(f"Selected Bandwidth: {bandwidth}")
@@ -33,9 +33,9 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
         assert False
 
     # Assigning Index for Radio1 or Radio2
-    if selectedradio == "Radio1":
+    if radio == "Radio1":
         radio_ind = 1
-    elif selectedradio == "Radio2":
+    elif radio == "Radio2":
         radio_ind = 2
     else:
         print("No Radio Selected")
