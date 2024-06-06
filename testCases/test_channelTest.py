@@ -11,29 +11,13 @@ import paramiko
 import sys
 import argparse
 
-# Parse command line arguments
-parser = argparse.ArgumentParser()
-parser.add_argument("--radio", help="Selected Radio")
-parser.add_argument("--local-ip", help="Local IP Address")
-parser.add_argument("--remote-ip", help="Remote IP Address")
-parser.add_argument("--bandwidth", help="Selected Bandwidth")
-parser.add_argument("--country", help="Selected Country")
-args = parser.parse_args()
 
-
-def test_channelconnectivity():
-
-    # Initialisation of Pytest Arguments
-    selectedradio = args.radio
-    local_ip = args.local_ip
-    remote_ip = args.remote_ip
-    bandwidth = args.bandwidth
-    country = args.country
-
-    # Test
-    print("Countries : {} ".format(country))
-    print("Bandwidth : {} ".format(bandwidth))
-    print("Local/Remote IP : {}, {} ".format(local_ip, remote_ip))
+def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
+    print(f"Selected Radio: {radio}")
+    print(f"Local IP Address: {local_ip}")
+    print(f"Remote IP Address: {remote_ip}")
+    print(f"Selected Bandwidth: {bandwidth}")
+    print(f"Selected Country: {country}")
 
     # Assigning country codes for diff Countries
     if country == "US 5GHz All":
