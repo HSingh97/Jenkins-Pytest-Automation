@@ -6,6 +6,7 @@ from testCases.configsetup import setup
 from utilities.serial_Logging import *
 from preMadeFunctions import pingFunction
 from preMadeFunctions import get_linkstats
+from preMadeFunctions import get_channeList
 import os
 import paramiko
 import sys
