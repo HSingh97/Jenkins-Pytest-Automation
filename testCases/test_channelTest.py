@@ -7,6 +7,9 @@ from utilities.serial_Logging import *
 from preMadeFunctions import pingFunction
 from preMadeFunctions import get_linkstats
 from preMadeFunctions import get_channeList
+from preMadeFunctions import set_channel_snmp
+from preMadeFunctions import set_bandwidth_snmp
+from preMadeFunctions import set_country_snmp
 import os
 import paramiko
 import sys
@@ -45,19 +48,24 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
     channel_list = get_channeList.get_channel_list(local_ip, radio_ind, country_code, bandwidth)
     time.sleep(2)
 
-    print(channel_list)
-    print("\nChecking Local Ping")
+    print("Channels available for current selection : {}".format(channel_list))
 
-    if pingFunction.check_access(readConfig.getIPaddr()):
-        print("Able to Access, checking remote ping")
+    print("Configuring {} bandwidth ".format(bandwidth))
+    set_bandwidth_snmp.change_bandwidth(local_ip, radio_ind, bandwidth)
 
-        if pingFunction.check_access(readConfig.getRemoteIPaddr()):
-            print("Able to Access Remote Device ")
+    print("Configuring Local Country : {}".format(country_code))
+    for channels in channel_list:
+        print("\nChecking Local Ping")
+        if pingFunction.check_access(readConfig.getIPaddr()):
+            print("Able to Access, Checking remote ping")
+
+            if pingFunction.check_access(readConfig.getRemoteIPaddr()):
+                print("Able to Access Remote Device ")
+            else:
+                print("Unable to access Remote Device")
+
         else:
-            print("Unable to access Remote Device")
-
-    else:
-        print("Unable to access Local Device")
+            print("Unable to access Local Device")
 
     get_linkstats.get_linkstats(readConfig.getIPaddr(), 2)
 

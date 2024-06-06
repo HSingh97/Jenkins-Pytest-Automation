@@ -24,7 +24,7 @@ def get_channel_list(host, radio_ind, country, bandwidth):
     # Extract every other element
     every_other_number = number_list[::2]
 
-    print(every_other_number)
+    # print(every_other_number)
     ssh_client.close()
 
     return every_other_number
