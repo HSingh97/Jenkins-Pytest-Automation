@@ -42,7 +42,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
         print("No Radio Selected")
         assert False
 
-    channel_list = get_channel_list(local_ip, radio_ind, country_code, bandwidth)
+    channel_list = get_channeList.get_channel_list(local_ip, radio_ind, country_code, bandwidth)
     time.sleep(2)
 
     print(channel_list)
