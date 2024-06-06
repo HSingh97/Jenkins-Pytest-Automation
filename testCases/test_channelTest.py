@@ -19,7 +19,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
     print(f"Selected Bandwidth: {bandwidth}")
     print(f"Selected Country: {country}")
 
-    # Assigning countrfffy codes for diff ghhjCountries
+    # Assigning country codes for diff Countries
     if country == "US 5GHz All":
         country_code = 5012
     elif country == "US 5GHz Non-DFS":
