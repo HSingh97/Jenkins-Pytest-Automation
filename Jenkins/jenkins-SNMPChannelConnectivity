@@ -54,6 +54,7 @@ pipeline {
                             echo "Country=${country}, Bandwidth=${bandwidth}"
                             echo "-------- Started Channel Connectivity Test for ${selectedradio} with Bandwidth: ${bandwidth} and Country: ${country} --------- "
                             sh "pytest -v -s testCases/test_channelTest.py::test_channelconnectivity --radio '$selectedradio' --local-ip '$localIP' --remote-ip '$remoteIP' --bandwidth '$bandwidth' --country '$country' 2>&1"
+                            echo "-------- Channel Connectivity Test completed for ${selectedradio} with Bandwidth: ${bandwidth} and Country: ${country} --------- "
                         }
                     }
                 }

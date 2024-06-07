@@ -48,21 +48,44 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
     channel_list = get_channeList.get_channel_list(local_ip, radio_ind, country_code, bandwidth)
     time.sleep(2)
 
-    print("Channels available for current selection : {}".format(channel_list))
+    print("\nChannels available for current selection : {}".format(channel_list))
 
-    print("Configuring {} bandwidth ".format(bandwidth))
+    print("\nConfiguring Country {} for Remote Device ".format(country_code))
+    set_country_snmp.change_country(remote_ip, radio_ind, country_code)
+
+    print("\nConfiguring Country {} for Local Device ".format(country_code))
+    set_country_snmp.change_country(remote_ip, radio_ind, country_code)
+
+    print("\nConfiguring Bandwidth : {} for Local Device ".format(bandwidth))
     set_bandwidth_snmp.change_bandwidth(local_ip, radio_ind, bandwidth)
 
-    print("Configuring Local Country : {}".format(country_code))
+    if pingFunction.check_access(readConfig.getIPaddr()):
+        print("Able to Access, Checking remote ping")
+
+        if pingFunction.check_access(readConfig.getRemoteIPaddr()):
+            print("Able to Access Remote Device ")
+        else:
+            print("Unable to access Remote Device")
+
+    else:
+        print("Unable to access Local Device")
+
+
     for channels in channel_list:
+
+        print("Testing connectivity for {} ".format(channels))
+        set_channel_snmp.change_channel(local_ip, radio_ind, channels)
+
         print("\nChecking Local Ping")
         if pingFunction.check_access(readConfig.getIPaddr()):
             print("Able to Access, Checking remote ping")
 
             if pingFunction.check_access(readConfig.getRemoteIPaddr()):
                 print("Able to Access Remote Device ")
+                print("\n Channel connectivity for {} : Pass".format(channels))
             else:
                 print("Unable to access Remote Device")
+                print("\n Channel connectivity for {} : Fail".format(channels))
 
         else:
             print("Unable to access Local Device")
