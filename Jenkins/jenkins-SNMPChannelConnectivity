@@ -15,7 +15,7 @@ pipeline {
             steps {
                 script {
                     echo "----------------------------------------"
-                    echo "--- TARGET STAND: ${TARGET_STAND}"
+                    echo "---> TARGET STAND: ${TARGET_STAND} "
                     echo "----------------------------------------"
       	        }
       	    }
@@ -24,7 +24,7 @@ pipeline {
             steps {
                 script {
                     echo "----------------------------------------"
-                    echo "PYTEST Selected, Installing Dependencies"
+                    echo "         Installing Dependencies"
                     echo "----------------------------------------"
                     sh "sh utilities/requirements.txt"
                 }
@@ -33,20 +33,30 @@ pipeline {
         stage('Channel Testing') {
             steps {
                 script {
-                    if ( Bandwidth == "true" ){
-                        echo "----------------------------------------"
-                        echo "Starting Channel Testing"
-                        echo "----------------------------------------"
-                        sh "mkdir -p artifacts"
-                        //echo ${workspace}
-                        sh "pytest -v -s testCases/test_channelTest.py::test_channelconnectivity 2>&1 "
-                        //archiveArtifacts('artifacts/**/*')
+                    echo "----------------------------------------"
+                    echo "Starting Channel Testing"
+                    echo "----------------------------------------"
+                    sh "mkdir -p artifacts"
+
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
+
+                    def selectedradio = params.Radio
+
+                    echo "Local IP Address: ${localIP}"
+                    echo "Remote IP Address: ${remoteIP}"
+
+                    def bandwidths = params.Bandwidth.split(',')
+                    def countries = params.Country.split(',')
+
+                    for (country in countries) {
+                        for (bandwidth in bandwidths) {
+                            echo "Country=${country}, Bandwidth=${bandwidth}"
+                            echo "-------- Started Channel Connectivity Test for ${selectedradio} with Bandwidth: ${bandwidth} and Country: ${country} --------- "
+                            sh "pytest -v -s testCases/test_channelTest.py::test_channelconnectivity --radio '$selectedradio' --local-ip '$localIP' --remote-ip '$remoteIP' --bandwidth '$bandwidth' --country '$country' 2>&1"
+                            echo "-------- Channel Connectivity Test completed for ${selectedradio} with Bandwidth: ${bandwidth} and Country: ${country} --------- "
                         }
-                    else{
-                        echo "-----------------------------------------"
-                        echo 'Skipping'
-                        echo "-----------------------------------------"
-                        }
+                    }
                 }
             }
         }

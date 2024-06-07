@@ -18,11 +18,9 @@ def get_linkstats(host, radio_ind):
         print(remoteip_output)
         # Check if the output contains "No Such Instance currently exists at this OID"
         if "No Such Instance currently exists at this OID" in remoteip_output:
-            print("Noo")
             i += 1
             continue
 
-        print("yes")
         match = re.search(r'IpAddress:\s*([\d.]+)', remoteip_output)
         if match:
             ip_address = match.group(1)
