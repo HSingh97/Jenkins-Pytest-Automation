@@ -8,7 +8,7 @@ def get_channel_list(host, radio_ind, country, bandwidth):
     ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh_client.connect(host, username="root", password="admin")
 
-    command = '/usr/sbin/kwn_get_supp_chan.sh {} {} {}'.format(radio_ind, country, bandwidth)
+    command = '/usr/sbin/kwn_get_supp_chan.sh {} {} {}'.format(radio_ind-1, country, bandwidth)
     stdin, stdout, stderr = ssh_client.exec_command(command)
 
     # Read the output of the command
