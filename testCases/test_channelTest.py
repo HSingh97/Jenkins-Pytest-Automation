@@ -38,9 +38,9 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
 
     # Assigning Index for Radio1 or Radio2
     if radio == "Radio1":
-        radio_ind = 1
-    elif radio == "Radio2":
         radio_ind = 2
+    elif radio == "Radio2":
+        radio_ind = 3
     else:
         print("No Radio Selected")
         assert False
