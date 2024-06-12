@@ -47,6 +47,8 @@ pipeline {
 
                     echo "Local IP Address: ${localIP}"
                     echo "Remote IP Address: ${remoteIP}"
+                    echo "PDU IP Address: ${pdu_ip}"
+                    echo "PDU Port: ${pdu_port}"
 
                     for (int i = 1; i <= params."Reboot Count".toInteger() ; i++) {
                         echo "******* Iteration : ${i} *******"
