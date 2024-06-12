@@ -59,9 +59,9 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
     print("\nConfiguring Bandwidth : {} for Local Device ".format(bandwidth))
     set_bandwidth_snmp.change_bandwidth(local_ip, radio_ind, bandwidth)
 
-    if pingFunction.check_access(readConfig.getIPaddr()):
+    if pingFunction.check_access(local_ip):
 
-        if pingFunction.check_access(readConfig.getRemoteIPaddr()):
+        if pingFunction.check_access(remote_ip):
             print("Able to Access Remote Device ")
         else:
             print("Unable to access Remote Device")
