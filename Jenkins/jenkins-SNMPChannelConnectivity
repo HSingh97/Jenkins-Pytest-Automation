@@ -53,12 +53,30 @@ pipeline {
                         for (bandwidth in bandwidths) {
                             echo "Country=${country}, Bandwidth=${bandwidth}"
                             echo "-------- Started Channel Connectivity Test for ${selectedradio} with Bandwidth: ${bandwidth} and Country: ${country} --------- "
-                            sh "pytest -v -s testCases/test_channelTest.py::test_channelconnectivity --radio '$selectedradio' --local-ip '$localIP' --remote-ip '$remoteIP' --bandwidth '$bandwidth' --country '$country' 2>&1"
+                            sh """
+                                pytest -v -s testCases/test_channelTest.py::test_channelconnectivity \
+                                --radio '${selectedradio}' --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                                --bandwidth '${bandwidth}' --country '${country}' \
+                                --html=report_${country}_${bandwidth}.html --self-contained-html \
+                                --junitxml=report_${country}_${bandwidth}.xml 2>&1
+                            """
                             echo "-------- Channel Connectivity Test completed for ${selectedradio} with Bandwidth: ${bandwidth} and Country: ${country} --------- "
                         }
                     }
                 }
             }
+        }
+        stage('Publish Reports') {
+            steps {
+                // Publish HTML reports
+                publishHTML([
+                    reportDir: '.',
+                    reportFiles: '*.html',
+                    reportName: 'HTML Report'
+                ])
+
+                // Publish JUnit test results
+                junit '**/*.xml'
         }
     }
     post {

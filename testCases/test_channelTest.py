@@ -76,10 +76,10 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
         set_channel_snmp.change_channel(local_ip, radio_ind, channels)
 
         print("\nChecking Local Ping")
-        if pingFunction.check_access(readConfig.getIPaddr()):
+        if pingFunction.check_access(local_ip):
             print("Able to Access, Checking remote ping")
 
-            if pingFunction.check_access(readConfig.getRemoteIPaddr()):
+            if pingFunction.check_access(remote_ip):
                 print("Able to Access Remote Device ")
                 print("\n Channel connectivity for {} : Pass".format(channels))
             else:
@@ -89,9 +89,9 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
         else:
             print("Unable to access Local Device")
 
-    get_linkstats.get_linkstats(readConfig.getIPaddr(), radio_ind)
+    get_linkstats.get_linkstats(remote_ip, radio_ind)
 
-    if pingFunction.check_access(readConfig.getRemoteIPaddr()) != 1:
+    if pingFunction.check_access(remote_ip) != 1:
         assert False
 
     else:
