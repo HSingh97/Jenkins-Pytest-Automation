@@ -52,7 +52,7 @@ pipeline {
 
                     for (int i = 1; i <= params."Reboot Count".toInteger() ; i++) {
                         echo "******* Iteration : ${i} *******"
-                        sh "pytest -v -s testCases/test_HardReboot_DigiLogger.py::test_hardreboot --local-ip '$localIP' --remote-ip '$remoteIP' --pdu-ip 'pdu_ip' --pdu-port 'pdu_port' 2>&1"
+                        sh "pytest -v -s testCases/test_HardReboot_DigiLogger.py::test_hardreboot --local-ip '$localIP' --remote-ip '$remoteIP' --pdu-ip '$pdu_ip' --pdu-port '$pdu_port' 2>&1"
                     }
                     archiveArtifacts('artifacts/**/*')
                     archiveArtifacts('SerialLogs_Device.log')

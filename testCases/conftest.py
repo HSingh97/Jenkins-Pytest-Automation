@@ -6,8 +6,8 @@ def pytest_addoption(parser):
     parser.addoption("--remote-ip", action="store", default="192.168.1.1", help="Remote IP Address")
     parser.addoption("--bandwidth", action="store", default="HT20", help="Selected Bandwidth")
     parser.addoption("--country", action="store", default="US 5GHz All", help="Selected Country")
-    parser.addoption("--pdu-port", action="store", default="192.168.1.1", help="Selected PDU Port")
-    parser.addoption("--pdu-ip", action="store", default="US 5GHz All", help="PDU IP Address")
+    parser.addoption("--pdu-port", action="store", default="1", help="Selected PDU Port")
+    parser.addoption("--pdu-ip", action="store", default="192.168.1.1", help="PDU IP Address")
 
 
 @pytest.fixture

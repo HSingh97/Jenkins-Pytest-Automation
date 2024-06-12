@@ -1,6 +1,10 @@
 import time
 import warnings
 import pytest
+import os
+import paramiko
+import sys
+import argparse
 from utilities.readProperties import readConfig
 from testCases.configsetup import setup
 from utilities.serial_Logging import *
@@ -10,10 +14,6 @@ from preMadeFunctions import get_channeList
 from preMadeFunctions import set_channel_snmp
 from preMadeFunctions import set_bandwidth_snmp
 from preMadeFunctions import set_country_snmp
-import os
-import paramiko
-import sys
-import argparse
 
 
 def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):

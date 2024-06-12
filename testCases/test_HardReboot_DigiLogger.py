@@ -1,14 +1,12 @@
 import time
 import warnings
 import pytest
-from pageObjects.HomePage import HomePage
+import argparse
 from utilities.readProperties import readConfig
 from testCases.configsetup import setup
 from utilities.serial_Logging import *
 from preMadeFunctions import digilogger_PDU
 from preMadeFunctions import pingFunction
-from optparse import OptionParser
-
 
 def test_hardreboot(local_ip, remote_ip, pdu_ip, pdu_port):
     print(f"\n\nLocal IP Address: {local_ip}")
