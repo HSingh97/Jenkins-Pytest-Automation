@@ -73,7 +73,7 @@ pipeline {
                 Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL}) completed with status: ${currentBuild.currentResult}
                 Check console output at: ${env.BUILD_URL}console
                 """
-            }
+            )
         }
 
         success {
