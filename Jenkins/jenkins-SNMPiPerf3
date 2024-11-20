@@ -34,28 +34,33 @@ pipeline {
             steps {
                 script {
                     echo "----------------------------------------"
-                    echo "Starting Channel Testing"
+                    echo "Starting iPerf3 Testing"
                     echo "----------------------------------------"
                     sh "mkdir -p artifacts"
 
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
-
                     def selectedradio = params.Radio
+                    def remotePClocalIP = params['Remote PC Ethernet IP']
+                    def remotePCinternetIP = params['Remote PC Internet IP']
+                    def remotePCName = params['Remote PC Name']
+                    def remotePCPassword = params['Remote PC Password']
 
-                    echo "Local IP Address: ${localIP}"
-                    echo "Remote IP Address: ${remoteIP}"
+                    echo "Local DUT IP Address: ${localIP}"
+                    echo "Selected Radio: ${selectedradio}"
+                    echo "Remote PC Name: ${remotePCName}"
+                    echo "Remote PC Password: ${remotePCPassword}"
+                    echo "Remote DUT IP Address: ${remoteIP}"
+                    echo "Remote PC Ethernet IP Address: ${remotePClocalIP}"
+                    echo "Remote PC Internet IP Address: ${remotePCinternetIP}"
 
                     def bandwidths = params.Bandwidth.split(',')
-                    def countries = params.Country.split(',')
 
-                    for (country in countries) {
-                        for (bandwidth in bandwidths) {
-                            echo "Country=${country}, Bandwidth=${bandwidth}"
-                            echo "-------- Started Channel Connectivity Test for ${selectedradio} with Bandwidth: ${bandwidth} and Country: ${country} --------- "
-                            sh "pytest -v -s testCases/test_channelTest.py::test_channelconnectivity --radio '$selectedradio' --local-ip '$localIP' --remote-ip '$remoteIP' --bandwidth '$bandwidth' --country '$country' 2>&1"
-                            echo "-------- Channel Connectivity Test completed for ${selectedradio} with Bandwidth: ${bandwidth} and Country: ${country} --------- "
-                        }
+                    for (bandwidth in bandwidths) {
+                        echo "Country=${country}, Bandwidth=${bandwidth}"
+                        echo "-------- Started Channel Connectivity Test for ${selectedradio} with Bandwidth: ${bandwidth} and Country: ${country} --------- "
+                        sh "pytest -v -s testCases/test_LinkTestIperf.py::test_iperf --radio '$selectedradio' --local-ip '$localIP' --remote-ip '$remoteIP' --bandwidth '$bandwidth' --country '$country' 2>&1"
+                        echo "-------- Channel Connectivity Test completed for ${selectedradio} with Bandwidth: ${bandwidth} and Country: ${country} --------- "
                     }
                 }
             }
@@ -66,14 +71,6 @@ pipeline {
             echo "-----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
-            emailext (
-                to: 'harmanjot.singh@senao.com',
-                subject: "Build ${env.JOB_NAME} #${env.BUILD_NUMBER} - ${currentBuild.currentResult}",
-                body: """
-                Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL}) completed with status: ${currentBuild.currentResult}
-                Check console output at: ${env.BUILD_URL}console
-                """
-            }
         }
 
         success {

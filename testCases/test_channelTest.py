@@ -17,6 +17,7 @@ from preMadeFunctions import set_country_snmp
 
 
 def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
+
     print(f"\n\nSelected Radio: {radio}")
     print(f"Local IP Address: {local_ip}")
     print(f"Remote IP Address: {remote_ip}")
@@ -32,6 +33,8 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
         country_code = 276
     elif country == "Canada":
         country_code = 124
+    elif country == "5GHz":
+        country_code = 5019
     else:
         print("No Country Selected")
         assert False

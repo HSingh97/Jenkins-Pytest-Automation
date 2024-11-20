@@ -4,7 +4,7 @@ from utilities.readProperties import readConfig
 from testCases.configsetup import setup
 from preMadeFunctions import accessWeb
 import warnings
-
+import weasyprint
 import pytest
 
 
