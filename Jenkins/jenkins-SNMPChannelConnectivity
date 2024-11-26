@@ -60,6 +60,26 @@ pipeline {
                 }
             }
         }
+        stage('Generate Report') {
+            steps {
+                script {
+                    // Example script to convert JSON to HTML (can use Python or any preferred language)
+                    def htmlTemplate = """
+                    <html>
+                    <head><title>Job Report</title></head>
+                    <body>
+                    <h1>Job Report</h1>
+                    <table border="1">
+                    <tr><th>Iteration</th><th>Status</th><th>Detail</th></tr>
+                    ${new groovy.json.JsonSlurper().parse(new File('results/iteration_results.json')).collect { "<tr><td>${it.iteration}</td><td>${it.status}</td><td>${it.detail}</td></tr>" }.join('\n')}
+                    </table>
+                    </body>
+                    </html>
+                    """
+                    writeFile file: 'results/report.html', text: htmlTemplate
+                }
+            }
+        }
     }
     post {
         always {
@@ -74,6 +94,16 @@ pipeline {
                 Check console output at: ${env.BUILD_URL}console
                 """
             )
+            echo "email sent"
+            archiveArtifacts artifacts: 'results/**', allowEmptyArchive: true // Save results for later
+            publishHTML(target: [
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'results',
+                reportFiles: 'report.html',
+                reportName: 'Iteration Report'
+            ])
         }
 
         success {
