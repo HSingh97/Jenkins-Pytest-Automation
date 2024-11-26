@@ -55,11 +55,9 @@ pipeline {
                     echo "Remote IP Address: ${remoteIP}"
 
                     for (int i = 1; i <= REBOOT_COUNT.toInteger() ; i++) {
-                        sh "pytest -v -s testCases/test_reboot.py::test_Reboot --local-ip '$localIP' --remote-ip '$remoteIP' 2>&1 | tee -a ${workspace}/artifacts/reboot-radio.log"
+                        sh "pytest -v -s testCases/test_reboot.py::test_Reboot --local-ip '$localIP' --remote-ip '$remoteIP' 2>&1"
                         // sh "echo Iteration : ${i} 2>&1 | tee -a ${workspace}/SerialLogs_AP_${i}.log"
                     }
-                    archiveArtifacts('artifacts/**/*')
-                    archiveArtifacts('SerialLogs_Device.log')
                 }
             }
         }
