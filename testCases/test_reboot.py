@@ -33,7 +33,7 @@ def test_Reboot(driver, local_ip, remote_ip):
 
     wait = 0
     while wait < 50:
-        output = pingFunction.Ping(local_ip())
+        output = pingFunction.Ping(local_ip)
 
         if not output:
             wait += 3

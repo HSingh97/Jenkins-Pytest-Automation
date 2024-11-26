@@ -33,7 +33,13 @@ pipeline {
         stage('Access and Login') {
             steps {
                 script {
-                    sh 'pytest -v -s testCases/test_login.py::test_HomePageTitle'
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
+
+                    echo "Local IP Address: ${localIP}"
+                    echo "Remote IP Address: ${remoteIP}"
+
+                    sh "pytest -v -s testCases/test_login.py::test_HomePageTitle --local-ip '$localIP' --remote-ip '$remoteIP'"
                     }
                 }
         }
