@@ -44,14 +44,6 @@ pipeline {
         stage('Factory Reset') {
             steps {
                 script {
-                    echo "----------------------------------------"
-                    echo "Configuring some parameters"
-                    echo "----------------------------------------"
-
-
-                    echo "----------------------------------------"
-                    echo "Factory Resetting the Device"
-                    echo "----------------------------------------"
                     sh "mkdir -p artifacts"
                     for (int i = 1; i <= RESET_COUNT.toInteger() ; i++) {
                         echo "----------------------------------------"

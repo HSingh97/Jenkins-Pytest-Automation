@@ -43,7 +43,7 @@ def test_Login(driver, local_ip, remote_ip):
     accessWeb.access_and_login(driver, URL, username, password)
     current_title = driver.title
 
-    if current_title == "Sify - Home - LuCI" or "KeyWest - Home":
+    if current_title == "Sify - Home - LuCI" or "KeyWest - Home" or "EnGenius - Home":
         assert True
         time.sleep(2)
         driver.save_screenshot("Screenshots\\" + current_title + ".png")
