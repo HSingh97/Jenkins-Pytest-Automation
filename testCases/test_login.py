@@ -48,10 +48,12 @@ def test_Login(driver, local_ip, remote_ip):
         time.sleep(2)
         driver.save_screenshot("Screenshots\\" + current_title + ".png")
         driver.close()
+        print("hi")
 
     else:
         driver.save_screenshot("Screenshots\\" + "test_homePageTitle.png")
         driver.close()
+        print("bye")
         assert False
 
 
