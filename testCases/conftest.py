@@ -37,3 +37,7 @@ def pdu_ip(request):
 @pytest.fixture
 def pdu_port(request):
     return request.config.getoption("--pdu-port")
+
+@pytest.fixture
+def retain(request):
+    return request.config.getoption("--retain")

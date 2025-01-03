@@ -35,6 +35,12 @@ pipeline {
             steps {
                 script {
                     def localIP = params['Local IP Address']
+
+                    def retain = params.Retain.split(',')
+                    echo "----------------------------------------"
+                    echo '$retain'
+                    echo "----------------------------------------"
+
                     sh "mkdir -p artifacts"
                     for (int i = 1; i <= Iterations.toInteger() ; i++) {
                         echo "----------------------------------------"
