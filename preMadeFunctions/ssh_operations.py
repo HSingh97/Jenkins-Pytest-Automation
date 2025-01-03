@@ -30,5 +30,4 @@ def ssh_set(ip, command, value):
     ssh_client.exec_command(finalcommand)
 
     ssh_client.close()
-    return output
 
