@@ -37,8 +37,9 @@ pipeline {
                     def localIP = params['Local IP Address']
 
                     def retain = params.Retain.split(',')
+
                     echo "----------------------------------------"
-                    echo '$retain'
+                    echo "${retain}"
                     echo "----------------------------------------"
 
                     sh "mkdir -p artifacts"
