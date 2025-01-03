@@ -25,28 +25,18 @@ pipeline {
             steps {
                 script {
                     echo "----------------------------------------"
-                    echo "PYTEST Selected, Installing Dependencies"
+                    echo " Installing Dependencies"
                     echo "----------------------------------------"
                     sh "sh utilities/requirements.txt"
                 }
             }
         }
-        stage('Access & Login') {
+        stage('Local Access') {
             steps {
                 script {
-                    if ( PYTEST_ACCESS == "true" ){
-                        echo "----------------------------------------"
-                        echo "PYTEST Selected"
-                        echo "----------------------------------------"
-                        sh "mkdir -p artifacts"
-                        sh "pytest -v -s testCases/test_login.py::test_Login 2>&1 | tee ${workspace}/artifacts/login-device.log"
-                        archiveArtifacts('artifacts/**/*')
-                        }
-                    else{
-                        echo "-----------------------------------------"
-                        echo 'Skipping'
-                        echo "-----------------------------------------"
-                        }
+                    sh "mkdir -p artifacts"
+                    sh "pytest -v -s testCases/test_login.py::test_Login 2>&1 | tee ${workspace}/artifacts/login-device.log"
+                    // archiveArtifacts('artifacts/**/*')
                 }
             }
         }
@@ -54,24 +44,26 @@ pipeline {
         stage('Factory Reset') {
             steps {
                 script {
-                    if ( PYTEST_RESET == "true" ){
-                        echo "----------------------------------------"
-                        echo "PYTEST Selected"
-                        echo "----------------------------------------"
-                        echo "Factory Resetting the Device"
-                        echo "----------------------------------------"
-                        sh "mkdir -p artifacts"
-                        for (int i = 1; i <= RESET_COUNT.toInteger() ; i++) {
-                            sh "pytest -v -s testCases/test_factoryReset.py::test_FactoryReset 2>&1 | tee ${workspace}/artifacts/factory-reset-device.log"
-                        }
-                        archiveArtifacts('artifacts/**/*')
-                        archiveArtifacts('SerialLogs_Device.log')
-                        }
-                    else{
-                        echo "-----------------------------------------"
-                        echo 'Skipping'
-                        echo "-----------------------------------------"
-                        }
+                    echo "----------------------------------------"
+                    echo "Configuring some parameters"
+                    echo "----------------------------------------"
+
+
+                    echo "----------------------------------------"
+                    echo "Factory Resetting the Device"
+                    echo "----------------------------------------"
+                    sh "mkdir -p artifacts"
+                    for (int i = 1; i <= RESET_COUNT.toInteger() ; i++) {
+                        sh "pytest -v -s testCases/test_factoryReset.py::test_FactoryReset 2>&1 | tee ${workspace}/artifacts/factory-reset-device.log"
+                    }
+
+                    echo "----------------------------------------"
+                    echo "Verifying Device got reset or not"
+                    echo "----------------------------------------"
+
+
+                    archiveArtifacts('artifacts/**/*')
+                    archiveArtifacts('SerialLogs_Device.log')
                 }
             }
         }

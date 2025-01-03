@@ -10,27 +10,26 @@ from pageObjects.FactoryResetPage import ResetPage
 from utilities.readProperties import readConfig
 from testCases.configsetup import setup
 from utilities.serial_Logging import *
+from preMadeFunctions import pingFunction
+from preMadeFunctions import accessWeb
+from preMadeFunctions import ssh_operations
 
 
-URL = "http://"+readConfig.getIPaddr()+"/cgi-bin/luci"
 username = readConfig.get_username()
 password = readConfig.get_passwd()
-serial_port = readConfig.getSerialPortDevice()
-serial_port_log = readConfig.getSerialLogsDevice()
+# serial_port = readConfig.getSerialPortDevice()
+# serial_port_log = readConfig.getSerialLogsDevice()
 driver = setup
 
+# def configureparams(local_ip):
+#     if
 
-# Ignore Warnings
-def warn(*args, **kwargs):
-    pass
-
-
-warnings.warn = warn
-
-
-def test_FactoryReset(driver):
+def test_FactoryReset(driver, local_ip):
     # Start Serial Console logging for specific port
-    serial_logging_start(serial_port, serial_port_log)
+    # serial_logging_start(serial_port, serial_port_log)
+
+    print(f"Local IP Address: {local_ip}")
+    URL = "http://" + local_ip + "/cgi-bin/luci"
 
     driver.get(URL)
     time.sleep(2)
@@ -54,7 +53,7 @@ def test_FactoryReset(driver):
 
     wait = 0
     while wait < 200:
-        output = ping(readConfig.getIPaddr())
+        output = pingFunction.Ping("192.168.1.1")
 
         if not output:
             wait += 3
@@ -72,15 +71,37 @@ def test_FactoryReset(driver):
         assert True
 
     # Stop Serial logging
-    serial_logging_stop()
+    # serial_logging_stop()
 
     # Close the driver window
     driver.close()
 
 
-# Ping Device with specific IP
-def ping(host):
-    param = '-n' if platform.system().lower() == 'windows' else '-c'
-    command = ['ping', param, '3', host]
+def verifyparams():
+    if ssh_operations.ssh_get("192.168.1.1", "vlan.ath1.accessvlan") == "10":
+        print("\n!!! NETWORK RESET SUCCESSFUL !!!\n")
+    elif ssh_operations.ssh_get("192.168.1.1", "vlan.ath1.accessvlan") == "23":
+        print("\n!!! NETWORK RESET FAILED !!!\n")
 
-    return subprocess.call(command) == 0
+    if ssh_operations.ssh_get("192.168.1.1", "system.@system[0].email") == "example@mail.com":
+        print("\n!!! SYSTEM RESET SUCCESSFUL !!!\n")
+    elif ssh_operations.ssh_get("192.168.1.1", "system.@system[0].email") == "jenkins@mail.com":
+        print("\n!!! SYSTEM RESET FAILED !!!\n")
+
+    if ssh_operations.ssh_get("192.168.1.1", "wireless.@wifi-iface[1].ssid") == "EOC655_R1" or "EOC600_R1" or "EOC610_R1" or "EOC650_R1":
+        print("\n!!! RADIO-1 RESET SUCCESSFUL !!!\n")
+    elif ssh_operations.ssh_get("192.168.1.1", "wireless.@wifi-iface[1].ssid") == "jenkinstest_r1":
+        print("\n!!! RADIO-1 RESET FAILED !!!\n")
+
+    if ssh_operations.ssh_get("192.168.1.1", "wireless.@wifi-iface[2].ssid") == "EOC655_R2" or "EOC600_R2" or "EOC610_R2" or "EOC650_R2":
+        print("\n!!! RADIO-2 RESET SUCCESSFUL !!!\n")
+    elif ssh_operations.ssh_get("192.168.1.1", "wireless.@wifi-iface[2].ssid") == "jenkinstest_r2":
+        print("\n!!! RADIO-2 RESET FAILED !!!\n")
+
+
+# Ignore Warnings
+def warn(*args, **kwargs):
+    pass
+
+
+warnings.warn = warn
