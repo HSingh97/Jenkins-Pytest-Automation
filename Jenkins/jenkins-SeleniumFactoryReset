@@ -50,8 +50,6 @@ pipeline {
                         echo "----------------------------------------"
                         sh "pytest -v -s testCases/test_factoryReset.py::test_verifyparams 2>&1"
                     }
-                    archiveArtifacts('artifacts/**/*')
-                    archiveArtifacts('SerialLogs_Device.log')
                 }
             }
         }
