@@ -82,6 +82,15 @@ def test_FactoryReset(driver, local_ip):
 
 
 def test_verifyparams():
+
+    print(ssh_operations.ssh_get("192.168.1.1", "vlan.ath1.accessvlan"))
+
+    print(ssh_operations.ssh_get("192.168.1.1", "system.@system[0].email"))
+
+    print(ssh_operations.ssh_get("192.168.1.1", "wireless.@wifi-iface[1].ssid"))
+
+    print(ssh_operations.ssh_get("192.168.1.1", "wireless.@wifi-iface[2].ssid"))
+
     if ssh_operations.ssh_get("192.168.1.1", "vlan.ath1.accessvlan") == "10":
         print("\n!!! NETWORK RESET SUCCESSFUL !!!\n")
     elif ssh_operations.ssh_get("192.168.1.1", "vlan.ath1.accessvlan") == "23":
