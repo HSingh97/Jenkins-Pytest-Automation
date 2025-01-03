@@ -21,8 +21,12 @@ password = readConfig.get_passwd()
 # serial_port_log = readConfig.getSerialLogsDevice()
 driver = setup
 
-# def configureparams(local_ip):
-#     if
+def test_configureparams(local_ip):
+    ssh_operations.ssh_set(local_ip, "vlan.ath1.accessvlan", "23")
+    ssh_operations.ssh_set(local_ip, "system.@system[0].email", "jenkins@mail.com")
+    ssh_operations.ssh_set(local_ip, "wireless.@wifi-iface[1].ssid", "jenkinstest_r1")
+    ssh_operations.ssh_set(local_ip, "wireless.@wifi-iface[2].ssid", "jenkinstest_r2")
+
 
 def test_FactoryReset(driver, local_ip):
     # Start Serial Console logging for specific port
@@ -77,7 +81,7 @@ def test_FactoryReset(driver, local_ip):
     driver.close()
 
 
-def verifyparams():
+def test_verifyparams():
     if ssh_operations.ssh_get("192.168.1.1", "vlan.ath1.accessvlan") == "10":
         print("\n!!! NETWORK RESET SUCCESSFUL !!!\n")
     elif ssh_operations.ssh_get("192.168.1.1", "vlan.ath1.accessvlan") == "23":

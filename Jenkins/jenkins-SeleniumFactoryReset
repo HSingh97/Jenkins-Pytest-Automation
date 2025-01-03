@@ -54,14 +54,19 @@ pipeline {
                     echo "----------------------------------------"
                     sh "mkdir -p artifacts"
                     for (int i = 1; i <= RESET_COUNT.toInteger() ; i++) {
-                        sh "pytest -v -s testCases/test_factoryReset.py::test_FactoryReset 2>&1 | tee ${workspace}/artifacts/factory-reset-device.log"
+                        echo "----------------------------------------"
+                        echo "Configuring Parameters"
+                        echo "----------------------------------------"
+                        sh "pytest -v -s testCases/test_factoryReset.py::def test_configureparams 2>&1"
+                        echo "----------------------------------------"
+                        echo "Factory Resetting the Device"
+                        echo "----------------------------------------"
+                        sh "pytest -v -s testCases/test_factoryReset.py::test_FactoryReset 2>&1"
+                        echo "----------------------------------------"
+                        echo "Verifying the Reset"
+                        echo "----------------------------------------"
+                        sh "pytest -v -s testCases/test_factoryReset.py::test_verifyparams 2>&1"
                     }
-
-                    echo "----------------------------------------"
-                    echo "Verifying Device got reset or not"
-                    echo "----------------------------------------"
-
-
                     archiveArtifacts('artifacts/**/*')
                     archiveArtifacts('SerialLogs_Device.log')
                 }
