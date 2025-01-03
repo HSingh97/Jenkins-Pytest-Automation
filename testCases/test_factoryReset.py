@@ -83,32 +83,32 @@ def test_FactoryReset(driver, local_ip):
 
 def test_verifyparams():
 
-    print(ssh_operations.ssh_get("192.168.1.1", "ucidyn get vlan.ath1.accessvlan"))
+    # print(ssh_operations.ssh_get("192.168.1.1", "ucidyn get vlan.ath1.accessvlan"))
+    #
+    # print(ssh_operations.ssh_get("192.168.1.1", "ucidyn get system.@system[0].email"))
+    #
+    # print(ssh_operations.ssh_get("192.168.1.1", "ucidyn get wireless.@wifi-iface[1].ssid"))
+    #
+    # print(ssh_operations.ssh_get("192.168.1.1", "ucidyn get wireless.@wifi-iface[2].ssid"))
 
-    print(ssh_operations.ssh_get("192.168.1.1", "ucidyn get system.@system[0].email"))
-
-    print(ssh_operations.ssh_get("192.168.1.1", "ucidyn get wireless.@wifi-iface[1].ssid"))
-
-    print(ssh_operations.ssh_get("192.168.1.1", "ucidyn get wireless.@wifi-iface[2].ssid"))
-
-    if ssh_operations.ssh_get("192.168.1.1", "vlan.ath1.accessvlan") == "10":
+    if ssh_operations.ssh_get("192.168.1.1", "ucidyn get vlan.ath1.accessvlan") == "10":
         print("\n!!! NETWORK RESET SUCCESSFUL !!!\n")
-    elif ssh_operations.ssh_get("192.168.1.1", "vlan.ath1.accessvlan") == "23":
+    elif ssh_operations.ssh_get("192.168.1.1", "ucidyn get vlan.ath1.accessvlan") == "23":
         print("\n!!! NETWORK RESET FAILED !!!\n")
 
-    if ssh_operations.ssh_get("192.168.1.1", "system.@system[0].email") == "example@mail.com":
+    if ssh_operations.ssh_get("192.168.1.1", "ucidyn get system.@system[0].email") == "example@mail.com":
         print("\n!!! SYSTEM RESET SUCCESSFUL !!!\n")
-    elif ssh_operations.ssh_get("192.168.1.1", "system.@system[0].email") == "jenkins@mail.com":
+    elif ssh_operations.ssh_get("192.168.1.1", "ucidyn get system.@system[0].email") == "jenkins@mail.com":
         print("\n!!! SYSTEM RESET FAILED !!!\n")
 
-    if ssh_operations.ssh_get("192.168.1.1", "wireless.@wifi-iface[1].ssid") == "EOC655_R1" or "EOC600_R1" or "EOC610_R1" or "EOC650_R1":
+    if ssh_operations.ssh_get("192.168.1.1", "ucidyn get wireless.@wifi-iface[1].ssid") == "EOC655_R1" or "EOC600_R1" or "EOC610_R1" or "EOC650_R1":
         print("\n!!! RADIO-1 RESET SUCCESSFUL !!!\n")
-    elif ssh_operations.ssh_get("192.168.1.1", "wireless.@wifi-iface[1].ssid") == "jenkinstest_r1":
+    elif ssh_operations.ssh_get("192.168.1.1", "ucidyn get wireless.@wifi-iface[1].ssid") == "jenkinstest_r1":
         print("\n!!! RADIO-1 RESET FAILED !!!\n")
 
-    if ssh_operations.ssh_get("192.168.1.1", "wireless.@wifi-iface[2].ssid") == "EOC655_R2" or "EOC600_R2" or "EOC610_R2" or "EOC650_R2":
+    if ssh_operations.ssh_get("192.168.1.1", "ucidyn get wireless.@wifi-iface[2].ssid") == "EOC655_R2" or "EOC600_R2" or "EOC610_R2" or "EOC650_R2":
         print("\n!!! RADIO-2 RESET SUCCESSFUL !!!\n")
-    elif ssh_operations.ssh_get("192.168.1.1", "wireless.@wifi-iface[2].ssid") == "jenkinstest_r2":
+    elif ssh_operations.ssh_get("192.168.1.1", "ucidyn get wireless.@wifi-iface[2].ssid") == "jenkinstest_r2":
         print("\n!!! RADIO-2 RESET FAILED !!!\n")
 
 
