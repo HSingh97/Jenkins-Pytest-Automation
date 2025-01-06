@@ -51,7 +51,7 @@ pipeline {
                         echo "----------------------------------------"
                         echo "Configuring Parameters"
                         echo "----------------------------------------"
-                        sh "pytest -v -s testCases/test_factoryReset.py::test_configureparams --local-ip '$localIP' --retain '$retainList' 2>&1"
+                        sh "pytest -v -s testCases/test_factoryReset.py::test_configureparams --local-ip '$localIP' --retain "$retainList" 2>&1"
                         echo "----------------------------------------"
                         echo "Factory Resetting the Device"
                         echo "----------------------------------------"

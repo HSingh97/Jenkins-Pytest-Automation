@@ -22,6 +22,8 @@ password = readConfig.get_passwd()
 driver = setup
 
 def test_configureparams(local_ip, retain):
+
+    print("Retained params : {}".format(retain))
     ssh_operations.ssh_set(local_ip, "vlan.ath1.accessvlan", "23")
     ssh_operations.ssh_set(local_ip, "system.@system[0].email", "jenkins@mail.com")
     ssh_operations.ssh_set(local_ip, "wireless.@wifi-iface[1].ssid", "jenkinstest_r1")
