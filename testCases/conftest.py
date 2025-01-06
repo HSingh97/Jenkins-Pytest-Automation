@@ -8,6 +8,7 @@ def pytest_addoption(parser):
     parser.addoption("--country", action="store", default="US 5GHz All", help="Selected Country")
     parser.addoption("--pdu-port", action="store", default="1", help="Selected PDU Port")
     parser.addoption("--pdu-ip", action="store", default="192.168.1.1", help="PDU IP Address")
+    parser.addoption("--retain", action="store", default="Null", help="Retain Parameters")
 
 
 @pytest.fixture
