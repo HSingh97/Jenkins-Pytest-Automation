@@ -54,7 +54,7 @@ pipeline {
                         echo "----------------------------------------"
                         echo "Factory Resetting the Device"
                         echo "----------------------------------------"
-                        //sh "pytest -v -s testCases/test_factoryReset.py::test_FactoryReset --local-ip '$localIP' --retain '$retainList' --model '$model' 2>&1"
+                        sh "pytest -v -s testCases/test_factoryReset.py::test_FactoryReset --local-ip '$localIP' --retain '$retainList' --model '$model' 2>&1"
                         echo "----------------------------------------"
                         echo "Verifying the Reset"
                         echo "----------------------------------------"

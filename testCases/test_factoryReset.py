@@ -116,33 +116,31 @@ def test_verifyparams(retain, model):
 
     if "System" in retained_params:
         conf_email = ssh_operations.ssh_get("192.168.1.1", "ucidyn get system.@system[0].email")
-        print("conf email : {}".format(conf_email))
-
         if  conf_email == "example@mail.com":
             print("\n!!! SYSTEM RESET SUCCESSFUL !!!\n")
         elif conf_email == ("jenkins@mail.com"):
             print("\n!!! SYSTEM RESET FAILED !!!\n")
 
     if "Network" in retained_params:
-        if ssh_operations.ssh_get("192.168.1.1", "ucidyn get vlan.ath1.accessvlan") == "10":
+        conf_network = ssh_operations.ssh_get("192.168.1.1", "ucidyn get vlan.ath1.accessvlan")
+        if  conf_network == "10":
             print("\n!!! NETWORK RESET SUCCESSFUL !!!\n")
-        elif ssh_operations.ssh_get("192.168.1.1", "ucidyn get vlan.ath1.accessvlan") == "23":
+        elif conf_network == "23":
             print("\n!!! NETWORK RESET FAILED !!!\n")
 
     if "Wireless-Radio1" in retained_params:
-        if ssh_operations.ssh_get("192.168.1.1", "ucidyn get wireless.@wifi-iface[1].ssid") in ["EOC655_R1", "EOC600_R1", "EOC610_R1", "EOC650_R1"]:
+        conf_ssid_r1 = ssh_operations.ssh_get("192.168.1.1", "ucidyn get wireless.@wifi-iface[1].ssid")
+        if  conf_ssid_r1 in ["EOC655_R1", "EOC600_R1", "EOC610_R1", "EOC650_R1"]:
             print("\n!!! RADIO-1 RESET SUCCESSFUL !!!\n")
         elif str(ssh_operations.ssh_get("192.168.1.1", "ucidyn get wireless.@wifi-iface[1].ssid")) == "jenkinstest_r1":
             print("\n!!! RADIO-1 RESET FAILED !!!\n")
 
     if model == "EOC655":
+        conf_ssid_r2 = ssh_operations.ssh_get("192.168.1.1", "ucidyn get wireless.@wifi-iface[2].ssid")
         if "Wireless-Radio2" in retained_params:
-            if ssh_operations.ssh_get("192.168.1.1", "ucidyn get wireless.@wifi-iface[2].ssid") in ["EOC655_R2",
-                                                                                                    "EOC600_R2",
-                                                                                                    "EOC610_R2",
-                                                                                                    "EOC650_R2"]:
+            if conf_ssid_r2 in ["EOC655_R2", "EOC600_R2", "EOC610_R2", "EOC650_R2"]:
                 print("\n!!! RADIO-2 RESET SUCCESSFUL !!!\n")
-            elif str(ssh_operations.ssh_get("192.168.1.1", "ucidyn get wireless.@wifi-iface[2].ssid")) == "jenkinstest_r2":
+            elif conf_ssid_r2 == "jenkinstest_r2":
                 print("\n!!! RADIO-2 RESET FAILED !!!\n")
 
 
