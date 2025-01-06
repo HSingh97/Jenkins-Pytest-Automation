@@ -66,17 +66,17 @@ def test_FactoryReset(driver, local_ip, retain, model):
     frp = ResetPage(driver)
     frp.clickResetPage()
 
-    if "System" in retained_params:
+    if "System" not in retained_params:
         frp.clickSystem()
 
-    if "Network" in retained_params:
+    if "Network" not in retained_params:
         frp.clickNetwork()
 
-    if "Wireless-Radio1" in retained_params:
+    if "Wireless-Radio1" not in retained_params:
         frp.clickR1()
 
     if model == "EOC655":
-        if "Wireless-Radio2" in retained_params:
+        if "Wireless-Radio2" not in retained_params:
             frp.clickR2()
 
     frp.clickProceed()
