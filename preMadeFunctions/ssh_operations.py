@@ -12,9 +12,9 @@ def ssh_get(ip, command):
 
     # Read the output of the command
     output = stdout.read().decode('utf-8')
-    output = output.stdout.strip()
     print("@@@@@@ output : {} ".format(output))
     ssh_client.close()
+    output = output.strip()
 
     return output
 
