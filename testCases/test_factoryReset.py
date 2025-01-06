@@ -21,7 +21,7 @@ password = readConfig.get_passwd()
 # serial_port_log = readConfig.getSerialLogsDevice()
 driver = setup
 
-def test_configureparams(local_ip):
+def test_configureparams(local_ip, retain):
     ssh_operations.ssh_set(local_ip, "vlan.ath1.accessvlan", "23")
     ssh_operations.ssh_set(local_ip, "system.@system[0].email", "jenkins@mail.com")
     ssh_operations.ssh_set(local_ip, "wireless.@wifi-iface[1].ssid", "jenkinstest_r1")
@@ -82,7 +82,7 @@ def test_FactoryReset(driver, local_ip, retain):
     driver.close()
 
 
-def test_verifyparams():
+def test_verifyparams(retain):
 
     if ssh_operations.ssh_get("192.168.1.1", "ucidyn get vlan.ath1.accessvlan") == "10":
         print("\n!!! NETWORK RESET SUCCESSFUL !!!\n")
