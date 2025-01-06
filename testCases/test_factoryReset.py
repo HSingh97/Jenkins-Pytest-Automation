@@ -115,9 +115,12 @@ def test_verifyparams(retain, model):
     retained_params = retain.split(" ")
 
     if "System" in retained_params:
-        if ssh_operations.ssh_get("192.168.1.1", "ucidyn get system.@system[0].email") == "example@mail.com":
+        conf_email = ssh_operations.ssh_get("192.168.1.1", "ucidyn get system.@system[0].email")
+        print("conf email : {}".format(conf_email))
+
+        if  conf_email == "example@mail.com":
             print("\n!!! SYSTEM RESET SUCCESSFUL !!!\n")
-        elif ssh_operations.ssh_get("192.168.1.1", "ucidyn get system.@system[0].email") == "jenkins@mail.com":
+        elif conf_email == "jenkins@mail.com":
             print("\n!!! SYSTEM RESET FAILED !!!\n")
 
     if "Network" in retained_params:
