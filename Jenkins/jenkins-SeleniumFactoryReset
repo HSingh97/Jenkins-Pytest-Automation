@@ -35,12 +35,11 @@ pipeline {
             steps {
                 script {
                     def localIP = params['Local IP Address']
+                    def model = params['Model']
 
                     def retain = params.Retain.split(',')
 
                     def retainList = retain.join(' ')
-
-
                     echo "----------------------------------------"
                     echo "${retain}"
                     echo "Retain values: $retainList"
@@ -51,15 +50,15 @@ pipeline {
                         echo "----------------------------------------"
                         echo "Configuring Parameters"
                         echo "----------------------------------------"
-                        sh "pytest -v -s testCases/test_factoryReset.py::test_configureparams --local-ip '$localIP' --retain '$retainList' 2>&1"
+                        sh "pytest -v -s testCases/test_factoryReset.py::test_configureparams --local-ip '$localIP' --retain '$retainList' --model '$model' 2>&1"
                         echo "----------------------------------------"
                         echo "Factory Resetting the Device"
                         echo "----------------------------------------"
-                        //sh "pytest -v -s testCases/test_factoryReset.py::test_FactoryReset --local-ip '$localIP' --retain '$retainList' 2>&1"
+                        //sh "pytest -v -s testCases/test_factoryReset.py::test_FactoryReset --local-ip '$localIP' --retain '$retainList' --model '$model' 2>&1"
                         echo "----------------------------------------"
                         echo "Verifying the Reset"
                         echo "----------------------------------------"
-                        sh "pytest -v -s testCases/test_factoryReset.py::test_verifyparams --retain '$retainList' 2>&1"
+                        sh "pytest -v -s testCases/test_factoryReset.py::test_verifyparams --retain '$retainList' --model '$model' 2>&1"
                     }
                 }
             }

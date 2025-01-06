@@ -9,7 +9,7 @@ def pytest_addoption(parser):
     parser.addoption("--pdu-port", action="store", default="1", help="Selected PDU Port")
     parser.addoption("--pdu-ip", action="store", default="192.168.1.1", help="PDU IP Address")
     parser.addoption("--retain", action="store", default="Null", help="Retain Parameters")
-
+    parser.addoption("--model", action="store", default="EOC655", help="Model")
 
 @pytest.fixture
 def radio(request):
@@ -42,3 +42,7 @@ def pdu_port(request):
 @pytest.fixture
 def retain(request):
     return request.config.getoption("--retain")
+
+@pytest.fixture
+def model(request):
+    return request.config.getoption("--model")
