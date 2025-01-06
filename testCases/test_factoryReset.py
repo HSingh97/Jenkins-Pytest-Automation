@@ -120,7 +120,8 @@ def test_verifyparams(retain, model):
 
         if  conf_email == "example@mail.com":
             print("\n!!! SYSTEM RESET SUCCESSFUL !!!\n")
-        elif conf_email == "jenkins@mail.com":
+        elif conf_email == ("jenkins@mail.com"
+                            ""):
             print("\n!!! SYSTEM RESET FAILED !!!\n")
 
     if "Network" in retained_params:
