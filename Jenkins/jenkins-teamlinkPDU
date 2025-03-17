@@ -39,6 +39,7 @@ pipeline {
                     def pduIP = params['PDU IP Address']
                     def pduPort = params['PDU Port']
                     def resetType = params['Reset Type']
+                    def rebootCount = params['Reboot Count']
 
                     echo "Local IP Address   : ${localIP}"
                     echo "Remote IP Address  : ${remoteIP}"
@@ -50,7 +51,7 @@ pipeline {
                     echo "Hard Rebooting the Device"
                     echo "----------------------------------------"
 
-                     for (int i = 1; i <= REBOOT_COUNT.toInteger() ; i++) {
+                     for (int i = 1; i <= rebootCount.toInteger() ; i++) {
                         sh "pytest -v -s testCases/test_HardReboot_Teamlink.py::test_DyingGasp --local-ip '$localIP' --remote-ip '$remoteIP' --pdu-ip '$pduIP' --pdu-port '$pduPort' --reset-type '$resetType' 2>&1"
                         // sh "echo Iteration : ${i} 2>&1 | tee -a ${workspace}/SerialLogs_AP_${i}.log"
                     }
