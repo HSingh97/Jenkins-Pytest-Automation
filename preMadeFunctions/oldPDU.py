@@ -8,38 +8,11 @@ from optparse import OptionParser
 from datetime import datetime
 
 
-pdu_IP = '192.168.29.241'   # Passing PDU IP address as argument
 username = 'admin'          # username for PDU
 password = 'teamlink'       # Password for PDU
-port = 1
-
-usage = "usage: %prog [options]"
-parser = OptionParser(usage=usage)
-parser.add_option("-i", "--pduIP", dest="ip", help="PDU IP Address", metavar="PERIOD")
-parser.add_option("-u", "--username", dest="username", help="PDU Username", metavar="TIME")
-parser.add_option("-p", "--password", dest="password", help="PDU Password", metavar="STAND")
-parser.add_option("-x", "--port", dest="port", help="PDU Port", metavar="STAND")
-
-(options, args) = parser.parse_args()
 
 
-# ***********************************************************************************
-# Read parameters
-if options.ip:
-    pdu_IP = options.ip
-
-if options.username:
-    username = options.username
-
-if options.password:
-    password = options.password
-
-if options.port:
-    port = options.port
-
-
-
-def pdu_reset(reset_type):
+def pdu_reset(reset_type, pdu_IP, port ):
     child = pexpect.spawn('telnet {}'.format(pdu_IP))
 
     # ################## Passing Username #########################

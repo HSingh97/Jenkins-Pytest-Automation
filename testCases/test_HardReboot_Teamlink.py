@@ -1,58 +1,31 @@
 import time
 import warnings
 import pytest
-from pageObjects.HomePage import HomePage
+from testCases.conftest import local_ip
 from utilities.readProperties import readConfig
 from testCases.configsetup import setup
 from utilities.serial_Logging import *
 from preMadeFunctions import pingFunction
 from preMadeFunctions import accessWeb
 from preMadeFunctions import oldPDU
-from optparse import OptionParser
 
 
-URL = "http://"+readConfig.getIPaddr()+"/cgi-bin/luci"
-username = readConfig.get_username()
-password = readConfig.get_passwd()
-serial_port = readConfig.getSerialPortDevice()
-serial_port_log = readConfig.getSerialLogsDevice()
 driver = setup
 
-usage = "usage: %prog [options]"
-parser = OptionParser(usage=usage)
-parser.add_option("-i", "--pduIP", dest="ip", help="PDU IP Address", metavar="PERIOD")
-parser.add_option("-u", "--username", dest="username", help="PDU Username", metavar="TIME")
-parser.add_option("-p", "--password", dest="password", help="PDU Password", metavar="STAND")
-parser.add_option("-x", "--port", dest="port", help="PDU Port", metavar="STAND")
+def test_DyingGasp(driver, local_ip, remote_ip,reset_type, pdu_port, pdu_ip):
 
-(options, args) = parser.parse_args()
+    print(f"Local IP Address: {local_ip}")
+    print(f"Remote IP Address: {remote_ip}")
+    print(f"PDU IP : {pdu_ip}")
+    print(f"PDU Port : {pdu_port}")
+    print(f"Reset Type : {pdu_port}")
 
-
-# ***********************************************************************************
-# Read parameters
-if options.ip:
-    pdu_IP = options.ip
-
-if options.username:
-    username = options.username
-
-if options.password:
-    password = options.password
-
-if options.port:
-    port = options.port
-
-
-def test_DyingGasp(driver):
-
-    serial_logging_start(serial_port, serial_port_log)
-
-    oldPDU.pdu_reset(2)
+    oldPDU.pdu_reset(reset_type, pdu_port, pdu_ip)
     time.sleep(60)
 
     wait = 0
-    while wait < 50:
-        output = pingFunction.Ping(readConfig.getIPaddr())
+    while wait < 150:
+        output = pingFunction.Ping(local_ip())
 
         if not output:
             wait += 3
@@ -68,7 +41,7 @@ def test_DyingGasp(driver):
     else:
         assert True
 
-    serial_logging_stop()
+    #serial_logging_stop()
     driver.close()
 
 

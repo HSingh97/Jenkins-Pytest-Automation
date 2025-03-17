@@ -1,13 +1,14 @@
 import pytest
 
 def pytest_addoption(parser):
-    parser.addoption("--radio", action="store", default="Radio1", help="Selected Radio")
+    parser.addoption("--radio", action="store", default="Radio1", help="Radio")
     parser.addoption("--local-ip", action="store", default="192.168.1.1", help="Local IP Address")
     parser.addoption("--remote-ip", action="store", default="192.168.1.1", help="Remote IP Address")
-    parser.addoption("--bandwidth", action="store", default="HT20", help="Selected Bandwidth")
-    parser.addoption("--country", action="store", default="US 5GHz All", help="Selected Country")
-    parser.addoption("--pdu-port", action="store", default="1", help="Selected PDU Port")
+    parser.addoption("--bandwidth", action="store", default="HT20", help="Bandwidth")
+    parser.addoption("--country", action="store", default="US 5GHz All", help="Country")
+    parser.addoption("--pdu-port", action="store", default="1", help="PDU Port")
     parser.addoption("--pdu-ip", action="store", default="192.168.1.1", help="PDU IP Address")
+    parser.addoption("--reset-type", action="store", default="1", help="Reset Type")
     parser.addoption("--retain", action="store", default="Null", help="Retain Parameters")
     parser.addoption("--model", action="store", default="EOC655", help="Model")
 
@@ -38,6 +39,10 @@ def pdu_ip(request):
 @pytest.fixture
 def pdu_port(request):
     return request.config.getoption("--pdu-port")
+
+@pytest.fixture
+def reset_type(request):
+    return request.config.getoption("--reset-type")
 
 @pytest.fixture
 def retain(request):
