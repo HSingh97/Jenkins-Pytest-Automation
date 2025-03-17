@@ -21,7 +21,8 @@ def test_DyingGasp(driver, local_ip, remote_ip,reset_type, pdu_port, pdu_ip):
     print(f"Reset Type : {pdu_port}")
 
     print("Hiiii")
-    oldPDU.pdu_reset(reset_type, pdu_ip, pdu_port)
+    output = oldPDU.pdu_reset(reset_type, pdu_ip, pdu_port)
+    print("Return Code : ".format(output))
     print("Byeeeeee")
     time.sleep(10)
 
