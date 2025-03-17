@@ -20,8 +20,10 @@ def test_DyingGasp(driver, local_ip, remote_ip,reset_type, pdu_port, pdu_ip):
     print(f"PDU Port : {pdu_port}")
     print(f"Reset Type : {pdu_port}")
 
+    print("Hiiii")
     oldPDU.pdu_reset(reset_type, pdu_ip, pdu_port)
-    time.sleep(60)
+    print("Byeeeeee")
+    time.sleep(10)
 
     wait = 0
     while wait < 150:

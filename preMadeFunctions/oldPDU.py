@@ -13,6 +13,7 @@ password = 'teamlink'       # Password for PDU
 
 
 def pdu_reset(reset_type, pdu_IP, port ):
+    print("hi")
     child = pexpect.spawn('telnet {}'.format(pdu_IP))
 
     # ################## Passing Username #########################
@@ -132,3 +133,5 @@ def pdu_reset(reset_type, pdu_IP, port ):
         time.sleep(0.5)
         child.kill(0)
         return 7
+
+    print("Bye")
