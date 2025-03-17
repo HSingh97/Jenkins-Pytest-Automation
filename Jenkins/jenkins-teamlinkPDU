@@ -40,6 +40,7 @@ pipeline {
                     def pduPort = params['PDU Port']
                     def resetType = params['Reset Type']
                     def rebootCount = params['Reboot Count']
+                    def reset_type_value = (resetType == "ON/OFF") ? 0 : 1
 
                     echo "Local IP Address   : ${localIP}"
                     echo "Remote IP Address  : ${remoteIP}"
@@ -47,7 +48,6 @@ pipeline {
                     echo "PDU Port           : ${pduPort}"
                     echo "Reset Type         : ${resetType}"
 
-                    def reset_type_value = (resetType == "ON/OFF") ? 0 : 1
 
                     echo "----------------------------------------"
                     echo "Hard Rebooting the Device"

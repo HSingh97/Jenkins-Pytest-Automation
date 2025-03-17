@@ -20,12 +20,12 @@ def test_DyingGasp(driver, local_ip, remote_ip,reset_type, pdu_port, pdu_ip):
     print(f"PDU Port : {pdu_port}")
     print(f"Reset Type : {pdu_port}")
 
-    oldPDU.pdu_reset(reset_type, pdu_port, pdu_ip)
+    oldPDU.pdu_reset(reset_type, pdu_ip, pdu_port)
     time.sleep(60)
 
     wait = 0
     while wait < 150:
-        output = pingFunction.Ping(local_ip())
+        output = pingFunction.Ping(local_ip)
 
         if not output:
             wait += 3
