@@ -1,18 +1,14 @@
-
 // Functions
-
 def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
-
 // Main Pipeline
-
 pipeline {
-    agent { node { label "${TARGET_STAND}"} }
+    agent { node { label "${TARGET_STAND}" } }
 
     stages {
-        stage('Prepare tests') {
+        stage('Prepare Tests') {
             steps {
                 script {
                     echo "----------------------------------------"
@@ -21,6 +17,7 @@ pipeline {
       	        }
       	    }
         }
+
         stage('Install Python Dependencies') {
             steps {
                 script {
@@ -31,6 +28,7 @@ pipeline {
                 }
             }
         }
+
         stage('Hard Reboot') {
             steps {
                 script {
@@ -41,6 +39,7 @@ pipeline {
                     def resetType = params['Reset Type']
                     def rebootCount = params['Reboot Count']
                     def reset_type_value = (resetType == "ON/OFF") ? 1 : 2
+                    def results = [] // ✅ Fix: Initialize results before using it
 
                     echo "Local IP Address   : ${localIP}"
                     echo "Remote IP Address  : ${remoteIP}"
@@ -48,12 +47,11 @@ pipeline {
                     echo "PDU Port           : ${pduPort}"
                     echo "Reset Type         : ${resetType}"
 
-
                     echo "----------------------------------------"
                     echo "Hard Rebooting the Device"
                     echo "----------------------------------------"
 
-                     for (int i = 1; i <= rebootCount.toInteger() ; i++) {
+                    for (int i = 1; i <= rebootCount.toInteger(); i++) {
                         def status = sh(script: """
                             pytest -v -s testCases/test_HardReboot_Teamlink.py::test_DyingGasp \
                             --local-ip '${localIP}' \
@@ -70,7 +68,8 @@ pipeline {
                 }
             }
         }
-        stage('Generate PDF Redport') {
+
+        stage('Generate PDF Report') {
             steps {
                 script {
                     generatePDFReport()
@@ -78,11 +77,13 @@ pipeline {
             }
         }
     }
+
     post {
         always {
             echo "-----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
+            archiveArtifacts artifacts: 'test_report.pdf'
         }
 
         success {
@@ -99,14 +100,18 @@ pipeline {
     }
 }
 
+// Function to generate PDF report
 def generatePDFReport() {
     sh '''
     python3 <<EOF
 import json
 from fpdf import FPDF
 
-with open('results.json') as f:
-    results = json.load(f)
+try:
+    with open('results.json') as f:
+        results = json.load(f)
+except FileNotFoundError:
+    results = []
 
 pdf = FPDF()
 pdf.set_auto_page_break(auto=True, margin=15)
@@ -128,5 +133,4 @@ for entry in results:
 pdf.output("test_report.pdf")
 EOF
     '''
-    archiveArtifacts artifacts: 'test_report.pdf'
 }
