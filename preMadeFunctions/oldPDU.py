@@ -75,11 +75,11 @@ def pdu_reset(reset_type, pdu_IP, port ):
 
     result = child.expect(["Enter*", pexpect.TIMEOUT])
     if result == 0:
-        if reset_type == 1:
+        if reset_type == "1":
             child.send('3')
             child.send("\r")
             time.sleep(0.5)
-        elif reset_type == 2:
+        elif reset_type == "2":
             child.send('2')
             child.send("\r")
             result = child.expect(["Select*", pexpect.TIMEOUT])
