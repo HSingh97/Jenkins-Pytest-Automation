@@ -36,7 +36,7 @@ pipeline {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
-                    def pduIP = params['PDU IP']
+                    def pduIP = params['PDU IP Address']
                     def pduPort = params['PDU Port']
                     def resetType = params['Reset Type']
                     def rebootCount = params['Reboot Count']
