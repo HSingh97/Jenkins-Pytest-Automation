@@ -1,14 +1,18 @@
+
 // Functions
+
 def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
+
 // Main Pipeline
+
 pipeline {
-    agent { node { label "${TARGET_STAND}" } }
+    agent { node { label "${TARGET_STAND}"} }
 
     stages {
-        stage('Prepare Tests') {
+        stage('Prepare tests') {
             steps {
                 script {
                     echo "----------------------------------------"
@@ -17,7 +21,6 @@ pipeline {
       	        }
       	    }
         }
-
         stage('Install Python Dependencies') {
             steps {
                 script {
@@ -28,18 +31,14 @@ pipeline {
                 }
             }
         }
-
         stage('Hard Reboot') {
             steps {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
-                    def pduIP = params['PDU IP Address']
+                    def pduIP = params['PDU IP']
                     def pduPort = params['PDU Port']
                     def resetType = params['Reset Type']
-                    def rebootCount = params['Reboot Count']
-                    def reset_type_value = (resetType == "ON/OFF") ? 1 : 2
-                    def results = [] // ✅ Fix: Initialize results before using it
 
                     echo "Local IP Address   : ${localIP}"
                     echo "Remote IP Address  : ${remoteIP}"
@@ -51,47 +50,19 @@ pipeline {
                     echo "Hard Rebooting the Device"
                     echo "----------------------------------------"
 
-                    for (int i = 1; i <= rebootCount.toInteger(); i++) {
-                        def status = sh(script: """
-                            pytest -v -s testCases/test_HardReboot_Teamlink.py::test_DyingGasp \
-                            --local-ip '${localIP}' \
-                            --remote-ip '${remoteIP}' \
-                            --pdu-ip '${pduIP}' \
-                            --pdu-port '${pduPort}' \
-                            --reset-type '${resetType}' 2>&1 | tee output.log
-                        """, returnStatus: true)
-
-                        def result = (status == 0) ? "PASS" : "FAIL"
-                        results.add([iteration: i, status: result])
+                     for (int i = 1; i <= REBOOT_COUNT.toInteger() ; i++) {
+                        sh "pytest -v -s testCases/test_HardReboot_Teamlink.py::test_DyingGasp --local-ip '$localIP' --remote-ip '$remoteIP' --pdu-ip '$pduIP' --pdu-port '$pduPort' --reset-type '$resetType' 2>&1"
+                        // sh "echo Iteration : ${i} 2>&1 | tee -a ${workspace}/SerialLogs_AP_${i}.log"
                     }
-                    writeJSON(file: 'results.json', json: results)
-                }
-            }
-        }
-
-        stage('Generate PDF Report') {
-            steps {
-                script {
-                    generatePDFReport()
                 }
             }
         }
     }
-
     post {
         always {
             echo "-----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
-            script {
-                def reportExists = fileExists('test_report.pdf')
-                if (reportExists) {
-                    archiveArtifacts artifacts: 'test_report.pdf', fingerprint: true, onlyIfSuccessful: false
-                    echo "Report archived successfully."
-                } else {
-                    echo "Warning: test_report.pdf not found. Skipping archiving."
-                }
-            }
         }
 
         success {
@@ -106,39 +77,4 @@ pipeline {
             echo "-----------------------------------------"
         }
     }
-}
-
-// Function to generate PDF report
-def generatePDFReport() {
-    sh '''
-    python3 <<EOF
-import json
-from fpdf import FPDF
-
-try:
-    with open('results.json') as f:
-        results = json.load(f)
-except FileNotFoundError:
-    results = []
-
-pdf = FPDF()
-pdf.set_auto_page_break(auto=True, margin=15)
-pdf.add_page()
-pdf.set_font("Arial", size=12)
-
-pdf.cell(200, 10, "Hard Reboot Test Report", ln=True, align="C")
-pdf.ln(10)
-
-pdf.cell(40, 10, "Iteration", 1)
-pdf.cell(40, 10, "Status", 1)
-pdf.ln()
-
-for entry in results:
-    pdf.cell(40, 10, str(entry["iteration"]), 1)
-    pdf.cell(40, 10, entry["status"], 1)
-    pdf.ln()
-
-pdf.output("test_report.pdf")
-EOF
-    '''
 }
