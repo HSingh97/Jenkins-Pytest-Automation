@@ -83,11 +83,14 @@ pipeline {
             echo "-----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
-            try {
-                archiveArtifacts artifacts: 'test_report.pdf', fingerprint: true, onlyIfSuccessful: false
-                echo "Report archived successfully."
-            } catch (Exception e) {
-                echo "Failed to archive test_report.pdf: ${e.getMessage()}"
+            script {
+                def reportExists = fileExists('test_report.pdf')
+                if (reportExists) {
+                    archiveArtifacts artifacts: 'test_report.pdf', fingerprint: true, onlyIfSuccessful: false
+                    echo "Report archived successfully."
+                } else {
+                    echo "Warning: test_report.pdf not found. Skipping archiving."
+                }
             }
         }
 
