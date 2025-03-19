@@ -54,9 +54,26 @@ pipeline {
                     echo "----------------------------------------"
 
                      for (int i = 1; i <= rebootCount.toInteger() ; i++) {
-                        sh "pytest -v -s testCases/test_HardReboot_Teamlink.py::test_DyingGasp --local-ip '$localIP' --remote-ip '$remoteIP' --pdu-ip '$pduIP' --pdu-port '$pduPort' --reset-type '$reset_type_value' 2>&1"
-                        // sh "echo Iteration : ${i} 2>&1 | tee -a ${workspace}/SerialLogs_AP_${i}.log"
+                        def status = sh(script: """
+                            pytest -v -s testCases/test_HardReboot_Teamlink.py::test_DyingGasp \
+                            --local-ip '${params.LOCAL_IP}' \
+                            --remote-ip '${params.REMOTE_IP}' \
+                            --pdu-ip '${params.PDU_IP}' \
+                            --pdu-port '${params.PDU_PORT}' \
+                            --reset-type '${params.RESET_TYPE}' 2>&1 | tee output.log
+                        """, returnStatus: true)
+
+                        def result = (status == 0) ? "PASS" : "FAIL"
+                        results.add([iteration: i, status: result])
                     }
+                    writeJSON(file: 'results.json', json: results)
+                }
+            }
+        }
+        stage('Generate PDF Report') {
+            steps {
+                script {
+                    generatePDFReport()
                 }
             }
         }
@@ -80,4 +97,36 @@ pipeline {
             echo "-----------------------------------------"
         }
     }
+}
+
+def generatePDFReport() {
+    sh '''
+    python3 <<EOF
+import json
+from fpdf import FPDF
+
+with open('results.json') as f:
+    results = json.load(f)
+
+pdf = FPDF()
+pdf.set_auto_page_break(auto=True, margin=15)
+pdf.add_page()
+pdf.set_font("Arial", size=12)
+
+pdf.cell(200, 10, "Hard Reboot Test Report", ln=True, align="C")
+pdf.ln(10)
+
+pdf.cell(40, 10, "Iteration", 1)
+pdf.cell(40, 10, "Status", 1)
+pdf.ln()
+
+for entry in results:
+    pdf.cell(40, 10, str(entry["iteration"]), 1)
+    pdf.cell(40, 10, entry["status"], 1)
+    pdf.ln()
+
+pdf.output("test_report.pdf")
+EOF
+    '''
+    archiveArtifacts artifacts: 'test_report.pdf'
 }
