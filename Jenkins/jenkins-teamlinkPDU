@@ -83,7 +83,7 @@ pipeline {
             echo "-----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
-            archiveArtifacts artifacts: 'test_report.pdf'
+            archiveArtifacts artifacts: 'test_report.pdf', fingerprint: true, onlyIfSuccessful: false
         }
 
         success {
