@@ -11,3 +11,4 @@ apt-get install build-essential cargo
 pip3 install paramiko
 pip3 install pexpect
 pip3 install pytest pytest-html weasyprint
+pip3 install fpdf
