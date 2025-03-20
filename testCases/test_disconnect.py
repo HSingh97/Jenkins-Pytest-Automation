@@ -66,7 +66,10 @@ def test_Disconnect_Connect(driver, local_ip, remote_ip, model, radio):
 
     time.sleep(2)
     hp.clickMonitorSection()
-    hp.clickStatistics()
+    if radio == "Radio1":
+        hp.clickRadio1Statistics()
+    else:
+        hp.clickRadio2Statistics()
     time.sleep(1)
     uptime_output_1 = str(sp.getUptime())
     print("Link Uptime After Disconnection : {}".format(uptime_output_1))

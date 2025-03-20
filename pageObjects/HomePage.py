@@ -17,7 +17,7 @@ class HomePage:
     wirelessSection_LinkText = "Wireless"
     networkSection_LinkText = "Network"
     managementSection_LinkText = "Management"
-    monitorSection_LinkText = "Monitor"
+    monitorSection_xpath = "/html/body/header/div/div/div[1]/ul/li[5]/a"
 
     # ----------------------------- Sub - Sections -----------------------------------
     wireless_5Ghz_LinkText = "5 GHz Radio"
@@ -36,9 +36,9 @@ class HomePage:
     management_Services_LinkText = "Services"
     management_Upgrade_Reset_LinkText = "Upgrade / Reset"
 
-    monitor_Statistics_Radio1_LinkText = "Radio 1 Statistics"
-    monitor_Statistics_Radio2_LinkText = "Radio 2 Statistics"
-    monitor_Statistics_2_4_ghz_LinkText = "2.4 GHz Statistics"
+    monitor_Statistics_Radio1_xpath = "//*[@id='Monitor']/li[1]/a"
+    monitor_Statistics_Radio2_xpath = "//*[@id='Monitor']/li[2]/a"
+    monitor_Statistics_2_4_ghz_xpath = "//*[@id='Monitor']/li[3]/a"
     monitor_LANTable_LinkText = "LAN Table"
     monitor_Logs_LinkText = "Logs"
     monitor_liveTraffic_LinkText = "Live Traffic"
@@ -138,7 +138,7 @@ class HomePage:
 
     def clickMonitorSection(self):
         try:
-            elem = self.driver.find_element_by_link_text(self.monitorSection_LinkText)
+            elem = self.driver.find_element_by_xpath(self.monitorSection_xpath)
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
@@ -291,7 +291,7 @@ class HomePage:
 
     def clickRadio1Statistics(self):
         try:
-            elem = self.driver.find_element_by_link_text(self.monitor_Statistics_Radio1_LinkText)
+            elem = self.driver.find_element_by_xpath(self.monitor_Statistics_Radio1_xpath)
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
@@ -300,7 +300,7 @@ class HomePage:
 
     def clickRadio2Statistics(self):
         try:
-            elem = self.driver.find_element_by_link_text(self.monitor_Statistics_Radio2_LinkText)
+            elem = self.driver.find_element_by_xpath(self.monitor_Statistics_Radio2_xpath)
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
@@ -309,7 +309,7 @@ class HomePage:
 
     def click2_4GhzStatistics(self):
         try:
-            elem = self.driver.find_element_by_link_text(self.monitor_Statistics_2_4_ghz_LinkText)
+            elem = self.driver.find_element_by_xpath(self.monitor_Statistics_2_4_ghz_xpath)
             elem.click()
             time.sleep(1)
         except NoSuchElementException:

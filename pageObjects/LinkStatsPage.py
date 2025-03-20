@@ -6,17 +6,19 @@ class StatsPage:
     detailed_stats_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[2]"
 
     # ************************ Link Stats *************************************
-    macaddress_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[2]"
-    ipv4address_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[3]"
-    linkid_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[4]"
-    uptime_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[5]"
-    distance_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[6]"
-    localsignal_A1_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[7]"
-    localsignal_A2_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[8]"
-    remotesignal_A1_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[9]"
-    remotesignal_A2_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[10]"
-    txStats_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[11]"
-    rxStats_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[12]"
+    index_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[1]"
+    sysname_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[2]"
+    ipaddr_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[3]"
+    uptime_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[4]"
+    distance_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[5]"
+    localsnr_A1_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[6]"
+    localsnr_A2_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[7]"
+    remotesnr_A1_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[8]"
+    remotesnr_A2_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[9]"
+    txrate_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[10]"
+    rxrate_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[11]"
+    txStats_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[12]"
+    rxStats_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[13]"
 
 
     # ************************ Detailed Link Stats ******************************
@@ -45,6 +47,16 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.disconnect_xpath)
             elem.click()
             time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
+
+    def getIndex(self):
+        time.sleep(2)
+        try:
+            elem = self.driver.find_element_by_xpath(self.index_xpath)
+            output = elem.text
+            return output
         except NoSuchElementException:
             print("No Such Element Found")
             pass
