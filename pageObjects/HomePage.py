@@ -36,7 +36,9 @@ class HomePage:
     management_Services_LinkText = "Services"
     management_Upgrade_Reset_LinkText = "Upgrade / Reset"
 
-    monitor_Statistics_LinkText = "Statistics"
+    monitor_Statistics_Radio1_LinkText = "Radio 1 Statistics"
+    monitor_Statistics_Radio2_LinkText = "Radio 2 Statistics"
+    monitor_Statistics_2_4_ghz_LinkText = "2.4 GHz Statistics"
     monitor_LANTable_LinkText = "LAN Table"
     monitor_Logs_LinkText = "Logs"
     monitor_liveTraffic_LinkText = "Live Traffic"
@@ -287,14 +289,33 @@ class HomePage:
     # --------- Monitor ----------
 
 
-    def clickStatistics(self):
+    def clickRadio1Statistics(self):
         try:
-            elem = self.driver.find_element_by_link_text(self.monitor_Statistics_LinkText)
+            elem = self.driver.find_element_by_link_text(self.monitor_Statistics_Radio1_LinkText)
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
             print("No Such Element Found")
             pass
+
+    def clickRadio2Statistics(self):
+        try:
+            elem = self.driver.find_element_by_link_text(self.monitor_Statistics_Radio2_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
+
+    def click2_4GhzStatistics(self):
+        try:
+            elem = self.driver.find_element_by_link_text(self.monitor_Statistics_2_4_ghz_LinkText)
+            elem.click()
+            time.sleep(1)
+        except NoSuchElementException:
+            print("No Such Element Found")
+            pass
+
 
     def clickLANTable(self):
         try:
