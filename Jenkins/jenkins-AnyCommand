@@ -34,8 +34,8 @@ pipeline {
         stage('Disconnect & Connect') {
             steps {
                 script {
-                    def localIP = params['Local IP']
-                    def remoteIP = params['Remote IP']
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
                     def command = params['Command']
                     def ssh_username = params['SSH User']
                     def ssh_password = params['SSH Password']
