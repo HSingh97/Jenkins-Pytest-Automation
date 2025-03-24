@@ -16,8 +16,9 @@ def perform_operation(ip, username, password, cmd):
     channel.exec_command(command)
 
     if command.startswith("/etc/init.d"):
-        time.sleep(50)
+        time.sleep(60)
         print("Reloading Configuration")
     else:
-        time.sleep(30)
+        time.sleep(10)
+
     ssh_client.close()
