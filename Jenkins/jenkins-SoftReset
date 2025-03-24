@@ -31,18 +31,18 @@ pipeline {
                 }
             }
         }
-        stage('Command Execution') {
+        stage('Soft Reset') {
             steps {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
-                    def command = params['Command']
+                    def command = "/etc/init.d/network reload"
                     def ssh_username = params['SSH User']
                     def ssh_password = params['SSH Password']
                     def sleep_time = params['Sleep Time Between Iterations']
 
                     echo "----------------------------------------"
-                    echo "Executing Command"
+                    echo "Soft Resetting"
                     echo "----------------------------------------"
                     for (int i = 1; i <= Iterations.toInteger() ; i++) {
                         sh "pytest -v -s testCases/test_AnyCommand.py::test_command --local-ip '$localIP' --remote-ip '$remoteIP' --command '$command' --username '$ssh_username' --password '$ssh_password' --sleep '$sleep_time' 2>&1"
