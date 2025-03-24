@@ -11,6 +11,9 @@ def pytest_addoption(parser):
     parser.addoption("--reset-type", action="store", default="1", help="Reset Type")
     parser.addoption("--retain", action="store", default="Null", help="Retain Parameters")
     parser.addoption("--model", action="store", default="EOC655", help="Model")
+    parser.addoption("--command", action="store", default="Null", help="Command")
+    parser.addoption("--username", action="store", default="root", help="Username")
+    parser.addoption("--password", action="store", default="admin", help="Password")
 
 @pytest.fixture
 def radio(request):
@@ -51,3 +54,15 @@ def retain(request):
 @pytest.fixture
 def model(request):
     return request.config.getoption("--model")
+
+@pytest.fixture
+def command(request):
+    return request.config.getoption("--command")
+
+@pytest.fixture
+def username(request):
+    return request.config.getoption("--username")
+
+@pytest.fixture
+def password(request):
+    return request.config.getoption("--password")

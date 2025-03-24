@@ -1,0 +1,71 @@
+
+// Functions
+
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
+
+// Main Pipeline
+
+pipeline {
+    agent { node { label "${TARGET_STAND}"} }
+
+    stages {
+        stage('Prepare tests') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "--- TARGET STAND: ${TARGET_STAND}"
+                    echo "----------------------------------------"
+      	        }
+      	    }
+        }
+        stage('Install Python Dependencies') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "Installing Dependencies"
+                    echo "----------------------------------------"
+                    sh "sh utilities/requirements.txt"
+                }
+            }
+        }
+        stage('Disconnect & Connect') {
+            steps {
+                script {
+                    def localIP = params['Local IP']
+                    def remoteIP = params['Remote IP']
+                    def command = params['Command']
+
+                    echo "----------------------------------------"
+                    echo "Executing the Command"
+                    echo "----------------------------------------"
+                    for (int i = 1; i <= Iterations.toInteger() ; i++) {
+                        sh "pytest -v -s testCases/test_anyCommand.py::test_command --local-ip '$localIP' --remote-ip '$remoteIP' --command '$command' 2>&1"
+                    }
+
+                }
+            }
+        }
+    }
+    post {
+        always {
+            echo "-----------------------------------------"
+            echo 'Script Done!'
+            echo "-----------------------------------------"
+        }
+
+        success {
+            echo "-----------------------------------------"
+            echo 'Script Success'
+            echo "-----------------------------------------"
+        }
+
+        failure {
+            echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
+        }
+    }
+}
