@@ -20,7 +20,7 @@ class HomePage:
     monitorSection_xpath = "/html/body/header/div/div/div[1]/ul/li[5]/a"
 
     # ----------------------------- Sub - Sections -----------------------------------
-    wireless_5Ghz_LinkText = "5 GHz Radio"
+    wireless_Radio1_xpath = "/html/body/header/div/div/div[1]/ul/li[2]/a"
     wireless_2_4Ghz_LinkText = "2.4 GHz Radio"
     wireless_qos_LinkText = "QoS"
 
@@ -160,9 +160,9 @@ class HomePage:
     # --------- Wireless ----------
 
 
-    def clickWireless5Ghz(self):
+    def clickWirelessRadio1(self):
         try:
-            elem = self.driver.find_element_by_link_text(self.wireless_5Ghz_LinkText)
+            elem = self.driver.find_element_by_link_text(self.wireless_Radio1_xpath)
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
