@@ -15,7 +15,7 @@ def perform_operation(ip, username, password, cmd):
     channel = transport.open_session()
     channel.exec_command(command)
 
-    if command == "/etc/init.d *":
+    if command == "/etc/init.d network reload":
         time.sleep(50)
     else:
         time.sleep(10)
