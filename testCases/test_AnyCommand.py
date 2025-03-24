@@ -12,7 +12,7 @@ from preMadeFunctions import pingFunction
 from preMadeFunctions import execute_ssh_command
 
 
-def test_command(local_ip, remote_ip, command, username, password):
+def test_command(local_ip, remote_ip, command, username, password, sleep):
 
     print(f"Local IP Address: {local_ip}")
     print(f"Remote IP Address: {remote_ip}")
@@ -21,6 +21,7 @@ def test_command(local_ip, remote_ip, command, username, password):
     print(f"Password: {password}")
 
     execute_ssh_command.perform_operation(local_ip, username, password, command)
+    time.sleep(sleep)
 
     if pingFunction.check_access(local_ip):
         if pingFunction.check_access(remote_ip):

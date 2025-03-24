@@ -14,6 +14,7 @@ def pytest_addoption(parser):
     parser.addoption("--command", action="store", default="Null", help="Command")
     parser.addoption("--username", action="store", default="root", help="Username")
     parser.addoption("--password", action="store", default="admin", help="Password")
+    parser.addoption("--sleep", action="store", default="30", help="Sleep")
 
 @pytest.fixture
 def radio(request):
@@ -66,3 +67,7 @@ def username(request):
 @pytest.fixture
 def password(request):
     return request.config.getoption("--password")
+
+@pytest.fixture
+def sleep(request):
+    return request.config.getoption("--sleep")

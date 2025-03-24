@@ -39,12 +39,19 @@ pipeline {
                     def command = params['Command']
                     def ssh_username = params['SSH User']
                     def ssh_password = params['SSH Password']
+                    def sleep_time = params['Sleep Time Between Iterations']
 
                     echo "----------------------------------------"
                     echo "Executing Command"
                     echo "----------------------------------------"
                     for (int i = 1; i <= Iterations.toInteger() ; i++) {
-                        sh "pytest -v -s testCases/test_AnyCommand.py::test_command --local-ip '$localIP' --remote-ip '$remoteIP' --command '$command' --username '$ssh_username' --password '$ssh_password' 2>&1"
+                        sh "pytest -v -s testCases/test_AnyCommand.py::test_command
+                        --local-ip '$localIP'
+                        --remote-ip '$remoteIP'
+                        --command '$command'
+                        --username '$ssh_username'
+                        --password '$ssh_password'
+                        --sleep_time '$sleep_time' 2>&1"
                     }
 
                 }
