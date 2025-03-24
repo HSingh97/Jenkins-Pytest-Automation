@@ -37,12 +37,14 @@ pipeline {
                     def localIP = params['Local IP']
                     def remoteIP = params['Remote IP']
                     def command = params['Command']
+                    def ssh_username = params['SSH User']
+                    def ssh_password = params['SSH Password']
 
                     echo "----------------------------------------"
-                    echo "Executing the Command"
+                    echo "Executing Command"
                     echo "----------------------------------------"
                     for (int i = 1; i <= Iterations.toInteger() ; i++) {
-                        sh "pytest -v -s testCases/test_anyCommand.py::test_command --local-ip '$localIP' --remote-ip '$remoteIP' --command '$command' 2>&1"
+                        sh "pytest -v -s testCases/test_anyCommand.py::test_command --local-ip '$localIP' --remote-ip '$remoteIP' --command '$command' --username '$ssh_username' --password '$ssh_password' 2>&1"
                     }
 
                 }
