@@ -15,5 +15,8 @@ def perform_operation(ip, username, password, cmd):
     channel = transport.open_session()
     channel.exec_command(command)
 
-    time.sleep(2)
+    if command == "/etc/init.d *":
+        time.sleep(50)
+    else:
+        time.sleep(10)
     ssh_client.close()
