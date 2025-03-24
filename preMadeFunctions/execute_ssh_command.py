@@ -15,8 +15,9 @@ def perform_operation(ip, username, password, cmd):
     channel = transport.open_session()
     channel.exec_command(command)
 
-    if command == "/etc/init.d network reload":
+    if command.startswith("/etc/init.d"):
         time.sleep(50)
+        print("Reloading Configuration")
     else:
-        time.sleep(10)
+        time.sleep(30)
     ssh_client.close()

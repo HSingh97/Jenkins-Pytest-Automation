@@ -21,6 +21,7 @@ def test_command(local_ip, remote_ip, command, username, password, sleep):
     print(f"Password: {password}")
 
     execute_ssh_command.perform_operation(local_ip, username, password, command)
+    sleep=int(sleep)
     time.sleep(sleep)
 
     if pingFunction.check_access(local_ip):
