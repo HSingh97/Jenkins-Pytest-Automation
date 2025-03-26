@@ -59,7 +59,7 @@ pipeline {
             echo 'Script Done!'
             echo "-----------------------------------------"
             script {
-                            def build = currentBuild.rawBuild
+                def buildCauses = currentBuild.getBuildCauses()
                 def cause = build.getCause(hudson.model.Cause.UserIdCause)
                 def buildUserId = cause ? cause.getUserId() : 'unknown'
                 def buildUserName = cause ? cause.getUserName() : 'Unknown User'
