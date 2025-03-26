@@ -59,8 +59,9 @@ pipeline {
             echo 'Script Done!'
             echo "-----------------------------------------"
             script {
-                def build = currentBuild.getBuildCauses()
-                def cause = build.getCause(hudson.model.Cause.UserIdCause)
+                def causes = currentBuild.getBuildCauses()
+                def cause = causes.find { it instanceof hudson.model.Cause.UserIdCause } // Get first matching cause
+
                 def buildUserId = cause ? cause.getUserId() : 'unknown'
                 def buildUserName = cause ? cause.getUserName() : 'Unknown User'
 
@@ -82,6 +83,7 @@ pipeline {
                     body: "Build ${currentBuild.fullDisplayName} finished with status: ${currentBuild.currentResult}",
                     to: userEmail
                 )
+
             }
         }
 
