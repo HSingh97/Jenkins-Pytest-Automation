@@ -1,4 +1,3 @@
-import hudson.tasks.Mailer
 import jenkins.model.Jenkins
 
 // Functions
@@ -69,18 +68,14 @@ pipeline {
 
                 echo "Build started by: ${buildUserName} (${buildUserId})"
 
-                // Fetch user's email from Jenkins user database
-                // Fetch user's email from Jenkins user database
-                def user = Jenkins.instance.getUser(buildUserId)
+                // Define a mapping of user IDs to emails (update as needed)
+                def userEmails = [
+                    "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@mahesh.com"
+                ]
 
-                // Ensure user exists before getting the email
-                def userEmail = user?.getProperty(Mailer.UserProperty)?.getAddress()
-
-
-                // If no email is found, use the default one
-                if (!userEmail) {
-                    userEmail = 'harmanjot.singh@senao.com'
-                }
+                // Get email from predefined mapping, else use default
+                def userEmail = userEmails.get(buildUserId, "harmanjot.singh@senao.com")
 
                 echo "Build started by: ${buildUserName} (${buildUserId})"
                 echo "Sending email to: ${userEmail}"
