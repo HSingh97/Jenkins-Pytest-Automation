@@ -77,15 +77,13 @@ pipeline {
                 // Get email from predefined mapping, else use default
                 def userEmail = userEmails.get(buildUserId, "harmanjot.singh@senao.com")
 
-                echo "Build started by: ${buildUserName} (${buildUserId})"
                 echo "Sending email to: ${userEmail}"
 
                 // Send email notification
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName}",
                     body: "Build ${currentBuild.fullDisplayName} finished with status: ${currentBuild.currentResult}",
-                    to: userEmail,
-                    debug: true
+                    to: userEmail
                 )
 
             }
