@@ -81,8 +81,8 @@ pipeline {
 
                 // Send email notification
                 emailext(
-                    subject: "Jenkins Build: ${currentBuild.fullDisplayName}",
-                    body: "Build ${currentBuild.fullDisplayName} finished with status: ${currentBuild.currentResult}",
+                    //subject: "Jenkins Build: ${currentBuild.fullDisplayName}",
+                    //body: "Build ${currentBuild.fullDisplayName} finished with status: ${currentBuild.currentResult}",
                     to: userEmail
                 )
 
