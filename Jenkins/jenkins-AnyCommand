@@ -67,14 +67,6 @@ pipeline {
 
                 echo "Build started by: ${buildUserName} (${buildUserId})"
 
-                // Find the UserIdCause in the list
-                def userCause = causes.find { it._class == 'hudson.model.Cause$UserIdCause' }
-
-                def buildUserId = userCause?.userId ?: 'unknown'
-                def buildUserName = userCause?.userName ?: 'Unknown User'
-
-                echo "Build started by: ${buildUserName} (${buildUserId})"
-
                 // Fetch user's email from Jenkins user database
                 def user = jenkins.model.Jenkins.instance.getUser(buildUserId)
                 def userEmail = user?.getProperty(hudson.tasks.Mailer.UserProperty)?.getAddress()
