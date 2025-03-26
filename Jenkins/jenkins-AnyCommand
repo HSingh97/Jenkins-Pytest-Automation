@@ -59,13 +59,24 @@ pipeline {
             echo 'Script Done!'
             echo "-----------------------------------------"
             script {
-                // Get the user who started the build
-                def buildUser = env.BUILD_USER_ID ?: 'unknown'
+                            def build = currentBuild.rawBuild
+                def cause = build.getCause(hudson.model.Cause.UserIdCause)
+                def buildUserId = cause ? cause.getUserId() : 'unknown'
+                def buildUserName = cause ? cause.getUserName() : 'Unknown User'
 
-                // Set a default email if user email is not found
-                def userEmail = buildUser == 'unknown' ? 'default@example.com' : "harmanjot.singh@senao.com"
+                // Fetch user's email from Jenkins user database
+                def user = jenkins.model.Jenkins.instance.getUser(buildUserId)
+                def userEmail = user?.getProperty(hudson.tasks.Mailer.UserProperty)?.getAddress()
 
-                // Send email
+                // If no email is found, use the default one
+                if (!userEmail) {
+                    userEmail = 'harmanjot.singh@senao.com'
+                }
+
+                echo "Build started by: ${buildUserName} (${buildUserId})"
+                echo "Sending email to: ${userEmail}"
+
+                // Send email notification
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName}",
                     body: "Build ${currentBuild.fullDisplayName} finished with status: ${currentBuild.currentResult}",
