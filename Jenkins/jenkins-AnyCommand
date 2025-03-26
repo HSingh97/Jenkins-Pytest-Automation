@@ -69,7 +69,7 @@ pipeline {
 
                 // Fetch user's email from Jenkins user database
                 def user = jenkins.model.Jenkins.instance.getUser(buildUserId)
-                def userEmail = def email = user.getProperty('hudson.tasks.Mailer$UserProperty')?.address
+                def userEmail = user.getProperty('hudson.tasks.Mailer$UserProperty')?.address
 
                 // If no email is found, use the default one
                 if (!userEmail) {
