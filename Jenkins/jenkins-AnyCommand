@@ -62,10 +62,11 @@ pipeline {
                 def causes = currentBuild.getBuildCauses()
                 echo "Available build causes: ${causes}"
 
-                def cause = causes.find { it instanceof hudson.model.Cause.UserIdCause }
+                // Find the UserIdCause in the list
+                def userCause = causes.find { it._class == 'hudson.model.Cause$UserIdCause' }
 
-                def buildUserId = cause ? cause.getUserId() : 'unknown'
-                def buildUserName = cause ? cause.getUserName() : 'Unknown User'
+                def buildUserId = userCause?.userId ?: 'unknown'
+                def buildUserName = userCause?.userName ?: 'Unknown User'
 
                 echo "Build started by: ${buildUserName} (${buildUserId})"
 
