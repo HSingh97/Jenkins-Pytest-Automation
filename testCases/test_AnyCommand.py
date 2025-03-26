@@ -10,9 +10,10 @@ from testCases.configsetup import setup
 from utilities.serial_Logging import *
 from preMadeFunctions import pingFunction
 from preMadeFunctions import execute_ssh_command
+from preMadeFunctions import fetch_ssh_values
 
 
-def test_command(local_ip, remote_ip, command, username, password, sleep):
+def test_command(local_ip, remote_ip, command, username, password, sleep, check_bw, check_rates):
 
     print(f"Local IP Address: {local_ip}")
     print(f"Remote IP Address: {remote_ip}")
@@ -27,6 +28,25 @@ def test_command(local_ip, remote_ip, command, username, password, sleep):
     if pingFunction.check_access(local_ip):
         if pingFunction.check_access(remote_ip):
             print("Able to Access Remote Device ")
+
+            if check_bw:
+                local_htmode = fetch_ssh_values.fetch_htmode(local_ip, 'ath2')
+                remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, 'ath2')
+
+                if local_htmode == remote_htmode:
+                    print("HTMODE matching\n")
+                else:
+                    print("HTMODE not matching\n")
+
+            if check_rates:
+                local_rate = fetch_ssh_values.fetch_htmode(local_ip, 'ath2')
+                remote_rate = fetch_ssh_values.fetch_htmode(remote_ip, 'ath2')
+
+                if local_rate == remote_rate:
+                    print("Data Rate matching\n")
+                else:
+                    print("Data Rate not matching\n")
+
             assert True
         else:
             print("Unable to access Remote Device")

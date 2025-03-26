@@ -10,7 +10,7 @@ from testCases.configsetup import setup
 from utilities.serial_Logging import *
 from preMadeFunctions import pingFunction
 from preMadeFunctions import get_linkstats
-from preMadeFunctions import get_channeList
+from preMadeFunctions import fetch_ssh_values
 from preMadeFunctions import set_channel_snmp
 from preMadeFunctions import set_bandwidth_snmp
 from preMadeFunctions import set_country_snmp
@@ -48,7 +48,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
         print("No Radio Selected")
         assert False
 
-    channel_list = get_channeList.get_channel_list(local_ip, radio_ind, country_code, bandwidth)
+    channel_list = fetch_ssh_values.fetch_channel_list(local_ip, radio_ind, country_code, bandwidth)
     time.sleep(2)
 
     print("\nChannels available for current selection : {}".format(channel_list))
