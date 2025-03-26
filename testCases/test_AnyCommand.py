@@ -33,6 +33,11 @@ def test_command(local_ip, remote_ip, command, username, password, sleep, check_
                 local_htmode = fetch_ssh_values.fetch_htmode(local_ip, 'ath2')
                 remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, 'ath2')
 
+                print("@@@@@@@@@@@@@@@@@@@@@@@@@@@\n")
+                print("Local HTMode  : {}\n".format(local_htmode))
+                print("Remote HTMode : {}\n".format(remote_htmode))
+                print("@@@@@@@@@@@@@@@@@@@@@@@@@@@\n")
+
                 if local_htmode == remote_htmode:
                     print("HTMODE matching\n")
                 else:

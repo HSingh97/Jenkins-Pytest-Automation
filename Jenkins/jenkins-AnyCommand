@@ -58,6 +58,28 @@ pipeline {
             echo "-----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
+            script {
+                // Get the user who started the build
+                def buildUser = currentBuild.rawBuild.getCause(hudson.model.Cause$UserIdCause)
+                def userEmail = ""
+
+                if (buildUser) {
+                    def userId = buildUser.getUserId()
+                    def user = jenkins.model.Jenkins.instance.securityRealm.allUsers.find { it.id == userId }
+                    userEmail = user?.getProperty(hudson.tasks.Mailer.UserProperty)?.getAddress() ?: ""
+                }
+
+                // Send email only if a valid email is found
+                if (userEmail) {
+                    emailext (
+                        subject: "Jenkins Build: ${currentBuild.fullDisplayName}",
+                        body: "Build ${currentBuild.fullDisplayName} finished with status: ${currentBuild.currentResult}",
+                        to: userEmail
+                    )
+                } else {
+                    echo "No valid email found for the user who triggered the build."
+                }
+            }
         }
 
         success {
