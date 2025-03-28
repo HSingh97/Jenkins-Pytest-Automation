@@ -59,20 +59,14 @@ pipeline {
                             --json-report --json-report-file=iteration_result.json 2>&1
                         """, returnStdout: true).trim()
 
-                        def iterationResult = readJSON file: 'iteration_result.json'
-                        def allResults = readJSON file: 'iteration_results.json'
+                        def iterationResults = readJSON file: 'iteration_results.json'
 
-                        iterationResult.tests.each { test ->
-                            def iterationData = [
-                                iteration: i,
-                                name: test.nodeid,
-                                status: test.outcome,
-                                logs: pytest_output
-                            ]
-                            allResults.add(iterationData)
+                        iterationResults.iterations.each { test ->
+                            test.iteration = i
+                            test.logs = pytest_output
                         }
 
-                        writeJSON file: 'iteration_results.json', json: allResults
+                        writeJSON file: 'iteration_results.json', json: iterationResults
                     }
                 }
             }
