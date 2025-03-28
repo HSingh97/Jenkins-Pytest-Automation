@@ -4,7 +4,7 @@ import pytest
 import json
 from preMadeFunctions import pingFunction, execute_ssh_command, fetch_ssh_values
 
-def test_command(local_ip, remote_ip, command, username, password, sleep, check_bw, check_rates, request):
+def test_command(local_ip, remote_ip, command, username, password, sleep, check_bw, check_rates):
     """
     Executes a command via SSH, checks connectivity, and logs results to a JSON report.
     """
@@ -87,17 +87,26 @@ def test_command(local_ip, remote_ip, command, username, password, sleep, check_
     else:
         print("Unable to access Local Device")
 
-    # Append results to JSON report
     json_report_file = "iteration_results.json"
 
     try:
         with open(json_report_file, "r") as f:
             json_data = json.load(f)
+
+            # Ensure the loaded data is a dictionary with an "iterations" key
+            if not isinstance(json_data, dict):
+                json_data = {"iterations": json_data}  # Convert list to dictionary format
+
+            if "iterations" not in json_data:
+                json_data["iterations"] = []  # Ensure key exists
+
     except (FileNotFoundError, json.JSONDecodeError):
         json_data = {"iterations": []}  # Initialize if empty
 
+    # Append new test results
     json_data["iterations"].append(test_iteration_result)
 
+    # Write back to the JSON file
     with open(json_report_file, "w") as f:
         json.dump(json_data, f, indent=4)
 
@@ -105,3 +114,10 @@ def test_command(local_ip, remote_ip, command, username, password, sleep, check_
 
     # Assert test result
     assert test_iteration_result["status"] == "PASS"
+
+# Ignore Warnings
+def warn(*args, **kwargs):
+    pass
+
+
+warnings.warn = warn
