@@ -178,7 +178,7 @@ pipeline {
                         </html>
                     """,
                     to: userEmail,
-                    mimeType: 'text/html'
+                    mimeType: 'text/html',
                     attachmentsPattern: 'report.html'  // Only attach, do not embed
                 )
             }
