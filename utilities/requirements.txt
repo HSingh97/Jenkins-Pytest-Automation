@@ -12,3 +12,4 @@ pip3 install paramiko
 pip3 install pexpect
 pip3 install pytest pytest-html weasyprint
 pip install pytest-html
+pip install pytest-json-report
