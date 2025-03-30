@@ -22,7 +22,7 @@ pipeline {
       	        }
       	    }
         }
-        stage('Install Dependencies') {
+        stage('Install Python Dependencies') {
             steps {
                 script {
                     echo "----------------------------------------"
@@ -32,40 +32,99 @@ pipeline {
                 }
             }
         }
-        stage('Access and Login') {
+        stage('Command Execution') {
             steps {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
+                    def command = params['Command']
+                    def ssh_username = params['SSH User']
+                    def ssh_password = params['SSH Password']
+                    def sleep_time = params['Sleep Time Between Iterations']
+                    def bw_check = params['Check Bandwidth']
+                    def datarate_check = params['Check Data Rate']
 
-                    echo "Local IP Address: ${localIP}"
-                    echo "Remote IP Address: ${remoteIP}"
+                    echo "----------------------------------------"
+                    echo "Executing Command"
+                    echo "----------------------------------------"
 
-                    sh "pytest -v -s testCases/test_login.py::test_HomePageTitle --local-ip '$localIP' --remote-ip '$remoteIP'"
-                    }
-                }
-        }
-        stage('Reboot') {
-            steps {
-                script {
-                    sh "mkdir -p artifacts"
+                    sh "echo [] > iteration_results.json"  // Initialize JSON array
 
-                    def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
+                    for (int i = 1; i <= Iterations.toInteger(); i++) {
+                        def pytest_output = sh(script: """
+                            pytest -v -s testCases/test_AnyCommand.py::test_command \
+                            --local-ip '$localIP' --remote-ip '$remoteIP' --command '$command' \
+                            --username '$ssh_username' --password '$ssh_password' --sleep '$sleep_time' \
+                            --check_rate '$datarate_check' --check_bw '$bw_check' \
+                            --json-report --json-report-file=iteration_result.json 2>&1
+                        """, returnStdout: true).trim()
 
-                    echo "Local IP Address: ${localIP}"
-                    echo "Remote IP Address: ${remoteIP}"
+                        def iterationResults = readJSON file: 'iteration_results.json'
 
-                    for (int i = 1; i <= REBOOT_COUNT.toInteger() ; i++) {
-                        sh "pytest -v -s testCases/test_reboot.py::test_Reboot --local-ip '$localIP' --remote-ip '$remoteIP' 2>&1"
-                        // sh "echo Iteration : ${i} 2>&1 | tee -a ${workspace}/SerialLogs_AP_${i}.log"
+                        iterationResults.iterations.each { test ->
+                            test.iteration = i
+                            test.logs = pytest_output
+                        }
+
+                        writeJSON file: 'iteration_results.json', json: iterationResults
                     }
                 }
             }
         }
+        stage('Generate Report') {
+            steps {
+                script {
+                    def jsonReport = readJSON file: 'iteration_results.json'
+                    def buildParams = [
+                        "Local IP Address": params['Local IP Address'],
+                        "Remote IP Address": params['Remote IP Address'],
+                        "Command": params['Command'],
+                        "SSH User": params['SSH User'],
+                        "Sleep Time": params['Sleep Time Between Iterations'],
+                        "Check Bandwidth": params['Check Bandwidth'],
+                        "Check Data Rate": params['Check Data Rate']
+                    ]
+
+                    def htmlContent = """
+                        <html>
+                        <head><title>Test Report</title></head>
+                        <body>
+                        <h2>Build Parameters</h2>
+                        <table border="1">
+                        ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
+                        </table>
+                        <h2>Iteration Results</h2>
+                        <table border="1">
+                        <tr><th>Iteration</th><th>Test Case</th><th>Status</th></tr>
+                    """
+
+                    jsonReport.each { result ->
+                        def status = result.status == "passed" ? "✅ PASS" : "❌ FAIL"
+                        htmlContent += "<tr><td>${result.iteration}</td><td>${result.name}</td><td>${status}</td></tr>"
+                    }
+
+                    htmlContent += """
+                        </table>
+                        </body></html>
+                    """
+
+                    writeFile file: 'report.html', text: htmlContent
+                }
+            }
+        }
+
+
     }
     post {
         always {
+            publishHTML (target: [
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: '.',
+                reportFiles: 'report.html',
+                reportName: 'Test Report'
+            ])
             echo "-----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
@@ -113,7 +172,8 @@ pipeline {
                         </html>
                     """,
                     to: userEmail,
-                    mimeType: 'text/html'
+                    mimeType: 'text/html',
+                    attachmentsPattern: 'report.html'  // Only attach, do not embed
                 )
             }
         }

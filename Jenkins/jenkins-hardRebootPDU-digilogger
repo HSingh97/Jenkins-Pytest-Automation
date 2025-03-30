@@ -25,27 +25,34 @@ pipeline {
             steps {
                 script {
                     echo "----------------------------------------"
-                    echo "Installing Dependencies"
+                    echo "PYTEST Selected, Installing Dependencies"
                     echo "----------------------------------------"
                     sh "sh utilities/requirements.txt"
                 }
             }
         }
-        stage('Disconnect & Connect') {
+        stage('Hard Reboot') {
             steps {
                 script {
-                    def localIP = params['Local IP']
-                    def remoteIP = params['Remote IP']
-                    def model_name = params['Model']
-                    def selected_radio = params['Select Radio']
+                    echo "----------------------------------------"
+                    echo "Starting Hard Reboot Testing"
+                    echo "----------------------------------------"
 
-                    echo "----------------------------------------"
-                    echo "Disconnecting"
-                    echo "----------------------------------------"
-                    for (int i = 1; i <= Iterations.toInteger() ; i++) {
-                        sh "pytest -v -s testCases/test_disconnect.py::test_Disconnect_Connect --local-ip '$localIP' --remote-ip '$remoteIP' --model '$model_name' --radio '$selected_radio' 2>&1"
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
+
+                    def pdu_ip = params['PDU IP Address']
+                    def pdu_port = params['PDU Port']
+
+                    echo "Local IP Address: ${localIP}"
+                    echo "Remote IP Address: ${remoteIP}"
+                    echo "PDU IP Address: ${pdu_ip}"
+                    echo "PDU Port: ${pdu_port}"
+
+                    for (int i = 1; i <= params."Reboot Count".toInteger() ; i++) {
+                        echo "************** Iteration : ${i} **************"
+                        sh "pytest -v -s testCases/test_HardReboot_DigiLogger.py::test_hardreboot --local-ip '$localIP' --remote-ip '$remoteIP' --pdu-ip '$pdu_ip' --pdu-port '$pdu_port' 2>&1"
                     }
-
                 }
             }
         }

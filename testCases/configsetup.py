@@ -19,7 +19,7 @@ def setup():
 
     else:
         # if other OS
-        service = Service(ChromeDriverManager().install())
+        service = Service(ChromeDriverManager().install())  
 
     driver = webdriver.Chrome(
         service=service,

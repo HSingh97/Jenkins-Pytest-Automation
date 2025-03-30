@@ -25,40 +25,27 @@ pipeline {
             steps {
                 script {
                     echo "----------------------------------------"
-                    echo " Installing Dependencies"
+                    echo "Installing Dependencies"
                     echo "----------------------------------------"
                     sh "sh utilities/requirements.txt"
                 }
             }
         }
-        stage('Factory Reset') {
+        stage('Soft Reset') {
             steps {
                 script {
                     def localIP = params['Local IP Address']
-                    def model = params['Model']
+                    def remoteIP = params['Remote IP Address']
+                    def command = "/etc/init.d/network reload"
+                    def ssh_username = params['SSH User']
+                    def ssh_password = params['SSH Password']
+                    def sleep_time = params['Sleep Time Between Iterations']
 
-                    def retain = params.Retain.split(',')
-
-                    def retainList = retain.join(' ')
                     echo "----------------------------------------"
-                    echo "${retain}"
-                    echo "Retain values: $retainList"
+                    echo "Soft Resetting"
                     echo "----------------------------------------"
-
-                    sh "mkdir -p artifacts"
                     for (int i = 1; i <= Iterations.toInteger() ; i++) {
-                        echo "----------------------------------------"
-                        echo "Configuring Parameters"
-                        echo "----------------------------------------"
-                        sh "pytest -v -s testCases/test_factoryReset.py::test_configureparams --local-ip '$localIP' --retain '$retainList' --model '$model' 2>&1"
-                        echo "----------------------------------------"
-                        echo "Factory Resetting the Device"
-                        echo "----------------------------------------"
-                        sh "pytest -v -s testCases/test_factoryReset.py::test_FactoryReset --local-ip '$localIP' --retain '$retainList' --model '$model' 2>&1"
-                        echo "----------------------------------------"
-                        echo "Verifying the Reset"
-                        echo "----------------------------------------"
-                        sh "pytest -v -s testCases/test_factoryReset.py::test_verifyparams --retain '$retainList' --model '$model' 2>&1"
+                        sh "pytest -v -s testCases/test_AnyCommand.py::test_command --local-ip '$localIP' --remote-ip '$remoteIP' --command '$command' --username '$ssh_username' --password '$ssh_password' --sleep '$sleep_time' 2>&1"
                     }
                 }
             }

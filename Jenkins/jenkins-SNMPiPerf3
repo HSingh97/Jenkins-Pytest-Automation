@@ -1,0 +1,88 @@
+// Functions
+
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
+
+// Main Pipeline
+
+pipeline {
+    agent { node { label "${TARGET_STAND}"} }
+
+    stages {
+        stage('Prepare tests') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "---> TARGET STAND: ${TARGET_STAND} "
+                    echo "----------------------------------------"
+      	        }
+      	    }
+        }
+        stage('Install Dependencies') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "         Installing Dependencies"
+                    echo "----------------------------------------"
+                    sh "sh utilities/requirements.txt"
+                }
+            }
+        }
+        stage('Channel Testing') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "Starting iPerf3 Testing"
+                    echo "----------------------------------------"
+                    sh "mkdir -p artifacts"
+
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
+                    def selectedradio = params.Radio
+                    def remotePClocalIP = params['Remote PC Ethernet IP']
+                    def remotePCinternetIP = params['Remote PC Internet IP']
+                    def remotePCName = params['Remote PC Name']
+                    def remotePCPassword = params['Remote PC Password']
+
+                    echo "Local DUT IP Address: ${localIP}"
+                    echo "Selected Radio: ${selectedradio}"
+                    echo "Remote PC Name: ${remotePCName}"
+                    echo "Remote PC Password: ${remotePCPassword}"
+                    echo "Remote DUT IP Address: ${remoteIP}"
+                    echo "Remote PC Ethernet IP Address: ${remotePClocalIP}"
+                    echo "Remote PC Internet IP Address: ${remotePCinternetIP}"
+
+                    def bandwidths = params.Bandwidth.split(',')
+
+                    for (bandwidth in bandwidths) {
+                        echo "Country=${country}, Bandwidth=${bandwidth}"
+                        echo "-------- Started Channel Connectivity Test for ${selectedradio} with Bandwidth: ${bandwidth} and Country: ${country} --------- "
+                        sh "pytest -v -s testCases/test_LinkTestIperf.py::test_iperf --radio '$selectedradio' --local-ip '$localIP' --remote-ip '$remoteIP' --bandwidth '$bandwidth' --country '$country' 2>&1"
+                        echo "-------- Channel Connectivity Test completed for ${selectedradio} with Bandwidth: ${bandwidth} and Country: ${country} --------- "
+                    }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            echo "-----------------------------------------"
+            echo 'Script Done!'
+            echo "-----------------------------------------"
+        }
+
+        success {
+            echo "-----------------------------------------"
+            echo 'Script Success'
+            echo "-----------------------------------------"
+        }
+
+        failure {
+            echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
+        }
+    }
+}
