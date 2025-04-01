@@ -60,6 +60,9 @@ pipeline {
                         """, returnStdout: true).trim()
 
                         def iterationResults = readJSON file: 'iteration_results.json'
+                        if (!iterationResults.containsKey("iterations")) {
+                            iterationResults["iterations"] = []
+                        }
 
                         iterationResults.iterations.each { test ->
                             test.iteration = i
@@ -67,6 +70,8 @@ pipeline {
                         }
 
                         writeJSON file: 'iteration_results.json', json: iterationResults
+
+
                     }
                 }
             }
@@ -86,27 +91,68 @@ pipeline {
                     ]
 
                     def htmlContent = """
-                        <html>
-                        <head><title>Test Report</title></head>
-                        <body>
+                    <html>
+                    <head>
+                        <title>Test Report</title>
+                        <style>
+                            body {
+                                font-family: Arial, sans-serif;
+                                margin: 20px;
+                            }
+                            h2 {
+                                color: #2c3e50;
+                            }
+                            table {
+                                width: 100%;
+                                border-collapse: collapse;
+                                margin-top: 15px;
+                            }
+                            table, th, td {
+                                border: 1px solid #bdc3c7;
+                            }
+                            th, td {
+                                padding: 10px;
+                                text-align: left;
+                            }
+                            th {
+                                background-color: #34495e;
+                                color: white;
+                            }
+                            tr:nth-child(even) {
+                                background-color: #f2f2f2;
+                            }
+                            .pass {
+                                color: green;
+                                font-weight: bold;
+                            }
+                            .fail {
+                                color: red;
+                                font-weight: bold;
+                            }
+                        </style>
+                    </head>
+                    <body>
                         <h2>Build Parameters</h2>
-                        <table border="1">
-                        ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
+                        <table>
+                            ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
                         </table>
+
                         <h2>Iteration Results</h2>
-                        <table border="1">
-                        <tr><th>Iteration</th><th>Test Case</th><th>Status</th></tr>
+                        <table>
+                            <tr><th>Iteration</th><th>Test Case</th><th>Status</th></tr>
                     """
 
-                    jsonReport.each { result ->
-                        def status = result.status == "passed" ? "✅ PASS" : "❌ FAIL"
-                        htmlContent += "<tr><td>${result.iteration}</td><td>${result.name}</td><td>${status}</td></tr>"
+                    jsonReport.iterations.each { result ->
+                        def statusLabel = result.status == "PASS" ? "<span class='pass'>✅ PASS</span>" : "<span class='fail'>❌ FAIL</span>"
+                        htmlContent += "<tr><td>${result.iteration}</td><td>${result.test}</td><td>${statusLabel}</td></tr>"
                     }
 
                     htmlContent += """
                         </table>
-                        </body></html>
+                    </body>
+                    </html>
                     """
+
 
                     writeFile file: 'report.html', text: htmlContent
                 }
