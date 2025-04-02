@@ -148,13 +148,45 @@ pipeline {
                         def statusLabel = result.status == "PASS" ? "<span class='pass'>✅ PASS</span>" : "<span class='fail'>❌ FAIL</span>"
                         htmlContent += "<tr><td>${result.iteration}</td><td>${result.test}</td><td>${statusLabel}</td></tr>"
                     }
+                    htmlContent += "</table>"
+
+                    if (params['Check Bandwidth'].toBoolean()) {
+                        htmlContent += """
+                            <h2>HT Mode Comparison</h2>
+                            <table>
+                                <tr>
+                                    <th>Iteration</th>
+                                    <th>Local HT Mode</th>
+                                    <th>Remote HT Mode</th>
+                                    <th>Match</th>
+                                </tr>
+                        """
+
+                        jsonReport.iterations.each { result ->
+                            def localHT = result["HT Mode"]?.Local ?: "N/A"
+                            def remoteHT = result["HT Mode"]?.Remote ?: "N/A"
+                            def match = result["HT Mode"]?.Match != null
+                                ? (result["HT Mode"].Match ? "<span class='pass'>✔️ Yes</span>" : "<span class='fail'>❌ No</span>")
+                                : "N/A"
+
+                            htmlContent += """
+                                <tr>
+                                    <td>${result.iteration}</td>
+                                    <td>${localHT}</td>
+                                    <td>${remoteHT}</td>
+                                    <td>${match}</td>
+                                </tr>
+                            """
+                        }
+
+                        htmlContent += "</table>"
+                    }
 
                     htmlContent += """
                         </table>
                     </body>
                     </html>
                     """
-
 
                     writeFile file: 'report.html', text: htmlContent
                 }
