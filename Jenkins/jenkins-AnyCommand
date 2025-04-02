@@ -60,16 +60,18 @@ pipeline {
                         """, returnStdout: true).trim()
 
                         def iterationResults = readJSON file: 'iteration_results.json'
-                        if (!iterationResults.containsKey("iterations")) {
-                            iterationResults["iterations"] = []
-                        }
 
-                        iterationResults.iterations.each { test ->
+                        def newTests = iterationResults.iterations.findAll { !it.containsKey("iteration") }
+
+                        newTests.each { test ->
                             test.iteration = i
                             test.logs = pytest_output
                         }
 
                         writeJSON file: 'iteration_results.json', json: iterationResults
+
+                        echo "New test results for iteration ${i}:"
+                        newTests.each { echo "${it.test} => ${it.status}" }
 
 
                     }
