@@ -141,47 +141,38 @@ pipeline {
                             ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
                         </table>
 
-                        <h2>Iteration Results</h2>
+                        <h2>Test Results</h2>
                         <table>
-                            <tr><th>Iteration</th><th>Test Case</th><th>Status</th></tr>
+                            <tr>
+                                <th>Iteration</th>
+                                <th>Command</th>
+                                <th>Status</th>
+                                <th>Local HT Mode</th>
+                                <th>Remote HT Mode</th>
+                                <th>HT Match</th>
+                            </tr>
                     """
 
                     jsonReport.iterations.each { result ->
-                        def statusLabel = result.status == "PASS" ? "<span class='pass'>✅ PASS</span>" : "<span class='fail'>❌ FAIL</span>"
-                        htmlContent += "<tr><td>${result.iteration}</td><td>${result.test}</td><td>${statusLabel}</td></tr>"
-                    }
-                    htmlContent += "</table>"
+                        def iteration = result.iteration ?: "-"
+                        def command = result["Command"] ?: "-"
+                        def status = result.status == "PASS" ? "<span class='pass'>✅ PASS</span>" : "<span class='fail'>❌ FAIL</span>"
+                        def localHT = result["HT Mode"]?.Local ?: "N/A"
+                        def remoteHT = result["HT Mode"]?.Remote ?: "N/A"
+                        def matchHT = result["HT Mode"]?.Match != null
+                            ? (result["HT Mode"].Match ? "<span class='pass'>✔️ Yes</span>" : "<span class='fail'>❌ No</span>")
+                            : "N/A"
 
-                    if (params['Check Bandwidth'].toBoolean()) {
                         htmlContent += """
-                            <h2>HT Mode Comparison</h2>
-                            <table>
-                                <tr>
-                                    <th>Iteration</th>
-                                    <th>Local HT Mode</th>
-                                    <th>Remote HT Mode</th>
-                                    <th>Match</th>
-                                </tr>
+                            <tr>
+                                <td>${iteration}</td>
+                                <td>${command}</td>
+                                <td>${status}</td>
+                                <td>${localHT}</td>
+                                <td>${remoteHT}</td>
+                                <td>${matchHT}</td>
+                            </tr>
                         """
-
-                        jsonReport.iterations.each { result ->
-                            def localHT = result["HT Mode"]?.Local ?: "N/A"
-                            def remoteHT = result["HT Mode"]?.Remote ?: "N/A"
-                            def match = result["HT Mode"]?.Match != null
-                                ? (result["HT Mode"].Match ? "<span class='pass'>✔️ Yes</span>" : "<span class='fail'>❌ No</span>")
-                                : "N/A"
-
-                            htmlContent += """
-                                <tr>
-                                    <td>${result.iteration}</td>
-                                    <td>${localHT}</td>
-                                    <td>${remoteHT}</td>
-                                    <td>${match}</td>
-                                </tr>
-                            """
-                        }
-
-                        htmlContent += "</table>"
                     }
 
                     htmlContent += """
@@ -189,6 +180,7 @@ pipeline {
                     </body>
                     </html>
                     """
+
 
                     writeFile file: 'report.html', text: htmlContent
                 }

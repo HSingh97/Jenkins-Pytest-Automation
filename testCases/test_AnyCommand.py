@@ -44,8 +44,8 @@ def test_command(local_ip, remote_ip, command, username, password, sleep, check_
 
             # Fetch HT Mode if check_bw is enabled
             if check_bw:
-                local_htmode = fetch_ssh_values.fetch_htmode(local_ip, 'ath2')
-                remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, 'ath2')
+                local_htmode = fetch_ssh_values.fetch_htmode(local_ip, 'ath1')
+                remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, 'ath1')
 
                 print("@@@@@@@@@@@@@@@@@@@@@@@@@@@\n")
                 print(f"Local HT Mode  : {local_htmode}\n")
@@ -64,7 +64,7 @@ def test_command(local_ip, remote_ip, command, username, password, sleep, check_
 
             # Fetch Data Rate if check_rates is enabled
             if check_rates:
-                local_rate = fetch_ssh_values.fetch_htmode(local_ip, 'ath2')  # Assuming fetch_htmode also fetches rate
+                local_rate = fetch_ssh_values.fetch_htmode(local_ip, 'ath2')
                 remote_rate = fetch_ssh_values.fetch_htmode(remote_ip, 'ath2')
 
                 print(f"Local Data Rate: {local_rate}")
