@@ -8,6 +8,8 @@ def test_command(local_ip, remote_ip, command, username, password, sleep, check_
     """
     Executes a command via SSH, checks connectivity, and logs results to a JSON report.
     """
+    check_bw = str(check_bw).lower() == "true"
+    check_rates = str(check_rates).lower() == "true"
 
     print(f"Local IP Address: {local_ip}")
     print(f"Remote IP Address: {remote_ip}")
@@ -64,8 +66,8 @@ def test_command(local_ip, remote_ip, command, username, password, sleep, check_
 
             # Fetch Data Rate if check_rates is enabled
             if check_rates:
-                local_rate = fetch_ssh_values.fetch_htmode(local_ip, 'ath2')
-                remote_rate = fetch_ssh_values.fetch_htmode(remote_ip, 'ath2')
+                local_rate = fetch_ssh_values.fetch_htmode(local_ip, 'ath1')
+                remote_rate = fetch_ssh_values.fetch_htmode(remote_ip, 'ath1')
 
                 print(f"Local Data Rate: {local_rate}")
                 print(f"Remote Data Rate: {remote_rate}")
