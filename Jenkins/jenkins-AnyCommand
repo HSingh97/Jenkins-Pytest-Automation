@@ -59,6 +59,8 @@ pipeline {
                             --json-report --json-report-file=iteration_result.json 2>&1
                         """, returnStdout: true).trim()
 
+                        echo "Pytest Output:\n${pytest_output}"
+
                         def iterationResults = readJSON file: 'iteration_results.json'
 
                         def newTests = iterationResults.iterations.findAll { !it.containsKey("iteration") }
