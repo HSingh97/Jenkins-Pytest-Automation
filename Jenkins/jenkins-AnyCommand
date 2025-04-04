@@ -100,7 +100,7 @@ pipeline {
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
 
-                    def companyLogoUrl = "https://upload.wikimedia.org/wikipedia/en/8/82/Senao_Networks_Logo.svg"
+                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
 
 
