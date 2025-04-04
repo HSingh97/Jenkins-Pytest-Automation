@@ -96,6 +96,12 @@ pipeline {
                         "Check Data Rate": params['Check Data Rate']
                     ]
 
+                    TimeZone.setDefault(TimeZone.getTimeZone('Asia/Kolkata'))
+                    def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z")
+                    def companyLogoUrl = "${env.JENKINS_URL}userContent/logo.png"  // Or any external URL
+                    def pipelineName = env.JOB_NAME
+
+
                     def showHTMode = params['Check Bandwidth'].toBoolean()
                     def showDataRate = params['Check Data Rate'].toBoolean()
 
@@ -105,35 +111,78 @@ pipeline {
                         <title>Test Report</title>
                         <style>
                             body {
-                                font-family: Arial, sans-serif;
-                                margin: 20px;
-                            }
-                            h2 {
+                                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                                margin: 0;
+                                padding: 20px;
+                                background-color: #f9f9f9;
                                 color: #2c3e50;
                             }
+
+                            .header {
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                background-color: #fff;
+                                padding: 20px;
+                                border-bottom: 2px solid #e0e0e0;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                            }
+
+                            .header img {
+                                height: 60px;
+                            }
+
+                            .header-info {
+                                text-align: right;
+                            }
+
+                            .header-info h1 {
+                                margin: 0;
+                                font-size: 24px;
+                            }
+
+                            .header-info p {
+                                margin: 5px 0;
+                                font-size: 14px;
+                                color: #555;
+                            }
+
+                            h2 {
+                                margin-top: 40px;
+                                font-size: 20px;
+                                color: #333;
+                                border-bottom: 2px solid #ddd;
+                                padding-bottom: 5px;
+                            }
+
                             table {
                                 width: 100%;
                                 border-collapse: collapse;
                                 margin-top: 15px;
+                                background-color: #fff;
+                                box-shadow: 0 2px 5px rgba(0,0,0,0.05);
                             }
-                            table, th, td {
-                                border: 1px solid #bdc3c7;
-                            }
+
                             th, td {
-                                padding: 10px;
+                                padding: 12px 15px;
+                                border: 1px solid #ddd;
                                 text-align: left;
                             }
+
                             th {
-                                background-color: #34495e;
+                                background-color: #2c3e50;
                                 color: white;
                             }
+
                             tr:nth-child(even) {
-                                background-color: #f2f2f2;
+                                background-color: #f4f4f4;
                             }
+
                             .pass {
                                 color: green;
                                 font-weight: bold;
                             }
+
                             .fail {
                                 color: red;
                                 font-weight: bold;
@@ -141,6 +190,16 @@ pipeline {
                         </style>
                     </head>
                     <body>
+
+                        <div class="header">
+                            <img src="${companyLogoUrl}" alt="Company Logo"/>
+                            <div class="header-info">
+                                <h1>Automated Test Report</h1>
+                                <p><strong>Pipeline:</strong> ${pipelineName}</p>
+                                <p><strong>Date & Time:</strong> ${currentDateTime}</p>
+                            </div>
+                        </div>
+
                         <h2>Build Parameters</h2>
                         <table>
                             ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
@@ -195,6 +254,7 @@ pipeline {
                     </body>
                     </html>
                     """
+
 
 
 
