@@ -85,7 +85,6 @@ pipeline {
                     def buildParams = [
                         "Local IP Address": params['Local IP Address'],
                         "Remote IP Address": params['Remote IP Address'],
-                        "Command": params['Command'],
                         "Radio" : params['Radio'],
                         "SSH User": params['SSH User'],
                         "Sleep Time": params['Sleep Time Between Iterations'],
