@@ -4,7 +4,7 @@ import pytest
 import json
 from preMadeFunctions import pingFunction, execute_ssh_command, fetch_ssh_values
 
-def test_command(local_ip, remote_ip, command, username, password, sleep, check_bw, check_rates):
+def test_command(local_ip, remote_ip, command, username, password, sleep, radio, check_bw, check_rates):
     """
     Executes a command via SSH, checks connectivity, and logs results to a JSON report.
     """
@@ -14,6 +14,7 @@ def test_command(local_ip, remote_ip, command, username, password, sleep, check_
     print(f"Local IP Address: {local_ip}")
     print(f"Remote IP Address: {remote_ip}")
     print(f"Command: {command}")
+    print(f"Radio: {radio}")
     print(f"Username: {username}")
     print(f"Password: {password}")
 
@@ -27,6 +28,7 @@ def test_command(local_ip, remote_ip, command, username, password, sleep, check_
         "status": "FAIL",  # Default to fail, update later if conditions pass
         "Local IP": local_ip,
         "Remote IP": remote_ip,
+        "Radio" : radio,
         "Command": command,
         "HT Mode": {},
         "Data Rate": {},
@@ -44,10 +46,15 @@ def test_command(local_ip, remote_ip, command, username, password, sleep, check_
             test_iteration_result["Ping Results"]["Remote"] = True
             print("Able to Access Remote Device")
 
+            if radio == "Radio1":
+                intf = "ath1"
+            else:
+                intf = "ath2"
+
             # Fetch HT Mode if check_bw is enabled
             if check_bw:
-                local_htmode = fetch_ssh_values.fetch_htmode(local_ip, 'ath1')
-                remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, 'ath1')
+                local_htmode = fetch_ssh_values.fetch_htmode(local_ip, intf)
+                remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, intf)
 
                 print("@@@@@@@@@@@@@@@@@@@@@@@@@@@\n")
                 print(f"Local HT Mode  : {local_htmode}\n")
@@ -66,8 +73,8 @@ def test_command(local_ip, remote_ip, command, username, password, sleep, check_
 
             # Fetch Data Rate if check_rates is enabled
             if check_rates:
-                local_rate = fetch_ssh_values.fetch_htmode(local_ip, 'ath1')
-                remote_rate = fetch_ssh_values.fetch_htmode(remote_ip, 'ath1')
+                local_rate = fetch_ssh_values.fetch_htmode(local_ip, intf)
+                remote_rate = fetch_ssh_values.fetch_htmode(remote_ip, intf)
 
                 print(f"Local Data Rate: {local_rate}")
                 print(f"Remote Data Rate: {remote_rate}")

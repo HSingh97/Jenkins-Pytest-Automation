@@ -40,6 +40,7 @@ pipeline {
                     def command = params['Command']
                     def ssh_username = params['SSH User']
                     def ssh_password = params['SSH Password']
+                    def radio = params['Radio']
                     def sleep_time = params['Sleep Time Between Iterations']
                     def bw_check = params['Check Bandwidth']
                     def datarate_check = params['Check Data Rate']
@@ -55,7 +56,7 @@ pipeline {
                             pytest -v -s testCases/test_AnyCommand.py::test_command \
                             --local-ip '$localIP' --remote-ip '$remoteIP' --command '$command' \
                             --username '$ssh_username' --password '$ssh_password' --sleep '$sleep_time' \
-                            --check_rate '$datarate_check' --check_bw '$bw_check' \
+                            --check_rate '$datarate_check' --check_bw '$bw_check' --radio '$radio'\
                             --json-report --json-report-file=iteration_result.json 2>&1
                         """, returnStdout: true).trim()
 
@@ -88,6 +89,7 @@ pipeline {
                         "Local IP Address": params['Local IP Address'],
                         "Remote IP Address": params['Remote IP Address'],
                         "Command": params['Command'],
+                        "Radio" : params['Radio']
                         "SSH User": params['SSH User'],
                         "Sleep Time": params['Sleep Time Between Iterations'],
                         "Check Bandwidth": params['Check Bandwidth'],
