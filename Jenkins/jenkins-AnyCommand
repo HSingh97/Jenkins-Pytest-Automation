@@ -94,6 +94,9 @@ pipeline {
                         "Check Data Rate": params['Check Data Rate']
                     ]
 
+                    def showHTMode = params['Check Bandwidth'].toBoolean()
+                    def showDataRate = params['Check Data Rate'].toBoolean()
+
                     def htmlContent = """
                     <html>
                     <head>
@@ -147,9 +150,8 @@ pipeline {
                                 <th>Iteration</th>
                                 <th>Command</th>
                                 <th>Status</th>
-                                <th>Local HT Mode</th>
-                                <th>Remote HT Mode</th>
-                                <th>HT Match</th>
+                                ${showHTMode ? "<th>Local HT Mode</th><th>Remote HT Mode</th><th>HT Match</th>" : ""}
+                                ${showDataRate ? "<th>Local Data Rate</th><th>Remote Data Rate</th><th>Rate Match</th>" : ""}
                             </tr>
                     """
 
@@ -157,22 +159,33 @@ pipeline {
                         def iteration = result.iteration ?: "-"
                         def command = result["Command"] ?: "-"
                         def status = result.status == "PASS" ? "<span class='pass'>✅ PASS</span>" : "<span class='fail'>❌ FAIL</span>"
-                        def localHT = result["HT Mode"]?.Local ?: "N/A"
-                        def remoteHT = result["HT Mode"]?.Remote ?: "N/A"
-                        def matchHT = result["HT Mode"]?.Match != null
-                            ? (result["HT Mode"].Match ? "<span class='pass'>✔️ Yes</span>" : "<span class='fail'>❌ No</span>")
-                            : "N/A"
 
                         htmlContent += """
                             <tr>
                                 <td>${iteration}</td>
                                 <td>${command}</td>
                                 <td>${status}</td>
-                                <td>${localHT}</td>
-                                <td>${remoteHT}</td>
-                                <td>${matchHT}</td>
-                            </tr>
                         """
+
+                        if (showHTMode) {
+                            def localHT = result["HT Mode"]?.Local ?: "N/A"
+                            def remoteHT = result["HT Mode"]?.Remote ?: "N/A"
+                            def matchHT = result["HT Mode"]?.Match != null
+                                ? (result["HT Mode"].Match ? "<span class='pass'>✔️ Yes</span>" : "<span class='fail'>❌ No</span>")
+                                : "N/A"
+                            htmlContent += "<td>${localHT}</td><td>${remoteHT}</td><td>${matchHT}</td>"
+                        }
+
+                        if (showDataRate) {
+                            def localRate = result["Data Rate"]?.Local ?: "N/A"
+                            def remoteRate = result["Data Rate"]?.Remote ?: "N/A"
+                            def matchRate = result["Data Rate"]?.Match != null
+                                ? (result["Data Rate"].Match ? "<span class='pass'>✔️ Yes</span>" : "<span class='fail'>❌ No</span>")
+                                : "N/A"
+                            htmlContent += "<td>${localRate}</td><td>${remoteRate}</td><td>${matchRate}</td>"
+                        }
+
+                        htmlContent += "</tr>"
                     }
 
                     htmlContent += """
@@ -180,6 +193,7 @@ pipeline {
                     </body>
                     </html>
                     """
+
 
 
                     writeFile file: 'report.html', text: htmlContent
