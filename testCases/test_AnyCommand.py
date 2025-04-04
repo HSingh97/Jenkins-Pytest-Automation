@@ -73,8 +73,8 @@ def test_command(local_ip, remote_ip, command, username, password, sleep, radio,
 
             # Fetch Data Rate if check_rates is enabled
             if check_rates:
-                local_rate = fetch_ssh_values.fetch_htmode(local_ip, intf)
-                remote_rate = fetch_ssh_values.fetch_htmode(remote_ip, intf)
+                local_rate = fetch_ssh_values.fetch_datarate(local_ip, intf, "tx")
+                remote_rate = fetch_ssh_values.fetch_datarate(remote_ip, intf, "rx")
 
                 print(f"Local Data Rate: {local_rate}")
                 print(f"Remote Data Rate: {remote_rate}")

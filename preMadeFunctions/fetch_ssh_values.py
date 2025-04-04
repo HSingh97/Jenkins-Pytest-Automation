@@ -44,3 +44,27 @@ def fetch_htmode(host, interface):
 
     ssh_client.close()
     return mode
+
+
+def fetch_datarate(host, interface, dir):
+    ssh_client = paramiko.SSHClient()
+    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh_client.connect(hostname=host, username="root", password="admin")
+
+    if interface == "ath1":
+        intf = "sua1"
+    else:
+        intf = "sub4"
+
+    if dir == "tx":
+        command = 'cat /sys/class/kwn/{}/statistics/tx_rate'.format(intf)
+    else:
+        command = 'cat /sys/class/kwn/{}/statistics/tx_rate'.format(intf)
+
+    stdin, stdout, stderr = ssh_client.exec_command(command)
+
+    # Read the output of the command
+    output = stdout.read().decode('utf-8')
+
+    ssh_client.close()
+    return output
