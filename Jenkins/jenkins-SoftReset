@@ -34,7 +34,6 @@ pipeline {
         stage('Soft Reset') {
             steps {
                 script {
-
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
                     def command = "/etc/init.d/network reload"
@@ -75,9 +74,11 @@ pipeline {
 
                         echo "New test results for iteration ${i}:"
                         newTests.each { echo "${it.test} => ${it.status}" }
+                    }
                 }
             }
-        }stage('Generate Report') {
+        }
+        stage('Generate Report') {
             steps {
                 script {
                     def jsonReport = readJSON file: 'iteration_results.json'
