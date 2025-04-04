@@ -96,9 +96,11 @@ pipeline {
                         "Check Data Rate": params['Check Data Rate']
                     ]
 
-                    TimeZone.setDefault(TimeZone.getTimeZone('Asia/Kolkata'))
-                    def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z")
-                    def companyLogoUrl = "${env.JENKINS_URL}userContent/logo.png"  // Or any external URL
+                    def istZone = TimeZone.getTimeZone("Asia/Kolkata")
+                    def istDate = Calendar.getInstance(istZone).getTime()
+                    def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
+
+                    def companyLogoUrl = "https://www.senao.com.tw/cdn/shop/files/logo_senaonetworks.png?v=1709883239"
                     def pipelineName = env.JOB_NAME
 
 
