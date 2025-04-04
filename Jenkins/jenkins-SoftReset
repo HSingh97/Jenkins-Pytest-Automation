@@ -34,28 +34,291 @@ pipeline {
         stage('Soft Reset') {
             steps {
                 script {
+
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
                     def command = "/etc/init.d/network reload"
                     def ssh_username = params['SSH User']
                     def ssh_password = params['SSH Password']
+                    def radio = params['Radio']
                     def sleep_time = params['Sleep Time Between Iterations']
+                    def bw_check = params['Check Bandwidth']
+                    def datarate_check = params['Check Data Rate']
 
                     echo "----------------------------------------"
                     echo "Soft Resetting"
                     echo "----------------------------------------"
-                    for (int i = 1; i <= Iterations.toInteger() ; i++) {
-                        sh "pytest -v -s testCases/test_AnyCommand.py::test_command --local-ip '$localIP' --remote-ip '$remoteIP' --command '$command' --username '$ssh_username' --password '$ssh_password' --sleep '$sleep_time' 2>&1"
+
+                    sh "echo [] > iteration_results.json"  // Initialize JSON array
+
+                    for (int i = 1; i <= Iterations.toInteger(); i++) {
+                        def pytest_output = sh(script: """
+                            pytest -v -s testCases/test_AnyCommand.py::test_command \
+                            --local-ip '$localIP' --remote-ip '$remoteIP' --command '$command' \
+                            --username '$ssh_username' --password '$ssh_password' --sleep '$sleep_time' \
+                            --check_rate '$datarate_check' --check_bw '$bw_check' --radio '$radio'\
+                            --json-report --json-report-file=iteration_result.json 2>&1
+                        """, returnStdout: true).trim()
+
+                        echo "Pytest Output:\n${pytest_output}"
+
+                        def iterationResults = readJSON file: 'iteration_results.json'
+
+                        def newTests = iterationResults.iterations.findAll { !it.containsKey("iteration") }
+
+                        newTests.each { test ->
+                            test.iteration = i
+                            test.logs = pytest_output
+                        }
+
+                        writeJSON file: 'iteration_results.json', json: iterationResults
+
+                        echo "New test results for iteration ${i}:"
+                        newTests.each { echo "${it.test} => ${it.status}" }
+                }
+            }
+        }stage('Generate Report') {
+            steps {
+                script {
+                    def jsonReport = readJSON file: 'iteration_results.json'
+                    def buildParams = [
+                        "Local IP Address": params['Local IP Address'],
+                        "Remote IP Address": params['Remote IP Address'],
+                        "Command": params['Command'],
+                        "Radio" : params['Radio'],
+                        "SSH User": params['SSH User'],
+                        "Sleep Time": params['Sleep Time Between Iterations'],
+                        "Check Bandwidth": params['Check Bandwidth'],
+                        "Check Data Rate": params['Check Data Rate']
+                    ]
+
+                    def istZone = TimeZone.getTimeZone("Asia/Kolkata")
+                    def istDate = Calendar.getInstance(istZone).getTime()
+                    def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
+
+                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+                    def pipelineName = env.JOB_NAME
+
+
+                    def showHTMode = params['Check Bandwidth'].toBoolean()
+                    def showDataRate = params['Check Data Rate'].toBoolean()
+
+                    def htmlContent = """
+                    <html>
+                    <head>
+                        <title>Test Report</title>
+                        <style>
+                            body {
+                                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                                margin: 0;
+                                padding: 20px;
+                                background-color: #f9f9f9;
+                                color: #2c3e50;
+                            }
+
+                            .header {
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                background-color: #fff;
+                                padding: 20px;
+                                border-bottom: 2px solid #e0e0e0;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                            }
+
+                            .header img {
+                                height: 60px;
+                            }
+
+                            .header-info {
+                                text-align: right;
+                            }
+
+                            .header-info h1 {
+                                margin: 0;
+                                font-size: 24px;
+                            }
+
+                            .header-info p {
+                                margin: 5px 0;
+                                font-size: 14px;
+                                color: #555;
+                            }
+
+                            h2 {
+                                margin-top: 40px;
+                                font-size: 20px;
+                                color: #333;
+                                border-bottom: 2px solid #ddd;
+                                padding-bottom: 5px;
+                            }
+
+                            table {
+                                width: 100%;
+                                border-collapse: collapse;
+                                margin-top: 15px;
+                                background-color: #fff;
+                                box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+                            }
+
+                            th, td {
+                                padding: 12px 15px;
+                                border: 1px solid #ddd;
+                                text-align: left;
+                            }
+
+                            th {
+                                background-color: #2c3e50;
+                                color: white;
+                            }
+
+                            tr:nth-child(even) {
+                                background-color: #f4f4f4;
+                            }
+
+                            .pass {
+                                color: green;
+                                font-weight: bold;
+                            }
+
+                            .fail {
+                                color: red;
+                                font-weight: bold;
+                            }
+                        </style>
+                    </head>
+                    <body>
+
+                        <div class="header">
+                            <img src="${companyLogoUrl}" alt="Company Logo"/>
+                            <div class="header-info">
+                                <h1>Automated Test Report</h1>
+                                <p><strong>Pipeline:</strong> ${pipelineName}</p>
+                                <p><strong>Date & Time:</strong> ${currentDateTime}</p>
+                            </div>
+                        </div>
+
+                        <h2>Build Parameters</h2>
+                        <table>
+                            ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
+                        </table>
+
+                        <h2>Test Results</h2>
+                        <table>
+                            <tr>
+                                <th>Iteration</th>
+                                <th>Command</th>
+                                <th>Status</th>
+                                ${showHTMode ? "<th>Local HT Mode</th><th>Remote HT Mode</th><th>HT Match</th>" : ""}
+                                ${showDataRate ? "<th>Local Data Rate</th><th>Remote Data Rate</th><th>Rate Match</th>" : ""}
+                            </tr>
+                    """
+
+                    jsonReport.iterations.each { result ->
+                        def iteration = result.iteration ?: "-"
+                        def command = result["Command"] ?: "-"
+                        def status = result.status == "PASS" ? "<span class='pass'>✅ PASS</span>" : "<span class='fail'>❌ FAIL</span>"
+
+                        htmlContent += """
+                            <tr>
+                                <td>${iteration}</td>
+                                <td>${command}</td>
+                                <td>${status}</td>
+                        """
+
+                        if (showHTMode) {
+                            def localHT = result["HT Mode"]?.Local ?: "N/A"
+                            def remoteHT = result["HT Mode"]?.Remote ?: "N/A"
+                            def matchHT = result["HT Mode"]?.Match != null
+                                ? (result["HT Mode"].Match ? "<span class='pass'>✔️ Yes</span>" : "<span class='fail'>❌ No</span>")
+                                : "N/A"
+                            htmlContent += "<td>${localHT}</td><td>${remoteHT}</td><td>${matchHT}</td>"
+                        }
+
+                        if (showDataRate) {
+                            def localRate = result["Data Rate"]?.Local ?: "N/A"
+                            def remoteRate = result["Data Rate"]?.Remote ?: "N/A"
+                            def matchRate = result["Data Rate"]?.Match != null
+                                ? (result["Data Rate"].Match ? "<span class='pass'>✔️ Yes</span>" : "<span class='fail'>❌ No</span>")
+                                : "N/A"
+                            htmlContent += "<td>${localRate}</td><td>${remoteRate}</td><td>${matchRate}</td>"
+                        }
+
+                        htmlContent += "</tr>"
                     }
+
+                    htmlContent += """
+                        </table>
+                    </body>
+                    </html>
+                    """
+
+                    writeFile file: 'report.html', text: htmlContent
                 }
             }
         }
     }
     post {
         always {
+            publishHTML (target: [
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: '.',
+                reportFiles: 'report.html',
+                reportName: 'Test Report'
+            ])
             echo "-----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
+            script {
+                def buildCauses = currentBuild.getBuildCauses()
+                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+
+                def buildUserName = userCause?.userName ?: "Unknown User"
+                def buildUserId = userCause?.userId ?: "unknown"
+
+                echo "Build started by: ${buildUserName} (${buildUserId})"
+
+                // Define a mapping of user IDs to emails (update as needed)
+                def userEmails = [
+                    "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@mahesh.com",
+                    "sandeep": "sandeep.manchikanti@senao.com",
+                    "sampath": "sampath.marella@senao.com",
+                    "jayanth": "jayanth.munnaluru@senao.com",
+                    "srilatha": "srilatha.tadiboina@senao.com",
+                    "phani": "phani.darla@senao.com"
+                ]
+
+                // Get email from predefined mapping, else use default
+                def userEmail = userEmails.get(buildUserId, "harmanjot.singh@senao.com")
+
+                echo "Sending email to: ${userEmail}"
+
+                // Send email notification
+                emailext(
+                    subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    body: """
+                        <html>
+                        <body>
+                            <h2 style="color:blue;">Jenkins Build Notification</h2>
+                            <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
+                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
+                                ${currentBuild.currentResult}</span></p>
+                            <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
+                            <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                            <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                            <br/>
+                            <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
+                        </body>
+                        </html>
+                    """,
+                    to: userEmail,
+                    mimeType: 'text/html',
+                    attachmentsPattern: 'report.html'  // Only attach, do not embed
+                )
+            }
         }
 
         success {
