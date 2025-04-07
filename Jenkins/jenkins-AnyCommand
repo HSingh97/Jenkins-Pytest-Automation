@@ -90,7 +90,6 @@ pipeline {
                         "Remote IP Address": params['Remote IP Address'],
                         "Command": params['Command'],
                         "Radio" : params['Radio'],
-                        "SSH User": params['SSH User'],
                         "Sleep Time": params['Sleep Time Between Iterations'],
                         "Check Bandwidth": params['Check Bandwidth'],
                         "Check Data Rate": params['Check Data Rate']

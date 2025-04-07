@@ -3,6 +3,7 @@ import warnings
 import pytest
 import os
 import paramiko
+import json
 import sys
 import argparse
 from utilities.readProperties import readConfig
@@ -72,33 +73,62 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
     else:
         print("Unable to access Local Device")
 
+    channel_results = []
 
     for channels in channel_list:
-
-        print("Testing connectivity for {} ".format(channels))
         set_channel_snmp.change_channel(local_ip, radio_ind, channels)
 
-        print("\nChecking Local Ping")
-        if pingFunction.check_access(local_ip):
-            print("Able to Access, Checking remote ping")
+        local_ping = pingFunction.check_access(local_ip)
+        remote_ping = pingFunction.check_access(remote_ip) if local_ping else False
 
-            if pingFunction.check_access(remote_ip):
-                print("Able to Access Remote Device ")
-                print("\n Channel connectivity for {} : Pass".format(channels))
-            else:
-                print("Unable to access Remote Device")
-                print("\n Channel connectivity for {} : Fail".format(channels))
+        result = {
+            "channel": channels,
+            "LocalPing": local_ping,
+            "RemotePing": remote_ping,
+            "status": "PASS" if local_ping and remote_ping else "FAIL",
+            "link_stats": get_linkstats.get_linkstats(remote_ip, radio_ind)
+        }
 
-        else:
-            print("Unable to access Local Device")
+        channel_results.append(result)
 
+        print(f"\nChannel {channels} result: {result['status']}")
+
+    # Compose test result summary
+    test_result = {
+        "test": "test_channelconnectivity",
+        "status": "PASS" if all(c["status"] == "PASS" for c in channel_results) else "FAIL",
+        "Radio": radio,
+        "Local IP": local_ip,
+        "Remote IP": remote_ip,
+        "Bandwidth": bandwidth,
+        "Country": country,
+        "Tested Channels": channel_results,
+        "Ping Results": {
+            "Local": pingFunction.check_access(local_ip),
+            "Remote": pingFunction.check_access(remote_ip)
+        }
+    }
     get_linkstats.get_linkstats(remote_ip, radio_ind)
+    # Log to iteration_results.json
+    json_report_file = "iteration_results.json"
 
-    if pingFunction.check_access(remote_ip) != 1:
-        assert False
+    try:
+        with open(json_report_file, "r") as f:
+            json_data = json.load(f)
+            if not isinstance(json_data, dict):
+                json_data = {"iterations": json_data}
+            if "iterations" not in json_data:
+                json_data["iterations"] = []
+    except (FileNotFoundError, json.JSONDecodeError):
+        json_data = {"iterations": []}
 
-    else:
-        assert True
+    json_data["iterations"].append(test_result)
+
+    with open(json_report_file, "w") as f:
+        json.dump(json_data, f, indent=4)
+
+    print("Updated JSON Report")
+    assert test_result["status"] == "PASS"
 
 
 def warn(*args, **kwargs):

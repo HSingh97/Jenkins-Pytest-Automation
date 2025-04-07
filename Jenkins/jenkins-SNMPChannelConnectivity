@@ -33,28 +33,51 @@ pipeline {
         stage('Channel Testing') {
             steps {
                 script {
-                    echo "----------------------------------------"
-                    echo "Starting Channel Testing"
-                    echo "----------------------------------------"
-                    sh "mkdir -p artifacts"
-
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
-
-                    def selectedradio = params.Radio
-
-                    echo "Local IP Address: ${localIP}"
-                    echo "Remote IP Address: ${remoteIP}"
-
+                    def selectedRadio = params['Radio']
                     def bandwidths = params.Bandwidth.split(',')
-                    def countries = params.Country.split(',')
+                    def countries = params.Countries.split(',')
+
+                    sh "echo [] > iteration_results.json"  // Init file
+
+                    def iteration = 1
 
                     for (country in countries) {
                         for (bandwidth in bandwidths) {
-                            echo "Country=${country}, Bandwidth=${bandwidth}"
-                            echo "-------- Started Channel Connectivity Test for ${selectedradio} with Bandwidth: ${bandwidth} and Country: ${country} --------- "
-                            sh "pytest -v -s testCases/test_channelTest.py::test_channelconnectivity --radio '$selectedradio' --local-ip '$localIP' --remote-ip '$remoteIP' --bandwidth '$bandwidth' --country '$country' 2>&1"
-                            echo "-------- Channel Connectivity Test completed for ${selectedradio} with Bandwidth: ${bandwidth} and Country: ${country} --------- "
+                            echo "----------------------------------------"
+                            echo " Testing: Country=${country}, Bandwidth=${bandwidth}"
+                            echo "----------------------------------------"
+
+                            def pytest_output = sh(script: """
+                                pytest -v -s testCases/test_channelTest.py::test_channelconnectivity \
+                                --local-ip '$localIP' --remote-ip '$remoteIP' \
+                                --radio '$selectedRadio' --bandwidth '$bandwidth' --country '$country' \
+                                --json-report --json-report-file=iteration_result.json 2>&1
+                            """, returnStdout: true).trim()
+
+                            echo "Pytest Output:\n${pytest_output}"
+
+                            def iterationResults = readJSON file: 'iteration_results.json'
+                            def newTests = iterationResults.iterations.findAll { !it.containsKey("iteration") }
+
+                            newTests.each { test ->
+                                test.iteration = iteration++
+                                test.logs = pytest_output
+                            }
+
+                           def filename = "${country.trim().replaceAll("\\s+", "_")}_${bandwidth.trim()}.json"
+                           writeJSON file: filename, json: iterationResults
+
+                           newTests.each {
+                                echo "Iteration ${it.iteration} - ${it.test} => ${it.status}"
+                                echo "Country: ${it.Country}, Bandwidth: ${it.Bandwidth}"
+                                echo "Channels Tested:"
+                                it['Tested Channels'].each { ch ->
+                                    echo "  - Channel: ${ch.channel}, Status: ${ch.status}"
+                                    echo "    Tx Rate: ${ch.link_stats.tx_rate}, Rx Rate: ${ch.link_stats.rx_rate}"
+                                }
+                           }
                         }
                     }
                 }
@@ -63,47 +86,167 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    // Example script to convert JSON to HTML (can use Python or any preferred language)
-                    def htmlTemplate = """
-                    <html>
-                    <head><title>Job Report</title></head>
-                    <body>
-                    <h1>Job Report</h1>
-                    <table border="1">
-                    <tr><th>Iteration</th><th>Status</th><th>Detail</th></tr>
-                    ${new groovy.json.JsonSlurper().parse(new File('results/iteration_results.json')).collect { "<tr><td>${it.iteration}</td><td>${it.status}</td><td>${it.detail}</td></tr>" }.join('\n')}
-                    </table>
-                    </body>
-                    </html>
+                    def reportFiles = findFiles(glob: '*.json')
+                    def allResults = []
+
+                    // Load all result files
+                    reportFiles.each { file ->
+                        def data = readJSON file: file.name
+                        if (data?.iterations) {
+                            allResults << [filename: file.name, content: data.iterations]
+                        }
+                    }
+
+                    def istZone = TimeZone.getTimeZone("Asia/Kolkata")
+                    def istDate = Calendar.getInstance(istZone).getTime()
+                    def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
+                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+                    def pipelineName = env.JOB_NAME
+
+                    def htmlContent = """
+                        <html>
+                        <head>
+                            <title>Channel Test Report</title>
+                            <style>
+                                body { font-family: Arial, sans-serif; padding: 20px; background: #f8f9fa; color: #333; }
+                                h1, h2, h3 { color: #2c3e50; }
+                                table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+                                th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+                                th { background-color: #34495e; color: white; }
+                                tr:nth-child(even) { background-color: #f2f2f2; }
+                                .pass { color: green; font-weight: bold; }
+                                .fail { color: red; font-weight: bold; }
+                                .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+                                .header img { height: 50px; }
+                                .header-info { text-align: right; }
+                            </style>
+                        </head>
+                        <body>
+                            <div class="header">
+                                <img src="${companyLogoUrl}" />
+                                <div class="header-info">
+                                    <h1>Automated Channel Test Report</h1>
+                                    <p><strong>Pipeline:</strong> ${pipelineName}</p>
+                                    <p><strong>Date:</strong> ${currentDateTime}</p>
+                                </div>
+                            </div>
                     """
-                    writeFile file: 'results/report.html', text: htmlTemplate
+
+                    allResults.each { resultFile ->
+                        def parts = resultFile.filename.replace('.json','').split('_')
+                        def country = parts[0..-2].join(' ')
+                        def bandwidth = parts[-1]
+
+                        htmlContent += """
+                            <h2>Country: ${country} | Bandwidth: ${bandwidth} MHz</h2>
+                            <table>
+                                <tr>
+                                    <th>Channel</th>
+                                    <th>Status</th>
+                                    <th>Remote IP</th>
+                                    <th>Local SNR A1</th>
+                                    <th>Local SNR A2</th>
+                                    <th>Remote SNR A1</th>
+                                    <th>Remote SNR A2</th>
+                                    <th>Tx Rate</th>
+                                    <th>Rx Rate</th>
+                                </tr>
+                        """
+
+                        resultFile.content.each { iteration ->
+                            iteration["Tested Channels"].each { channel ->
+                                def stats = channel["link_stats"]
+                                def status = channel["status"] == "PASS"
+                                    ? "<span class='pass'>✅ PASS</span>"
+                                    : "<span class='fail'>❌ FAIL</span>"
+
+                                htmlContent += """
+                                    <tr>
+                                        <td>${channel.channel}</td>
+                                        <td>${status}</td>
+                                        <td>${stats?.ip_address ?: 'N/A'}</td>
+                                        <td>${stats?.local_SNR_A1 ?: '-'}</td>
+                                        <td>${stats?.local_SNR_A2 ?: '-'}</td>
+                                        <td>${stats?.remote_SNR_A1 ?: '-'}</td>
+                                        <td>${stats?.remote_SNR_A2 ?: '-'}</td>
+                                        <td>${stats?.tx_rate ?: '-'}</td>
+                                        <td>${stats?.rx_rate ?: '-'}</td>
+                                    </tr>
+                                """
+                            }
+                        }
+
+                        htmlContent += "</table>"
+                    }
+
+                    htmlContent += "</body></html>"
+                    writeFile file: 'channel_test_report.html', text: htmlContent
+                    echo "📄 HTML report generated: channel_test_report.html"
                 }
             }
         }
     }
     post {
         always {
-            echo "-----------------------------------------"
-            echo 'Script Done!'
-            echo "-----------------------------------------"
-            emailext (
-                to: 'harmanjot.singh@senao.com',
-                subject: "Build ${env.JOB_NAME} #${env.BUILD_NUMBER} - ${currentBuild.currentResult}",
-                body: """
-                Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL}) completed with status: ${currentBuild.currentResult}
-                Check console output at: ${env.BUILD_URL}console
-                """
-            )
-            echo "email sent"
-            archiveArtifacts artifacts: 'results/**', allowEmptyArchive: true // Save results for later
-            publishHTML(target: [
+            publishHTML (target: [
                 allowMissing: false,
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
-                reportDir: 'results',
+                reportDir: '.',
                 reportFiles: 'report.html',
-                reportName: 'Iteration Report'
+                reportName: 'Test Report'
             ])
+            echo "-----------------------------------------"
+            echo 'Script Done!'
+            echo "-----------------------------------------"
+            script {
+                def buildCauses = currentBuild.getBuildCauses()
+                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+
+                def buildUserName = userCause?.userName ?: "Unknown User"
+                def buildUserId = userCause?.userId ?: "unknown"
+
+                echo "Build started by: ${buildUserName} (${buildUserId})"
+
+                // Define a mapping of user IDs to emails (update as needed)
+                def userEmails = [
+                    "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@mahesh.com",
+                    "sandeep": "sandeep.manchikanti@senao.com",
+                    "sampath": "sampath.marella@senao.com",
+                    "jayanth": "jayanth.munnaluru@senao.com",
+                    "srilatha": "srilatha.tadiboina@senao.com",
+                    "phani": "phani.darla@senao.com"
+                ]
+
+                // Get email from predefined mapping, else use default
+                def userEmail = userEmails.get(buildUserId, "harmanjot.singh@senao.com")
+
+                echo "Sending email to: ${userEmail}"
+
+                // Send email notification
+                emailext(
+                    subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    body: """
+                        <html>
+                        <body>
+                            <h2 style="color:blue;">Jenkins Build Notification</h2>
+                            <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
+                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
+                                ${currentBuild.currentResult}</span></p>
+                            <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
+                            <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                            <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                            <br/>
+                            <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
+                        </body>
+                        </html>
+                    """,
+                    to: userEmail,
+                    mimeType: 'text/html',
+                    attachmentsPattern: 'report.html'  // Only attach, do not embed
+                )
+            }
         }
 
         success {
