@@ -116,24 +116,90 @@ pipeline {
                         <head>
                             <title>Channel Test Report</title>
                             <style>
-                                body { font-family: Arial, sans-serif; padding: 20px; background: #f8f9fa; color: #333; }
-                                h1, h2, h3 { color: #2c3e50; }
-                                table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-                                th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
-                                th { background-color: #34495e; color: white; }
-                                tr:nth-child(even) { background-color: #f2f2f2; }
-                                .pass { color: green; font-weight: bold; }
-                                .fail { color: red; font-weight: bold; }
-                                .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-                                .header img { height: 50px; }
-                                .header-info { text-align: right; }
+                                body {
+                                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                                    margin: 0;
+                                    padding: 20px;
+                                    background-color: #f9f9f9;
+                                    color: #2c3e50;
+                                }
+
+                                .header {
+                                    display: flex;
+                                    justify-content: space-between;
+                                    align-items: center;
+                                    background-color: #fff;
+                                    padding: 20px;
+                                    border-bottom: 2px solid #e0e0e0;
+                                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                                }
+
+                                .header img {
+                                    height: 60px;
+                                }
+
+                                .header-info {
+                                    text-align: right;
+                                }
+
+                                .header-info h1 {
+                                    margin: 0;
+                                    font-size: 24px;
+                                }
+
+                                .header-info p {
+                                    margin: 5px 0;
+                                    font-size: 14px;
+                                    color: #555;
+                                }
+
+                                h2 {
+                                    margin-top: 40px;
+                                    font-size: 20px;
+                                    color: #333;
+                                    border-bottom: 2px solid #ddd;
+                                    padding-bottom: 5px;
+                                }
+
+                                table {
+                                    width: 100%;
+                                    border-collapse: collapse;
+                                    margin-top: 15px;
+                                    background-color: #fff;
+                                    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+                                }
+
+                                th, td {
+                                    padding: 12px 15px;
+                                    border: 1px solid #ddd;
+                                    text-align: left;
+                                }
+
+                                th {
+                                    background-color: #2c3e50;
+                                    color: white;
+                                }
+
+                                tr:nth-child(even) {
+                                    background-color: #f4f4f4;
+                                }
+
+                                .pass {
+                                    color: green;
+                                    font-weight: bold;
+                                }
+
+                                .fail {
+                                    color: red;
+                                    font-weight: bold;
+                                }
                             </style>
                         </head>
                         <body>
                             <div class="header">
                                 <img src="${companyLogoUrl}" />
                                 <div class="header-info">
-                                    <h1>Automated Channel Test Report</h1>
+                                    <h1>Automated Channel Connectivity Report</h1>
                                     <p><strong>Pipeline:</strong> ${pipelineName}</p>
                                     <p><strong>Date:</strong> ${currentDateTime}</p>
                                 </div>
@@ -206,7 +272,7 @@ pipeline {
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
                 reportDir: '.',
-                reportFiles: 'report.html',
+                reportFiles: 'channel_test_report.html',
                 reportName: 'Test Report'
             ])
             echo "-----------------------------------------"
@@ -252,7 +318,7 @@ pipeline {
                             <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
                             <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
                             <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
-                            <p><strong>HTML Report:</strong> <a href="${env.BUILD_URL}artifact/report.html">Click here to view</a></p>
+                            <p><strong>HTML Report:</strong> <a href="${env.BUILD_URL}artifact/channel_test_report.html">Click here to view</a></p>
                             <br/>
                             <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
                         </body>
@@ -260,7 +326,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html'
+                    attachmentsPattern: 'channel_test_report.html'
                 )
 
             }

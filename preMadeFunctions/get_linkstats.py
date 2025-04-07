@@ -12,8 +12,8 @@ from datetime import datetime
 def get_linkstats(host, radio_ind):
     i = 1
     while i < 33:
-        remoteip = f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.4.{radio_ind}.{i}"
-        remoteip_output = subprocess.check_output(remoteip, shell=True).decode("utf-8")
+        remoteip_oid = f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.4.{radio_ind}.{i}"
+        remoteip_output = subprocess.check_output(remoteip_oid, shell=True).decode("utf-8")
 
         if "No Such Instance currently exists at this OID" in remoteip_output:
             i += 1
@@ -28,7 +28,7 @@ def get_linkstats(host, radio_ind):
             return match.group(1) if match else "-"
 
         stats = {
-            "ip_address": remoteip,
+            "ip_address": remoteip_output,
             "local_SNR_A1": extract_snmp(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.13.{radio_ind}.{i}"),
             "local_SNR_A2": extract_snmp(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.14.{radio_ind}.{i}"),
             "remote_SNR_A1": extract_snmp(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.15.{radio_ind}.{i}"),

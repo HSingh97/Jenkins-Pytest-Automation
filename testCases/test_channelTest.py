@@ -77,12 +77,14 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
 
     for channels in channel_list:
         set_channel_snmp.change_channel(local_ip, radio_ind, channels)
+        frequency = (int(channels)*5)+5000
+        formatted_channel = "{} ( {} MHz )".format(channels, frequency)
 
         local_ping = pingFunction.check_access(local_ip)
         remote_ping = pingFunction.check_access(remote_ip) if local_ping else False
 
         result = {
-            "channel": channels,
+            "channel": formatted_channel,
             "LocalPing": local_ping,
             "RemotePing": remote_ping,
             "status": "PASS" if local_ping and remote_ping else "FAIL",
