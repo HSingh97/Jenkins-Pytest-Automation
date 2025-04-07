@@ -49,7 +49,10 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
         print("No Radio Selected")
         assert False
 
-    channel_list = fetch_ssh_values.fetch_channel_list(local_ip, radio_ind, country_code, bandwidth)
+    if bandwidth == "HT40":
+        new_bandwidth = "HT40+"
+
+    channel_list = fetch_ssh_values.fetch_channel_list(local_ip, radio_ind, country_code, new_bandwidth)
     time.sleep(2)
 
     print("\nChannels available for current selection : {}".format(channel_list))
@@ -60,8 +63,8 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
     print("\nConfiguring Country {} for Local Device ".format(country_code))
     set_country_snmp.change_country(remote_ip, radio_ind, country_code)
 
-    print("\nConfiguring Bandwidth : {} for Local Device ".format(bandwidth))
-    set_bandwidth_snmp.change_bandwidth(local_ip, radio_ind, bandwidth)
+    print("\nConfiguring Bandwidth : {} for Local Device ".format(new_bandwidth))
+    set_bandwidth_snmp.change_bandwidth(local_ip, radio_ind, new_bandwidth)
 
     if pingFunction.check_access(local_ip):
 
@@ -88,7 +91,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
             "LocalPing": local_ping,
             "RemotePing": remote_ping,
             "status": "PASS" if local_ping and remote_ping else "FAIL",
-            "link_stats": get_linkstats.get_linkstats(remote_ip, radio_ind)
+            "link_stats": get_linkstats.get_linkstats(local_ip, radio_ind)
         }
 
         channel_results.append(result)
@@ -102,7 +105,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
         "Radio": radio,
         "Local IP": local_ip,
         "Remote IP": remote_ip,
-        "Bandwidth": bandwidth,
+        "Bandwidth": new_bandwidth,
         "Country": country,
         "Tested Channels": channel_results,
         "Ping Results": {
@@ -110,7 +113,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
             "Remote": pingFunction.check_access(remote_ip)
         }
     }
-    get_linkstats.get_linkstats(remote_ip, radio_ind)
+    get_linkstats.get_linkstats(local_ip, radio_ind)
     # Log to iteration_results.json
     json_report_file = "iteration_results.json"
 
