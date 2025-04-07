@@ -86,7 +86,7 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def reportFiles = findFiles(glob: '*.json')
+                    def reportFiles = findFiles(glob: '*.json').findAll { it.name != 'iteration_results.json' }
                     def allResults = []
 
                     // Load all result files
@@ -96,6 +96,14 @@ pipeline {
                             allResults << [filename: file.name, content: data.iterations]
                         }
                     }
+
+                    def buildParams = [
+                        "Local IP Address": params['Local IP Address'],
+                        "Remote IP Address": params['Remote IP Address'],
+                        "Radio" : params['Radio'],
+                        "Countries" : params['Countries'],
+                        "Bandwidths" : params['Bandwidth']
+                    ]
 
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                     def istDate = Calendar.getInstance(istZone).getTime()
@@ -130,6 +138,11 @@ pipeline {
                                     <p><strong>Date:</strong> ${currentDateTime}</p>
                                 </div>
                             </div>
+
+                            <h2>Build Parameters</h2>
+                            <table>
+                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
+                            </table>
                     """
 
                     allResults.each { resultFile ->
@@ -232,11 +245,14 @@ pipeline {
                         <body>
                             <h2 style="color:blue;">Jenkins Build Notification</h2>
                             <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
-                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
-                                ${currentBuild.currentResult}</span></p>
+                            <p><strong>Status:</strong>
+                                <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
+                                ${currentBuild.currentResult}</span>
+                            </p>
                             <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
                             <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
                             <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                            <p><strong>HTML Report:</strong> <a href="${env.BUILD_URL}artifact/report.html">Click here to view</a></p>
                             <br/>
                             <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
                         </body>
@@ -244,8 +260,9 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html'  // Only attach, do not embed
+                    attachmentsPattern: 'report.html'
                 )
+
             }
         }
 

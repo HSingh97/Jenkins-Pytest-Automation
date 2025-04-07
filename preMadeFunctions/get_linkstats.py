@@ -28,7 +28,7 @@ def get_linkstats(host, radio_ind):
             return match.group(1) if match else "-"
 
         stats = {
-            "ip_address": ip_address,
+            "ip_address": remoteip,
             "local_SNR_A1": extract_snmp(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.13.{radio_ind}.{i}"),
             "local_SNR_A2": extract_snmp(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.14.{radio_ind}.{i}"),
             "remote_SNR_A1": extract_snmp(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.15.{radio_ind}.{i}"),
