@@ -40,6 +40,8 @@ pipeline {
                     def countries = params.Countries.split(',')
 
                     sh "echo [] > iteration_results.json"  // Init file
+                    sh 'rm -f *_HT*.json iteration_results.json'
+                    echo "✅ Cleared old workspace"
 
                    def iteration = 1
 
