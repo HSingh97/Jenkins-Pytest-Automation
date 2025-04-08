@@ -62,7 +62,9 @@ pipeline {
                             echo "Pytest Output:\n${pytest_output}"
 
                             def iterationResults = readJSON file: 'iteration_results.json'
-                            def newTests = iterationResults.iterations.findAll { !it.containsKey("iteration") }
+                            def newTests = iterationResults.iterations.findAll {
+                                it.Country == country && it.Bandwidth == bandwidth
+                            }
 
                             newTests.each { test ->
                                 test.iteration = iteration++
