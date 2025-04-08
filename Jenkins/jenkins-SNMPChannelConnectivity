@@ -39,9 +39,11 @@ pipeline {
                     def bandwidths = params.Bandwidth.split(',')
                     def countries = params.Countries.split(',')
 
-                    sh "echo [] > iteration_results.json"  // Init file
+
                     sh 'rm -f *_HT*.json iteration_results.json'
                     echo "✅ Cleared old workspace"
+
+                    sh "echo [] > iteration_results.json"  // Init file
 
                    def iteration = 1
 
@@ -82,7 +84,6 @@ pipeline {
                                 echo "Channels Tested:"
                                 it['Tested Channels'].each { ch ->
                                     echo "  - Channel: ${ch.channel}, Status: ${ch.status}"
-                                    echo "    Tx Rate: ${ch.link_stats.tx_rate}, Rx Rate: ${ch.link_stats.rx_rate}"
                                 }
                             }
                         }

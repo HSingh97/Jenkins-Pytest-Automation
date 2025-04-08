@@ -71,7 +71,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
     if pingFunction.check_access(local_ip):
 
         if pingFunction.check_access(remote_ip):
-            print("Able to Access Remote Device ")
+            print("\nAble to Access Remote Device")
         else:
             print("Unable to access Remote Device")
 
@@ -95,6 +95,8 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
             "status": "PASS" if local_ping and remote_ping else "FAIL",
             "link_stats": get_linkstats.get_linkstats(local_ip, radio_ind)
         }
+
+        print(result)
 
         channel_results.append(result)
 
