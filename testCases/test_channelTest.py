@@ -51,6 +51,8 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
 
     if bandwidth == "HT40":
         new_bandwidth = "HT40+"
+    else:
+        new_bandwidth = bandwidth
 
     channel_list = fetch_ssh_values.fetch_channel_list(local_ip, radio_ind, country_code, new_bandwidth)
     time.sleep(2)
