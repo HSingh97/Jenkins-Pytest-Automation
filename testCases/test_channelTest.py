@@ -46,8 +46,10 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
     # Assigning Index for Radio1 or Radio2
     if radio == "Radio1":
         radio_ind = 2
+        intf = "ath1"
     elif radio == "Radio2":
         radio_ind = 3
+        intf = "ath2"
     else:
         print("No Radio Selected")
         assert False
@@ -98,8 +100,8 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
                     str(remote_active_channel) == str(channels))
         status = "PASS" if local_ping and remote_ping and is_channel_synced else "FAIL"
 
-        local_htmode = fetch_ssh_values.fetch_htmode(local_ip, radio_ind)
-        remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, radio_ind)
+        local_htmode = fetch_ssh_values.fetch_htmode(local_ip, intf)
+        remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, intf)
 
         print("@@@@@@@@@@@@@@@@@@@@@@@@@@@\n")
         print(f"Local HT Mode  : {local_htmode}\n")
