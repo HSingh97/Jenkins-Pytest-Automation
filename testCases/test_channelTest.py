@@ -127,7 +127,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
 
     get_linkstats.get_linkstats(local_ip, radio_ind)
     # Log to iteration_results.json
-    json_report_file = "iteration_results.json"
+    json_report_file = "custom_results.json"
 
     try:
         with open(json_report_file, "r") as f:

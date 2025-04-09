@@ -59,13 +59,13 @@ pipeline {
                                 pytest -v -s testCases/test_channelTest.py::test_channelconnectivity \
                                 --local-ip '$localIP' --remote-ip '$remoteIP' \
                                 --radio '$selectedRadio' --bandwidth '$bandwidth' --country '$country' \
-                                --json-report --json-report-file=iteration_results.json 2>&1
+                                2>&1
                             """, returnStdout: true).trim()
 
                             echo "Pytest Output:\n${pytest_output}"
 
                             // Read JSON and filter this test's data
-                            def iterationResults = readJSON file: 'iteration_results.json'
+                            def iterationResults = readJSON file: 'custom_results.json'
                             def normalizedBandwidth = bandwidth == "HT40" ? "HT40+" : bandwidth
 
                             def newTests = iterationResults.iterations.findAll {
