@@ -102,6 +102,10 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
 
         print(f"\nChannel {channels} result: {result['status']}")
 
+    print("Final Channel Results:")
+    print(channel_results)
+    print("Number of Channels:", len(channel_results))
+
     # Compose test result summary
     test_result = {
         "test": "test_channelconnectivity",
@@ -117,6 +121,10 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
             "Remote": pingFunction.check_access(remote_ip)
         }
     }
+
+    print("Test Result to append to JSON:")
+    print(test_result)
+
     get_linkstats.get_linkstats(local_ip, radio_ind)
     # Log to iteration_results.json
     json_report_file = "iteration_results.json"
