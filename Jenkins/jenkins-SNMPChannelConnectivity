@@ -55,6 +55,8 @@ pipeline {
                             echo " Testing: Country=${country}, Bandwidth=${bandwidth}"
                             echo "----------------------------------------"
 
+                            sh "echo '{\"iterations\": []}' > custom_results.json"
+
                             def pytest_output = sh(script: """
                                 pytest -v -s testCases/test_channelTest.py::test_channelconnectivity \
                                 --local-ip '$localIP' --remote-ip '$remoteIP' \
