@@ -179,7 +179,7 @@ pipeline {
                         htmlContent += """
                             <h2>
                                 Country: <i><span style="background-color:#ffff99; padding:2px 6px; border-radius:4px;"><b>${country}</b></span></i> |
-                                Bandwidth: <i><span style="background-color:#d0ebff; padding:2px 6px; border-radius:4px;"><b>${bandwidth} MHz</b></span></i>
+                                Bandwidth: <i><span style="background-color:#d0ebff; padding:2px 6px; border-radius:4px;"><b>${bandwidth} MHz</b></span></i> |
                                 Status: <span style="background-color:${statusColor}; color:${statusTextColor}; padding:2px 8px; border-radius:5px;"><b>${iterationStatus}</b></span>
                             </h2>
 

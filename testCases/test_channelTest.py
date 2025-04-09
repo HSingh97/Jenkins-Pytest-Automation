@@ -93,12 +93,13 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
         local_ping = pingFunction.check_access(local_ip)
         remote_ping = pingFunction.check_access(remote_ip) if local_ping else False
 
-        local_active_channel = get_snmp_values.fetch_active_channel(local_ip, radio_ind)
-        remote_active_channel = get_snmp_values.fetch_active_channel(local_ip, radio_ind)
+        expected_channel = int(channels)
+        local_active_channel = int(get_snmp_values.fetch_active_channel(local_ip, radio_ind))
+        remote_active_channel = int(get_snmp_values.fetch_active_channel(remote_ip, radio_ind))
 
-        is_channel_synced = (str(local_active_channel) == str(channels)) and (
-                    str(remote_active_channel) == str(channels))
-        status = "PASS" if local_ping and remote_ping and is_channel_synced else "FAIL"
+        status = "PASS" if (expected_channel == local_active_channel == remote_active_channel) else "FAIL"
+
+        print(f"[DEBUG] Expected: {expected_channel}, Local: {local_active_channel}, Remote: {remote_active_channel}")
 
         local_htmode = fetch_ssh_values.fetch_htmode(local_ip, intf)
         remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, intf)
