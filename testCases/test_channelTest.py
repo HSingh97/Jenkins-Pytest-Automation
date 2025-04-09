@@ -98,8 +98,8 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
                     str(remote_active_channel) == str(channels))
         status = "PASS" if local_ping and remote_ping and is_channel_synced else "FAIL"
 
-        local_htmode = fetch_ssh_values.fetch_htmode(local_ip, intf)
-        remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, intf)
+        local_htmode = fetch_ssh_values.fetch_htmode(local_ip, radio_ind)
+        remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, radio_ind)
 
         print("@@@@@@@@@@@@@@@@@@@@@@@@@@@\n")
         print(f"Local HT Mode  : {local_htmode}\n")
