@@ -66,8 +66,10 @@ pipeline {
 
                             // Read JSON and filter this test's data
                             def iterationResults = readJSON file: 'iteration_results.json'
+                            def normalizedBandwidth = bandwidth == "HT40" ? "HT40+" : bandwidth
+
                             def newTests = iterationResults.iterations.findAll {
-                                it.Country == country && it.Bandwidth == (bandwidth == "HT40" ? "HT40+" : bandwidth)
+                                it.Country == country && it.Bandwidth == normalizedBandwidth
                             }
 
                             newTests.each { test ->
