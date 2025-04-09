@@ -96,8 +96,8 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def reportFiles = findFiles(glob: '*.json').findAll {
-                        it.name != 'iteration_results.json' && it.length > 20 // Skip empty/invalid ones
+                    def reportFiles = findFiles(glob: '*_HT*.json') {
+                        it.name != 'iteration_results.json' && it.length > 20
                     }
 
                     def allResults = []
