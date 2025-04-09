@@ -39,18 +39,17 @@ pipeline {
                     def bandwidths = params.Bandwidth.split(',')
                     def countries = params.Countries.split(',')
 
-
+                    // Clear old files
                     sh 'rm -f *_HT*.json iteration_results.json'
                     echo "✅ Cleared old workspace"
 
-                    sh "echo [] > iteration_results.json"  // Init file
+                    // Init only once
+                    sh "echo {\\\"iterations\\\": []} > iteration_results.json"
 
-                   def iteration = 1
+                    def iteration = 1
 
                     for (country in countries) {
                         for (bandwidth in bandwidths) {
-
-                            sh "echo {\\\"iterations\\\": []} > iteration_results.json"
 
                             echo "----------------------------------------"
                             echo " Testing: Country=${country}, Bandwidth=${bandwidth}"
@@ -65,9 +64,10 @@ pipeline {
 
                             echo "Pytest Output:\n${pytest_output}"
 
+                            // Read JSON and filter this test's data
                             def iterationResults = readJSON file: 'iteration_results.json'
                             def newTests = iterationResults.iterations.findAll {
-                                it.Country == country && it.Bandwidth == bandwidth
+                                it.Country == country && it.Bandwidth == (bandwidth == "HT40" ? "HT40+" : bandwidth)
                             }
 
                             newTests.each { test ->
@@ -94,13 +94,15 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def reportFiles = findFiles(glob: '*.json').findAll { it.name != 'iteration_results.json' }
+                    def reportFiles = findFiles(glob: '*.json').findAll {
+                        it.name != 'iteration_results.json' && it.length > 20 // Skip empty/invalid ones
+                    }
+
                     def allResults = []
 
-                    // Load all result files
                     reportFiles.each { file ->
                         def data = readJSON file: file.name
-                        if (data?.iterations) {
+                        if (data?.iterations && !data.iterations.isEmpty()) {
                             allResults << [filename: file.name, content: data.iterations]
                         }
                     }
@@ -108,9 +110,9 @@ pipeline {
                     def buildParams = [
                         "Local IP Address": params['Local IP Address'],
                         "Remote IP Address": params['Remote IP Address'],
-                        "Radio" : params['Radio'],
-                        "Countries" : params['Countries'],
-                        "Bandwidths" : params['Bandwidth']
+                        "Radio"           : params['Radio'],
+                        "Countries"       : params['Countries'],
+                        "Bandwidths"      : params['Bandwidth']
                     ]
 
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
@@ -124,83 +126,19 @@ pipeline {
                         <head>
                             <title>Channel Test Report</title>
                             <style>
-                                body {
-                                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                                    margin: 0;
-                                    padding: 20px;
-                                    background-color: #f9f9f9;
-                                    color: #2c3e50;
-                                }
-
-                                .header {
-                                    display: flex;
-                                    justify-content: space-between;
-                                    align-items: center;
-                                    background-color: #fff;
-                                    padding: 20px;
-                                    border-bottom: 2px solid #e0e0e0;
-                                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                                }
-
-                                .header img {
-                                    height: 60px;
-                                }
-
-                                .header-info {
-                                    text-align: right;
-                                }
-
-                                .header-info h1 {
-                                    margin: 0;
-                                    font-size: 24px;
-                                }
-
-                                .header-info p {
-                                    margin: 5px 0;
-                                    font-size: 14px;
-                                    color: #555;
-                                }
-
-                                h2 {
-                                    margin-top: 40px;
-                                    font-size: 20px;
-                                    color: #333;
-                                    border-bottom: 2px solid #ddd;
-                                    padding-bottom: 5px;
-                                }
-
-                                table {
-                                    width: 100%;
-                                    border-collapse: collapse;
-                                    margin-top: 15px;
-                                    background-color: #fff;
-                                    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-                                }
-
-                                th, td {
-                                    padding: 12px 15px;
-                                    border: 1px solid #ddd;
-                                    text-align: left;
-                                }
-
-                                th {
-                                    background-color: #2c3e50;
-                                    color: white;
-                                }
-
-                                tr:nth-child(even) {
-                                    background-color: #f4f4f4;
-                                }
-
-                                .pass {
-                                    color: green;
-                                    font-weight: bold;
-                                }
-
-                                .fail {
-                                    color: red;
-                                    font-weight: bold;
-                                }
+                                body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 20px; background-color: #f9f9f9; color: #2c3e50; }
+                                .header { display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 20px; border-bottom: 2px solid #e0e0e0; }
+                                .header img { height: 60px; }
+                                .header-info { text-align: right; }
+                                .header-info h1 { margin: 0; font-size: 24px; }
+                                .header-info p { margin: 5px 0; font-size: 14px; color: #555; }
+                                h2 { margin-top: 40px; font-size: 20px; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
+                                table { width: 100%; border-collapse: collapse; margin-top: 15px; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+                                th, td { padding: 12px 15px; border: 1px solid #ddd; text-align: left; }
+                                th { background: #2c3e50; color: white; }
+                                tr:nth-child(even) { background-color: #f4f4f4; }
+                                .pass { color: green; font-weight: bold; }
+                                .fail { color: red; font-weight: bold; }
                             </style>
                         </head>
                         <body>
