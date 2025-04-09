@@ -6,6 +6,8 @@ import paramiko
 import json
 import sys
 import argparse
+
+import preMadeFunctions.get_snmp_values
 from utilities.readProperties import readConfig
 from testCases.configsetup import setup
 from utilities.serial_Logging import *
@@ -15,6 +17,7 @@ from preMadeFunctions import fetch_ssh_values
 from preMadeFunctions import set_channel_snmp
 from preMadeFunctions import set_bandwidth_snmp
 from preMadeFunctions import set_country_snmp
+from preMadeFunctions import get_snmp_values
 
 
 def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
@@ -88,12 +91,29 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
         local_ping = pingFunction.check_access(local_ip)
         remote_ping = pingFunction.check_access(remote_ip) if local_ping else False
 
+        local_active_channel = get_snmp_values.fetch_active_channel(local_ip, radio_ind)
+        remote_active_channel = get_snmp_values.fetch_active_channel(local_ip, radio_ind)
+
+        is_channel_synced = (str(local_active_channel) == str(channels)) and (
+                    str(remote_active_channel) == str(channels))
+        status = "PASS" if local_ping and remote_ping and is_channel_synced else "FAIL"
+
+        local_htmode = fetch_ssh_values.fetch_htmode(local_ip, intf)
+        remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, intf)
+
+        print("@@@@@@@@@@@@@@@@@@@@@@@@@@@\n")
+        print(f"Local HT Mode  : {local_htmode}\n")
+        print(f"Remote HT Mode : {remote_htmode}\n")
+        print("@@@@@@@@@@@@@@@@@@@@@@@@@@@\n")
+
         result = {
             "channel": formatted_channel,
             "LocalPing": local_ping,
             "RemotePing": remote_ping,
-            "status": "PASS" if local_ping and remote_ping else "FAIL",
-            "link_stats": get_linkstats.get_linkstats(local_ip, radio_ind)
+            "status": status,
+            "link_stats": get_linkstats.get_linkstats(local_ip, radio_ind),
+            "local_htmode": local_htmode,
+            "remote_htmode": remote_htmode
         }
 
         print(result)
@@ -106,10 +126,17 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
     print(channel_results)
     print("Number of Channels:", len(channel_results))
 
+    if all(c["status"] == "PASS" for c in channel_results):
+        overall_status = "PASS"
+    elif all(c["status"] == "FAIL" for c in channel_results):
+        overall_status = "FAIL"
+    else:
+        overall_status = "PARTIAL"
+
     # Compose test result summary
     test_result = {
         "test": "test_channelconnectivity",
-        "status": "PASS" if all(c["status"] == "PASS" for c in channel_results) else "FAIL",
+        "status": overall_status,
         "Radio": radio,
         "Local IP": local_ip,
         "Remote IP": remote_ip,

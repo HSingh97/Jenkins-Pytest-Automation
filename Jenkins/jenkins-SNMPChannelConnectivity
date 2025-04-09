@@ -166,10 +166,21 @@ pipeline {
                         def country = parts[0..-2].join(' ')
                         def bandwidth = parts[-1]
 
+                        def statuses = resultFile.content.collect { it.status }
+                        def iterationStatus = statuses.every { it == "PASS" } ? "PASS" :
+                                              (statuses.every { it == "FAIL" } ? "FAIL" : "PARTIAL")
+
+                        def statusColor = iterationStatus == "PASS" ? "#d4edda" :
+                                          (iterationStatus == "FAIL" ? "#f8d7da" : "#fff3cd")
+
+                        def statusTextColor = iterationStatus == "PASS" ? "green" :
+                                              (iterationStatus == "FAIL" ? "red" : "orange")
+
                         htmlContent += """
                             <h2>
                                 Country: <i><span style="background-color:#ffff99; padding:2px 6px; border-radius:4px;"><b>${country}</b></span></i> |
                                 Bandwidth: <i><span style="background-color:#d0ebff; padding:2px 6px; border-radius:4px;"><b>${bandwidth} MHz</b></span></i>
+                                Status: <span style="background-color:${statusColor}; color:${statusTextColor}; padding:2px 8px; border-radius:5px;"><b>${iterationStatus}</b></span>
                             </h2>
 
                             <table>
@@ -183,6 +194,8 @@ pipeline {
                                     <th>Remote SNR A2</th>
                                     <th>Tx Rate</th>
                                     <th>Rx Rate</th>
+                                    <th>Local HT Mode</th>
+                                    <th>Remote HT Mode</th>
                                 </tr>
                         """
 
@@ -204,6 +217,8 @@ pipeline {
                                         <td>${stats?.remote_SNR_A2 ?: '-'}</td>
                                         <td>${stats?.tx_rate ?: '-'}</td>
                                         <td>${stats?.rx_rate ?: '-'}</td>
+                                        <td>${channel.local_htmode ?: '-'}</td>
+                                        <td>${channel.remote_htmode ?: '-'}</td>
                                     </tr>
                                 """
                             }
