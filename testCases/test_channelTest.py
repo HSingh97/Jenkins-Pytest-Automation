@@ -101,13 +101,11 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
 
         print(f"[DEBUG] Expected: {expected_channel}, Local: {local_active_channel}, Remote: {remote_active_channel}")
 
+
         local_htmode = fetch_ssh_values.fetch_htmode(local_ip, intf)
         remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, intf)
 
-        print("@@@@@@@@@@@@@@@@@@@@@@@@@@@\n")
-        print(f"Local HT Mode  : {local_htmode}\n")
-        print(f"Remote HT Mode : {remote_htmode}\n")
-        print("@@@@@@@@@@@@@@@@@@@@@@@@@@@\n")
+        print(f"[DEBUG] HTMODE ; Local: {local_htmode}, Remote: {remote_htmode}")
 
         result = {
             "channel": formatted_channel,
@@ -116,7 +114,9 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
             "status": status,
             "link_stats": get_linkstats.get_linkstats(local_ip, radio_ind),
             "local_htmode": local_htmode,
-            "remote_htmode": remote_htmode
+            "remote_htmode": remote_htmode,
+            "local_active": local_active_channel,
+            "remote_active": remote_active_channel
         }
 
         print(result)

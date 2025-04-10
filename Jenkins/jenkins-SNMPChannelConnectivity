@@ -187,6 +187,8 @@ pipeline {
                                 <tr>
                                     <th>Channel</th>
                                     <th>Status</th>
+                                    <th>Local Active Channel</th>
+                                    <th>Remote Active Channel</th>
                                     <th>Remote IP</th>
                                     <th>Local SNR A1</th>
                                     <th>Local SNR A2</th>
@@ -210,6 +212,8 @@ pipeline {
                                     <tr>
                                         <td>${channel.channel}</td>
                                         <td>${status}</td>
+                                        <td>${channel.local_active ?: '-'}</td>
+                                        <td>${channel.remote_active ?: '-'}</td>
                                         <td>${stats?.ip_address ?: 'N/A'}</td>
                                         <td>${stats?.local_SNR_A1 ?: '-'}</td>
                                         <td>${stats?.local_SNR_A2 ?: '-'}</td>
