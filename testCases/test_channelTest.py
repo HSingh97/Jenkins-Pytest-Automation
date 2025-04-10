@@ -68,7 +68,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
     set_country_snmp.change_country(remote_ip, radio_ind, country_code)
 
     print("\nConfiguring Country {} for Local Device ".format(country_code))
-    set_country_snmp.change_country(remote_ip, radio_ind, country_code)
+    set_country_snmp.change_country(local_ip, radio_ind, country_code)
 
     print("\nConfiguring Bandwidth : {} for Local Device ".format(new_bandwidth))
     set_bandwidth_snmp.change_bandwidth(local_ip, radio_ind, new_bandwidth)
