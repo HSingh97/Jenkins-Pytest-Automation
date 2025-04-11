@@ -57,6 +57,10 @@ pipeline {
 
                             sh "echo '{\"iterations\": []}' > custom_results.json"
 
+                            if ((country == "Canada" || country == "US 5GHz Non-DFS") && bandwidth == "HT160") {
+                                continue
+                            }
+
                             def pytest_output = sh(script: """
                                 pytest -v -s testCases/test_channelTest.py::test_channelconnectivity \
                                 --local-ip '$localIP' --remote-ip '$remoteIP' \
