@@ -19,7 +19,6 @@ def ssh_get(ip, command):
     return output
 
 
-
 def ssh_set(ip, command, value):
     ssh_client = paramiko.SSHClient()
     ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -33,3 +32,18 @@ def ssh_set(ip, command, value):
 
     ssh_client.close()
 
+
+def ucidyn_set(ip, command, value):
+    ssh_client = paramiko.SSHClient()
+    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh_client.connect(ip, username="root", password="admin")
+
+    # make the command syntax
+    finalcommand = 'ucidyn set {}={}'.format(command, value)
+    print("[DEBUG] %%%%%% Executing : {} %%%%%%".format(finalcommand))
+    # execute the final command
+    ssh_client.exec_command(finalcommand)
+    time.sleep(1)
+    ssh_client.exec_command("ucidyn apply")
+    time.sleep(20)
+    ssh_client.close()

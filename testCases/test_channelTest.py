@@ -18,6 +18,7 @@ from preMadeFunctions import set_channel_snmp
 from preMadeFunctions import set_bandwidth_snmp
 from preMadeFunctions import set_country_snmp
 from preMadeFunctions import get_snmp_values
+from preMadeFunctions import ssh_operations
 
 
 def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
@@ -47,9 +48,11 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
     if radio == "Radio1":
         radio_ind = 2
         intf = "ath1"
+        wifi_intf = "wifi1"
     elif radio == "Radio2":
         radio_ind = 3
         intf = "ath2"
+        wifi_intf = "wifi2"
     else:
         print("No Radio Selected")
         assert False
@@ -70,8 +73,10 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
     print("\nConfiguring Country {} for Local Device ".format(country_code))
     set_country_snmp.change_country(local_ip, radio_ind, country_code)
 
+    bandwidth_param = "wireless.{}.htmode".format(wifi_intf)
     print("\nConfiguring Bandwidth : {} for Local Device ".format(new_bandwidth))
-    set_bandwidth_snmp.change_bandwidth(local_ip, radio_ind, new_bandwidth)
+    #set_bandwidth_snmp.change_bandwidth(local_ip, radio_ind, new_bandwidth)
+    ssh_operations.ucidyn_set(local_ip, bandwidth_param, new_bandwidth)
 
     if pingFunction.check_access(local_ip):
 
