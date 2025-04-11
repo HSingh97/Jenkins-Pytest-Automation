@@ -39,7 +39,7 @@ def ucidyn_set(ip, command, value):
     ssh_client.connect(ip, username="root", password="admin")
 
     # make the command syntax
-    finalcommand = 'ucidyn set {}={}'.format(command, value)
+    finalcommand = 'ucidyn set {} {}'.format(command, value)
     print("[DEBUG] %%%%%% Executing : {} %%%%%%".format(finalcommand))
     # execute the final command
     ssh_client.exec_command(finalcommand)
