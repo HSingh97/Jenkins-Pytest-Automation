@@ -45,5 +45,5 @@ def ucidyn_set(ip, command, value):
     ssh_client.exec_command(finalcommand)
     time.sleep(1)
     ssh_client.exec_command("ucidyn apply")
-    time.sleep(20)
+    time.sleep(60)
     ssh_client.close()
