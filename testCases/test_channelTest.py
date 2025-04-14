@@ -121,6 +121,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
             "RemotePing": remote_ping,
             "status": status,
             "link_stats": get_linkstats.get_linkstats(local_ip, radio_ind),
+            "conf_htmode":configured_htmode,
             "local_htmode": local_htmode,
             "remote_htmode": remote_htmode,
             "local_active": local_active_channel,

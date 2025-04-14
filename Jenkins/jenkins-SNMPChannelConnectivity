@@ -225,6 +225,7 @@ pipeline {
                                         <td>${stats?.remote_SNR_A2 ?: '-'}</td>
                                         <td>${stats?.tx_rate ?: '-'}</td>
                                         <td>${stats?.rx_rate ?: '-'}</td>
+                                        <td>${channel.conf_htmode ?: '-'}</td>
                                         <td>${channel.local_htmode ?: '-'}</td>
                                         <td>${channel.remote_htmode ?: '-'}</td>
                                     </tr>
