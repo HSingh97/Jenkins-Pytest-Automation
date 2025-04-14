@@ -8,6 +8,7 @@ import sys
 import argparse
 
 import preMadeFunctions.get_snmp_values
+from testCases.conftest import password
 from utilities.readProperties import readConfig
 from testCases.configsetup import setup
 from utilities.serial_Logging import *
@@ -109,7 +110,9 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
 
         local_htmode = fetch_ssh_values.fetch_htmode(local_ip, intf)
         remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, intf)
+        configured_htmode = ssh_operations.ssh_get(local_ip, "uci get wireless.wifi1.htmode")
 
+        print(f"[DEBUG] Configured HTMODE : {configured_htmode}")
         print(f"[DEBUG] HTMODE ; Local: {local_htmode}, Remote: {remote_htmode}")
 
         result = {
