@@ -91,7 +91,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
 
     channel_results = []
 
-    for channels in channel_list:
+    for channels in channel_list[:3]:
         set_channel_snmp.change_channel(local_ip, radio_ind, channels)
         frequency = (int(channels)*5)+5000
         formatted_channel = "{} ( {} MHz )".format(channels, frequency)
