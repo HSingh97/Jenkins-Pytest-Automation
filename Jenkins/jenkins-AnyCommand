@@ -291,12 +291,13 @@ pipeline {
                 // Define a mapping of user IDs to emails (update as needed)
                 def userEmails = [
                     "harman": "harmanjot.singh@senao.com",
-                    "mahesh": "mahesh.battala@mahesh.com",
+                    "mahesh": "mahesh.battala@senao.com",
                     "sandeep": "sandeep.manchikanti@senao.com",
                     "sampath": "sampath.marella@senao.com",
                     "jayanth": "jayanth.munnaluru@senao.com",
                     "srilatha": "srilatha.tadiboina@senao.com",
-                    "phani": "phani.darla@senao.com"
+                    "phani": "phani.darla@senao.com",
+                    "dinesh": "dinesh.redddy@senao.com"
                 ]
 
                 // Get email from predefined mapping, else use default
