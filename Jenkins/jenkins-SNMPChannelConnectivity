@@ -178,6 +178,9 @@ pipeline {
                                     vertical-align: middle;
                                 }
                                 th { background: #2c3e50; color: white; }
+                                table.build-params td, table.build-params th {
+                                    text-align: left !important;
+                                }
                                 tr:nth-child(even) { background-color: #f4f4f4; }
                                 .pass { color: green; font-weight: bold; }
                                 .fail { color: red; font-weight: bold; }
@@ -194,7 +197,7 @@ pipeline {
                             </div>
 
                             <h2>Build Parameters</h2>
-                            <table>
+                            <table class="build-params">
                                 ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
                             </table>
                     """
