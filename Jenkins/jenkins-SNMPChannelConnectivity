@@ -121,7 +121,7 @@ pipeline {
                         script: """
                             ssh-keygen -R ${localIP} >/dev/null 2>&1 || true
                             ssh-keyscan -H ${localIP} >> ~/.ssh/known_hosts 2>/dev/null
-                            sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/firmware_version'
+                            sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'
                         """,
                         returnStdout: true
                     ).trim()
@@ -130,7 +130,7 @@ pipeline {
                         script: """
                             ssh-keygen -R ${remoteIP} >/dev/null 2>&1 || true
                             ssh-keyscan -H ${remoteIP} >> ~/.ssh/known_hosts 2>/dev/null
-                            sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/firmware_version'
+                            sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'
                         """,
                         returnStdout: true
                     ).trim()
