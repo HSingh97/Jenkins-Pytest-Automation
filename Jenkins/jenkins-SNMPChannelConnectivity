@@ -114,13 +114,32 @@ pipeline {
                             allResults << [filename: file.name, content: data.iterations]
                         }
                     }
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
+
+                    def local_fw_version = sh(
+                        script: """
+                            ssh-keygen -R ${localIP} || true
+                            ssh-keyscan -H ${localIP} >> ~/.ssh/known_hosts
+                            sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/firmware_version'
+                        """, returnStdout: true
+                    ).trim()
+
+                    def remote_fw_version = sh(
+                        script: """
+                            ssh-keygen -R ${remoteIP} || true
+                            ssh-keyscan -H ${remoteIP} >> ~/.ssh/known_hosts
+                            sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/firmware_version'
+                        """, returnStdout: true
+                    ).trim()
 
                     def buildParams = [
-                        "Local IP Address": params['Local IP Address'],
-                        "Remote IP Address": params['Remote IP Address'],
+                        "Local IP Address": localIP,
+                        "Remote IP Address": remoteIP,
                         "Radio"           : params['Radio'],
                         "Countries"       : params['Countries'],
-                        "Bandwidths"      : params['Bandwidth']
+                        "Bandwidths"      : params['Bandwidth'],
+                        "FW Version (Local / Remote)"      : "${local_fw_version} / ${remote_fw_version}"
                     ]
 
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
