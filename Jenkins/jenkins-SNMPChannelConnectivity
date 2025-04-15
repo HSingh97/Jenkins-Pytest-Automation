@@ -214,17 +214,26 @@ pipeline {
                                     ? "<span class='pass'>✅ PASS</span>"
                                     : "<span class='fail'>❌ FAIL</span>"
 
-                                // ✅ HT Mode width checks (all inside this block)
+                                // ✅ HT Mode width checks
                                 def bw_mhz = bandwidth.replaceAll("[^\\d]", "")
                                 def extractHTWidth = { ht -> ht?.find(/\d+/) ?: "" }
 
                                 def localHT = channel.local_htmode ?: "-"
                                 def remoteHT = channel.remote_htmode ?: "-"
-                                def localWidth = extractHTWidth(localHT)
-                                def remoteWidth = extractHTWidth(remoteHT)
+                                def expectedBW = bandwidth.replaceAll("[^\\d]", "")
 
-                                def bandwidthMismatchLocal = localWidth != bw_mhz
-                                def bandwidthMismatchRemote = remoteWidth != bw_mhz
+                                def isHTMatch = { htmode, bw ->
+                                    def validMap = [
+                                        "20": ["11AHE20"],
+                                        "40": ["11AHE40PLUS", "11AHE40MINUS"],
+                                        "80": ["11AHE80"],
+                                        "160": ["11AHE160"]
+                                    ]
+                                    return validMap[bw]?.contains(htmode?.toUpperCase())
+                                }
+
+                                def bandwidthMismatchLocal = !isHTMatch(localHT, expectedBW)
+                                def bandwidthMismatchRemote = !isHTMatch(remoteHT, expectedBW)
                                 def modeMismatch = localHT != remoteHT
 
                                 def localStyle = (bandwidthMismatchLocal || modeMismatch) ? "color:red; font-weight:bold;" : ""
