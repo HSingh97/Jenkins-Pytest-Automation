@@ -119,19 +119,22 @@ pipeline {
 
                     def local_fw_version = sh(
                         script: """
-                            ssh-keygen -R ${localIP} || true
-                            ssh-keyscan -H ${localIP} >> ~/.ssh/known_hosts
-                            sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'
-                        """, returnStdout: true
+                            ssh-keygen -R ${localIP} >/dev/null 2>&1 || true
+                            ssh-keyscan -H ${localIP} >> ~/.ssh/known_hosts 2>/dev/null
+                            sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/firmware_version'
+                        """,
+                        returnStdout: true
                     ).trim()
 
                     def remote_fw_version = sh(
                         script: """
-                            ssh-keygen -R ${remoteIP} || true
-                            ssh-keyscan -H ${remoteIP} >> ~/.ssh/known_hosts
-                            sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'
-                        """, returnStdout: true
+                            ssh-keygen -R ${remoteIP} >/dev/null 2>&1 || true
+                            ssh-keyscan -H ${remoteIP} >> ~/.ssh/known_hosts 2>/dev/null
+                            sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/firmware_version'
+                        """,
+                        returnStdout: true
                     ).trim()
+
 
                     def buildParams = [
                         "Local IP Address": localIP,
