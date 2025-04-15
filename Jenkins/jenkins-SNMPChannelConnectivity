@@ -141,8 +141,20 @@ pipeline {
                                 .header-info h1 { margin: 0; font-size: 24px; }
                                 .header-info p { margin: 5px 0; font-size: 14px; color: #555; }
                                 h2 { margin-top: 40px; font-size: 20px; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
-                                table { width: 100%; border-collapse: collapse; margin-top: 15px; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-                                th, td { padding: 12px 15px; border: 1px solid #ddd; text-align: left; }
+                                table {
+                                    width: 100%;
+                                    border-collapse: collapse;
+                                    margin-top: 15px;
+                                    background: #fff;
+                                    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+                                }
+
+                                th, td {
+                                    padding: 12px 15px;
+                                    border: 1px solid #ddd;
+                                    text-align: center; /* ✅ Center the content inside */
+                                    vertical-align: middle;
+                                }
                                 th { background: #2c3e50; color: white; }
                                 tr:nth-child(even) { background-color: #f4f4f4; }
                                 .pass { color: green; font-weight: bold; }
@@ -188,7 +200,7 @@ pipeline {
                                 Status: <span style="background-color:${statusColor}; color:${statusTextColor}; padding:2px 8px; border-radius:5px;"><b>${iterationStatus}</b></span>
                             </h2>
 
-                            <table style="margin: auto; text-align: center; border-collapse: collapse; width: 95%;">
+                            <table>
 
                               <tr>
                                 <th rowspan="2">Channel</th>
@@ -198,8 +210,7 @@ pipeline {
                                 <th colspan="2">Local SNR</th>
                                 <th colspan="2">Remote SNR</th>
                                 <th colspan="2">Rate</th>
-                                <th rowspan="2">Conf HT Mode</th>
-                                <th colspan="2">HT Mode</th>
+                                <th colspan="3">HT Mode</th>
                               </tr>
 
                               <tr>
@@ -211,8 +222,9 @@ pipeline {
                                 <th>A2</th>
                                 <th>Tx</th>
                                 <th>Rx</th>
-                                <th>Local</th>
-                                <th>Remote</th>
+                                <th>Configured Local</th>
+                                <th>Active Local</th>
+                                <th>Active Remote</th>
                               </tr>
 
                         """
