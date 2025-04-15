@@ -188,23 +188,33 @@ pipeline {
                                 Status: <span style="background-color:${statusColor}; color:${statusTextColor}; padding:2px 8px; border-radius:5px;"><b>${iterationStatus}</b></span>
                             </h2>
 
-                            <table>
-                                <tr>
-                                    <th>Channel</th>
-                                    <th>Status</th>
-                                    <th>L Active Chan</th>
-                                    <th>R Active Chan</th>
-                                    <th>R IP</th>
-                                    <th>L SNR A1</th>
-                                    <th>L-SNR A2</th>
-                                    <th>R SNR A1</th>
-                                    <th>R SNR A2</th>
-                                    <th>Tx Rate</th>
-                                    <th>Rx Rate</th>
-                                    <th>Conf HT Mode</th>
-                                    <th>L HT Mode</th>
-                                    <th>R HT Mode</th>
-                                </tr>
+                            <table style="margin: auto; text-align: center; border-collapse: collapse; width: 95%;">
+
+                              <tr>
+                                <th rowspan="2">Channel</th>
+                                <th rowspan="2">Status</th>
+                                <th colspan="2">Active Channel</th>
+                                <th rowspan="2">Remote IP</th>
+                                <th colspan="2">Local SNR</th>
+                                <th colspan="2">Remote SNR</th>
+                                <th colspan="2">Rate</th>
+                                <th rowspan="2">Conf HT Mode</th>
+                                <th colspan="2">HT Mode</th>
+                              </tr>
+
+                              <tr>
+                                <th>Local</th>
+                                <th>Remote</th>
+                                <th>A1</th>
+                                <th>A2</th>
+                                <th>A1</th>
+                                <th>A2</th>
+                                <th>Tx</th>
+                                <th>Rx</th>
+                                <th>Local</th>
+                                <th>Remote</th>
+                              </tr>
+
                         """
 
                         resultFile.content.each { iteration ->
@@ -241,22 +251,23 @@ pipeline {
 
                                 htmlContent += """
                                     <tr>
-                                        <td>${channel.channel}</td>
-                                        <td>${status}</td>
-                                        <td>${channel.local_active ?: '-'}</td>
-                                        <td>${channel.remote_active ?: '-'}</td>
-                                        <td>${stats?.ip_address ?: 'N/A'}</td>
-                                        <td>${stats?.local_SNR_A1 ?: '-'}</td>
-                                        <td>${stats?.local_SNR_A2 ?: '-'}</td>
-                                        <td>${stats?.remote_SNR_A1 ?: '-'}</td>
-                                        <td>${stats?.remote_SNR_A2 ?: '-'}</td>
-                                        <td>${stats?.tx_rate ?: '-'}</td>
-                                        <td>${stats?.rx_rate ?: '-'}</td>
-                                        <td>${channel.conf_htmode ?: '-'}</td>
-                                        <td style="${localStyle}">${localHT}</td>
-                                        <td style="${remoteStyle}">${remoteHT}</td>
+                                      <td>${channel.channel}</td>
+                                      <td>${status}</td>
+                                      <td>${channel.local_active ?: '-'}</td>
+                                      <td>${channel.remote_active ?: '-'}</td>
+                                      <td>${stats?.ip_address ?: 'N/A'}</td>
+                                      <td>${stats?.local_SNR_A1 ?: '-'}</td>
+                                      <td>${stats?.local_SNR_A2 ?: '-'}</td>
+                                      <td>${stats?.remote_SNR_A1 ?: '-'}</td>
+                                      <td>${stats?.remote_SNR_A2 ?: '-'}</td>
+                                      <td>${stats?.tx_rate ?: '-'}</td>
+                                      <td>${stats?.rx_rate ?: '-'}</td>
+                                      <td>${channel.conf_htmode ?: '-'}</td>
+                                      <td style="${localStyle}">${localHT}</td>
+                                      <td style="${remoteStyle}">${remoteHT}</td>
                                     </tr>
-                                """
+                                    """
+
                             }
                         }
 
