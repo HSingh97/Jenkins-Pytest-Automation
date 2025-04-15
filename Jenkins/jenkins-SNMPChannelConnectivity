@@ -180,21 +180,6 @@ pipeline {
                         def statusTextColor = iterationStatus == "PASS" ? "green" :
                                               (iterationStatus == "FAIL" ? "red" : "orange")
 
-                        def bw_mhz = bandwidth.replaceAll("[^\\d]", "")
-                        def extractHTWidth = { ht -> ht?.find(/\d+/) ?: "" }
-
-                        def localHT = channel.local_htmode ?: "-"
-                        def remoteHT = channel.remote_htmode ?: "-"
-                        def localWidth = extractHTWidth(localHT)
-                        def remoteWidth = extractHTWidth(remoteHT)
-
-                        def bandwidthMismatchLocal = localWidth != bw_mhz
-                        def bandwidthMismatchRemote = remoteWidth != bw_mhz
-                        def modeMismatch = localHT != remoteHT
-
-                        def localStyle = (bandwidthMismatchLocal || modeMismatch) ? "color:red; font-weight:bold;" : ""
-                        def remoteStyle = (bandwidthMismatchRemote || modeMismatch) ? "color:red; font-weight:bold;" : ""
-
 
                         htmlContent += """
                             <h2>
@@ -228,6 +213,22 @@ pipeline {
                                 def status = channel["status"] == "PASS"
                                     ? "<span class='pass'>✅ PASS</span>"
                                     : "<span class='fail'>❌ FAIL</span>"
+
+                                // ✅ HT Mode width checks (all inside this block)
+                                def bw_mhz = bandwidth.replaceAll("[^\\d]", "")
+                                def extractHTWidth = { ht -> ht?.find(/\d+/) ?: "" }
+
+                                def localHT = channel.local_htmode ?: "-"
+                                def remoteHT = channel.remote_htmode ?: "-"
+                                def localWidth = extractHTWidth(localHT)
+                                def remoteWidth = extractHTWidth(remoteHT)
+
+                                def bandwidthMismatchLocal = localWidth != bw_mhz
+                                def bandwidthMismatchRemote = remoteWidth != bw_mhz
+                                def modeMismatch = localHT != remoteHT
+
+                                def localStyle = (bandwidthMismatchLocal || modeMismatch) ? "color:red; font-weight:bold;" : ""
+                                def remoteStyle = (bandwidthMismatchRemote || modeMismatch) ? "color:red; font-weight:bold;" : ""
 
                                 htmlContent += """
                                     <tr>
