@@ -93,8 +93,8 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
 
     i = 0
     for i, channels in enumerate(channel_list):
-        if i >= 1:
-            break
+        # if i >= 1:
+        #     break
 
         set_channel_snmp.change_channel(local_ip, radio_ind, channels)
         frequency = (int(channels)*5)+5000
