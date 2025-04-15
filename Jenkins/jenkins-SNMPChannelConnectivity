@@ -191,18 +191,18 @@ pipeline {
                                 <tr>
                                     <th>Channel</th>
                                     <th>Status</th>
-                                    <th>Local Active Channel</th>
-                                    <th>Remote Active Channel</th>
-                                    <th>Remote IP</th>
-                                    <th>Local SNR A1</th>
-                                    <th>Local SNR A2</th>
-                                    <th>Remote SNR A1</th>
-                                    <th>Remote SNR A2</th>
+                                    <th>L Active Chan</th>
+                                    <th>R Active Chan</th>
+                                    <th>R IP</th>
+                                    <th>L SNR A1</th>
+                                    <th>L-SNR A2</th>
+                                    <th>R SNR A1</th>
+                                    <th>R SNR A2</th>
                                     <th>Tx Rate</th>
                                     <th>Rx Rate</th>
-                                    <th>Configured HT Mode</th>
-                                    <th>Local HT Mode</th>
-                                    <th>Remote HT Mode</th>
+                                    <th>Conf HT Mode</th>
+                                    <th>L HT Mode</th>
+                                    <th>R HT Mode</th>
                                 </tr>
                         """
 
@@ -227,8 +227,27 @@ pipeline {
                                         <td>${stats?.tx_rate ?: '-'}</td>
                                         <td>${stats?.rx_rate ?: '-'}</td>
                                         <td>${channel.conf_htmode ?: '-'}</td>
-                                        <td>${channel.local_htmode ?: '-'}</td>
-                                        <td>${channel.remote_htmode ?: '-'}</td>
+                                        <%
+                                            def bw_mhz = bandwidth.replaceAll("[^\\d]", "")  // HT40 → 40
+                                            def extractHTWidth = { ht -> ht?.find(/\d+/) ?: "" }
+
+                                            def localHT = channel.local_htmode ?: "-"
+                                            def remoteHT = channel.remote_htmode ?: "-"
+                                            def localWidth = extractHTWidth(localHT)
+                                            def remoteWidth = extractHTWidth(remoteHT)
+
+                                            // Conditions
+                                            def bandwidthMismatchLocal = localWidth != bw_mhz
+                                            def bandwidthMismatchRemote = remoteWidth != bw_mhz
+                                            def modeMismatch = localHT != remoteHT
+
+                                            def localStyle = (bandwidthMismatchLocal || modeMismatch) ? "color:red; font-weight:bold;" : ""
+                                            def remoteStyle = (bandwidthMismatchRemote || modeMismatch) ? "color:red; font-weight:bold;" : ""
+                                        %>
+                                        <td style="${localStyle}">${localHT}</td>
+                                        <td style="${remoteStyle}">${remoteHT}</td>
+
+
                                     </tr>
                                 """
                             }
