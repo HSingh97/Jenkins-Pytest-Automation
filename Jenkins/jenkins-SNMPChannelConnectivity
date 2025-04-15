@@ -200,6 +200,7 @@ pipeline {
                                     <th>Remote SNR A2</th>
                                     <th>Tx Rate</th>
                                     <th>Rx Rate</th>
+                                    <th>Configured HT Mode</th>
                                     <th>Local HT Mode</th>
                                     <th>Remote HT Mode</th>
                                 </tr>
