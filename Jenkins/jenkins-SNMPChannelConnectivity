@@ -86,7 +86,7 @@ pipeline {
                             }
 
                             def filename = "${country.trim().replaceAll("\\s+", "_")}_${bandwidth.trim()}.json"
-                            def existingFile = fileExists(filename) ? readJSON file: filename : [iterations: []]
+                            def existingFile = fileExists(filename) ? readJSON(file: filename) : [iterations: []]
 
                             writeJSON file: filename, json: [iterations: existingFile.iterations + newTests]
 
