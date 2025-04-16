@@ -105,17 +105,29 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
 
         expected_channel = int(channels)
         local_active_channel = int(get_snmp_values.fetch_active_channel(local_ip, radio_ind))
-        remote_active_channel = int(get_snmp_values.fetch_active_channel(remote_ip, radio_ind))
+        local_htmode = fetch_ssh_values.fetch_htmode(local_ip, intf)
+        configured_htmode = ssh_operations.ssh_get(local_ip, "uci get wireless.wifi1.htmode")
+
+        try:
+            remote_active_raw = get_snmp_values.fetch_active_channel(remote_ip, radio_ind)
+            remote_active_channel = int(remote_active_raw)
+            remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, intf)
+
+        except ValueError:
+            print(f"[WARN] Remote active channel fetch failed. Retrying once...")
+            remote_active_raw = get_snmp_values.fetch_active_channel(remote_ip, radio_ind)
+            try:
+                remote_active_channel = int(remote_active_raw)
+                remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, intf)
+            except ValueError:
+                print(f"[ERROR] Remote active channel invalid: '{remote_active_raw}'")
+                remote_active_channel = -1  # fallback value to ensure FAIL
+                remote_htmode = "Null"
+                print(f"Invalid remote active channel for {formatted_channel}")
 
         status = "PASS" if (expected_channel == local_active_channel == remote_active_channel) else "FAIL"
 
         print(f"[DEBUG] Expected: {expected_channel}, Local: {local_active_channel}, Remote: {remote_active_channel}")
-
-
-        local_htmode = fetch_ssh_values.fetch_htmode(local_ip, intf)
-        remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, intf)
-        configured_htmode = ssh_operations.ssh_get(local_ip, "uci get wireless.wifi1.htmode")
-
         print(f"[DEBUG] Configured HTMODE : {configured_htmode}")
         print(f"[DEBUG] HTMODE ; Local: {local_htmode}, Remote: {remote_htmode}")
 
