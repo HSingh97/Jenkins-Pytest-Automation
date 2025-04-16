@@ -121,7 +121,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
                 remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, intf)
             except ValueError:
                 print(f"[ERROR] Remote active channel invalid: '{remote_active_raw}'")
-                remote_active_channel = -1  # fallback value to ensure FAIL
+                remote_active_channel = "Null"
                 remote_htmode = "Null"
                 print(f"Invalid remote active channel for {formatted_channel}")
 
