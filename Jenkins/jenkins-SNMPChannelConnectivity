@@ -70,7 +70,10 @@ pipeline {
 
                             echo "Pytest Output:\n${pytest_output}"
 
-                            def iterationResults = fileExists('custom_results.json') ? readJSON file: 'custom_results.json' : [iterations: []]
+                            def iterationResults = fileExists('custom_results.json')
+                                ? readJSON(file: 'custom_results.json')
+                                : [iterations: []]
+
                             def normalizedBandwidth = bandwidth == "HT40" ? "HT40+" : bandwidth
 
                             def newTests = iterationResults.iterations.findAll {
