@@ -1,4 +1,6 @@
 def get_time(req_type, seconds):
+    seconds = int(seconds)
+
     d = seconds // (60 * 60 * 24)
     h = (seconds % (60 * 60 * 24)) // (60 * 60)
     m = (seconds % (60 * 60)) // 60
