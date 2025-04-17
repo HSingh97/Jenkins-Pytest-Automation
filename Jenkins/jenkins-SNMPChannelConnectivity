@@ -33,72 +33,74 @@ pipeline {
         stage('Channel Testing') {
             steps {
                 script {
-                    def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
-                    def selectedRadio = params['Radio']
-                    def bandwidths = params.Bandwidth.split(',')
-                    def countries = params.Countries.split(',')
+                    catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                        def localIP = params['Local IP Address']
+                        def remoteIP = params['Remote IP Address']
+                        def selectedRadio = params['Radio']
+                        def bandwidths = params.Bandwidth.split(',')
+                        def countries = params.Countries.split(',')
 
-                    // Clear old files
-                    sh 'rm -f *_HT*.json iteration_results.json'
-                    echo "✅ Cleared old workspace"
+                        // Clear old files
+                        sh 'rm -f *_HT*.json iteration_results.json'
+                        echo "✅ Cleared old workspace"
 
-                    // Init only once
-                    sh "echo {\\\"iterations\\\": []} > iteration_results.json"
+                        // Init only once
+                        sh "echo {\\\"iterations\\\": []} > iteration_results.json"
 
-                    def iteration = 1
+                        def iteration = 1
 
-                    for (country in countries) {
-                        for (bandwidth in bandwidths) {
+                        for (country in countries) {
+                            for (bandwidth in bandwidths) {
 
-                            echo "----------------------------------------"
-                            echo " Testing: Country=${country}, Bandwidth=${bandwidth}"
-                            echo "----------------------------------------"
+                                echo "----------------------------------------"
+                                echo " Testing: Country=${country}, Bandwidth=${bandwidth}"
+                                echo "----------------------------------------"
 
-                            sh "echo '{\"iterations\": []}' > custom_results.json"
+                                sh "echo '{\"iterations\": []}' > custom_results.json"
 
-                            if ((country == "Canada" || country == "US 5GHz Non-DFS") && bandwidth == "HT160") {
-                                continue
-                            }
+                                if ((country == "Canada" || country == "US 5GHz Non-DFS") && bandwidth == "HT160") {
+                                    continue
+                                }
 
-                            def pytest_output = sh(script: """
-                                pytest -v -s testCases/test_channelTest.py::test_channelconnectivity \
-                                --local-ip '$localIP' --remote-ip '$remoteIP' \
-                                --radio '$selectedRadio' --bandwidth '$bandwidth' --country '$country' \
-                                2>&1
-                            """, returnStdout: true).trim()
+                                def pytest_output = sh(script: """
+                                    pytest -v -s testCases/test_channelTest.py::test_channelconnectivity \
+                                    --local-ip '$localIP' --remote-ip '$remoteIP' \
+                                    --radio '$selectedRadio' --bandwidth '$bandwidth' --country '$country' \
+                                    2>&1
+                                """, returnStdout: true).trim()
 
-                            echo "Pytest Output:\n${pytest_output}"
+                                echo "Pytest Output:\n${pytest_output}"
 
-                            // Read JSON and filter this test's data
-                            def iterationResults = readJSON file: 'custom_results.json'
-                            def normalizedBandwidth = bandwidth == "HT40" ? "HT40+" : bandwidth
+                                def iterationResults = readJSON file: 'custom_results.json'
+                                def normalizedBandwidth = bandwidth == "HT40" ? "HT40+" : bandwidth
 
-                            def newTests = iterationResults.iterations.findAll {
-                                it.Country == country && it.Bandwidth == normalizedBandwidth
-                            }
+                                def newTests = iterationResults.iterations.findAll {
+                                    it.Country == country && it.Bandwidth == normalizedBandwidth
+                                }
 
-                            newTests.each { test ->
-                                test.iteration = iteration++
-                                test.logs = pytest_output
-                            }
+                                newTests.each { test ->
+                                    test.iteration = iteration++
+                                    test.logs = pytest_output
+                                }
 
-                            def filename = "${country.trim().replaceAll("\\s+", "_")}_${bandwidth.trim()}.json"
-                            writeJSON file: filename, json: [iterations: newTests]
+                                def filename = "${country.trim().replaceAll("\\s+", "_")}_${bandwidth.trim()}.json"
+                                writeJSON file: filename, json: [iterations: newTests]
 
-                            newTests.each {
-                                echo "Iteration ${it.iteration} - ${it.test} => ${it.status}"
-                                echo "Country: ${it.Country}, Bandwidth: ${it.Bandwidth}"
-                                echo "Channels Tested:"
-                                it['Tested Channels'].each { ch ->
-                                    echo "  - Channel: ${ch.channel}, Status: ${ch.status}"
+                                newTests.each {
+                                    echo "Iteration ${it.iteration} - ${it.test} => ${it.status}"
+                                    echo "Country: ${it.Country}, Bandwidth: ${it.Bandwidth}"
+                                    echo "Channels Tested:"
+                                    it['Tested Channels'].each { ch ->
+                                        echo "  - Channel: ${ch.channel}, Status: ${ch.status}"
+                                    }
                                 }
                             }
                         }
-                    }
+                    } // catchError
                 }
             }
         }
+
         stage('Generate Report') {
             steps {
                 script {
@@ -312,7 +314,9 @@ pipeline {
                     }
 
                     htmlContent += "</body></html>"
-                    writeFile file: 'channel_test_report.html', text: htmlContent
+                    def dateStamp = new Date().format("yyyyMMdd", TimeZone.getTimeZone("Asia/Kolkata"))
+                    def reportFilename = "channel_test_report_${env.BUILD_NUMBER}_${dateStamp}.html"
+                    writeFile file: reportFilename, text: htmlContent
                     echo "📄 HTML report generated: channel_test_report.html"
                 }
             }
@@ -325,8 +329,8 @@ pipeline {
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
                 reportDir: '.',
-                reportFiles: 'channel_test_report.html',
-                reportName: 'Test Report'
+                reportFiles: "${reportFilename}",
+                reportName: "Channel Test Report - Build ${env.BUILD_NUMBER}"
             ])
             echo "-----------------------------------------"
             echo 'Script Done!'
@@ -372,7 +376,7 @@ pipeline {
                             <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
                             <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
                             <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
-                            <p><strong>HTML Report:</strong> <a href="${env.BUILD_URL}artifact/channel_test_report.html">Click here to view</a></p>
+                            <p><strong>HTML Report:</strong> <a href="${env.BUILD_URL}artifact/${reportFilename}">Click here to view</a></p>
                             <br/>
                             <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
                         </body>
@@ -380,7 +384,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'channel_test_report.html'
+                    attachmentsPattern: "${reportFilename}"
                 )
 
             }
