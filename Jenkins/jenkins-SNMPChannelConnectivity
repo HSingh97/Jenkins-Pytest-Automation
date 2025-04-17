@@ -235,7 +235,9 @@ pipeline {
                                 <th rowspan="2">Channel</th>
                                 <th rowspan="2">Status</th>
                                 <th colspan="2">Active Channel</th>
+                                <th rowspan="2">Device Uptime</th>
                                 <th rowspan="2">Remote IP</th>
+                                <th rowspan="2">Link Uptime</th>
                                 <th colspan="2">Local SNR</th>
                                 <th colspan="2">Remote SNR</th>
                                 <th colspan="2">Rate</th>
@@ -296,7 +298,9 @@ pipeline {
                                       <td>${status}</td>
                                       <td>${channel.local_active ?: '-'}</td>
                                       <td>${channel.remote_active ?: '-'}</td>
+                                      <td>${channel.device_uptime ?: '-'}</td>
                                       <td>${stats?.ip_address ?: 'N/A'}</td>
+                                      <td>${stats?.link_uptime ?: '-'}</td>
                                       <td>${stats?.local_SNR_A1 ?: '-'}</td>
                                       <td>${stats?.local_SNR_A2 ?: '-'}</td>
                                       <td>${stats?.remote_SNR_A1 ?: '-'}</td>

@@ -20,6 +20,7 @@ from preMadeFunctions import set_bandwidth_snmp
 from preMadeFunctions import set_country_snmp
 from preMadeFunctions import get_snmp_values
 from preMadeFunctions import ssh_operations
+from preMadeFunctions import param_helpers
 
 
 def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
@@ -107,6 +108,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
         local_active_channel = int(get_snmp_values.fetch_active_channel(local_ip, radio_ind))
         local_htmode = fetch_ssh_values.fetch_htmode(local_ip, intf)
         configured_htmode = ssh_operations.ssh_get(local_ip, "uci get wireless.wifi1.htmode")
+        device_uptime = (param_helpers.get_time("uptime", ssh_operations.ssh_get(local_ip, "cat /proc/uptime | cut -d ' ' -f 1 | cut -d '.' -f 1")))
 
         try:
             remote_active_raw = get_snmp_values.fetch_active_channel(remote_ip, radio_ind)
@@ -136,6 +138,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
             "LocalPing": local_ping,
             "RemotePing": remote_ping,
             "status": status,
+            "device_uptime" : device_uptime,
             "link_stats": get_linkstats.get_linkstats(local_ip, radio_ind),
             "conf_htmode":configured_htmode,
             "local_htmode": local_htmode,

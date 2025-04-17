@@ -41,12 +41,13 @@ def get_linkstats(host, radio_ind):
             "tx_rate": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.10.{radio_ind}.{i}"),
             "rx_rate": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.9.{radio_ind}.{i}"),
             "local_rtx_rate": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.47.{radio_ind}.{i}"),
-            "remote_rtx_rate": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.48.{radio_ind}.{i}")
+            "remote_rtx_rate": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.48.{radio_ind}.{i}"),
+            "link_uptime": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.52.{radio_ind}.{i}")
         }
 
         # Print nicely
         print("\n----------------------------------------------------------------")
-        print("Remote IP\t\tLocal SNR \tRemote SNR\tTx Rate\tRx Rate")
+        print("Remote IP\t\tLocal SNR \tRemote SNR\tTx Rate\tRx Rate\tLink Uptime")
         print("----------------------------------------------------------------")
         print("\t\t\t\tA1\t   A2 \tA1\t   A2")
         print("----------------------------------------------------------------")
@@ -55,7 +56,7 @@ def get_linkstats(host, radio_ind):
                 stats["ip_address"],
                 stats["local_SNR_A1"], stats["local_SNR_A2"],
                 stats["remote_SNR_A1"], stats["remote_SNR_A2"],
-                stats["tx_rate"], stats["rx_rate"]
+                stats["tx_rate"], stats["rx_rate"], stats["link_uptime"]
             )
         )
         print("----------------------------------------------------------------\n")
@@ -68,6 +69,6 @@ def get_linkstats(host, radio_ind):
         "local_SNR_A1": "-", "local_SNR_A2": "-",
         "remote_SNR_A1": "-", "remote_SNR_A2": "-",
         "tx_rate": "-", "rx_rate": "-",
-        "local_rtx_rate": "-", "remote_rtx_rate": "-"
+        "local_rtx_rate": "-", "remote_rtx_rate": "-", "link_uptime": "-"
     }
 
