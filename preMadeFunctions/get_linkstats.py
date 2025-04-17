@@ -12,13 +12,24 @@ from datetime import datetime
 def safe_snmp_get(oid_cmd):
     try:
         output = subprocess.check_output(oid_cmd, shell=True).decode("utf-8")
-        match = re.search(r'INTEGER:\s*(\d+)', output)
-        return match.group(1) if match else "-"
+
+        # Match INTEGER
+        int_match = re.search(r'INTEGER:\s*(\d+)', output)
+        if int_match:
+            return int_match.group(1)
+
+        # Match STRING (with or without quotes)
+        str_match = re.search(r'STRING:\s*"?([\w\d:]+)"?', output)
+        if str_match:
+            return str_match.group(1)
+
+        return "-"
     except subprocess.CalledProcessError:
         return "-"
     except Exception as e:
         print(f"Error running SNMP command: {oid_cmd}\n{e}")
         return "-"
+
 
 def get_linkstats(host, radio_ind):
     for i in range(1, 33):
