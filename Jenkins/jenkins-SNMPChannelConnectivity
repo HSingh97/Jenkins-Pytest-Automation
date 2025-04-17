@@ -4,6 +4,8 @@ def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
+def dateStamp = new Date().format("yyyyMMdd", TimeZone.getTimeZone("Asia/Kolkata"))
+def reportFilename = "channel_test_report_${env.BUILD_NUMBER}_${dateStamp}.html"
 
 // Main Pipeline
 
@@ -314,8 +316,6 @@ pipeline {
                     }
 
                     htmlContent += "</body></html>"
-                    def dateStamp = new Date().format("yyyyMMdd", TimeZone.getTimeZone("Asia/Kolkata"))
-                    def reportFilename = "channel_test_report_${env.BUILD_NUMBER}_${dateStamp}.html"
                     writeFile file: reportFilename, text: htmlContent
                     echo "📄 HTML report generated: channel_test_report.html"
                 }
