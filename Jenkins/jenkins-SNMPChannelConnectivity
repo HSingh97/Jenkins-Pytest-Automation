@@ -240,6 +240,7 @@ pipeline {
                                 <th rowspan="2">Link Uptime</th>
                                 <th colspan="2">Local SNR</th>
                                 <th colspan="2">Remote SNR</th>
+                                <th colspan="2">Noise Floor</th>
                                 <th colspan="2">Rate</th>
                                 <th colspan="3">HT Mode</th>
                               </tr>
@@ -251,6 +252,8 @@ pipeline {
                                 <th>A2</th>
                                 <th>A1</th>
                                 <th>A2</th>
+                                <th>Local</th>
+                                <th>Remote</th>
                                 <th>Tx</th>
                                 <th>Rx</th>
                                 <th>Configured Local</th>
@@ -305,6 +308,8 @@ pipeline {
                                       <td>${stats?.local_SNR_A2 ?: '-'}</td>
                                       <td>${stats?.remote_SNR_A1 ?: '-'}</td>
                                       <td>${stats?.remote_SNR_A2 ?: '-'}</td>
+                                      <td>${stats?.local_noise ?: '-'}</td>
+                                      <td>${stats?.remote_noise ?: '-'}</td>
                                       <td>${stats?.tx_rate ?: '-'}</td>
                                       <td>${stats?.rx_rate ?: '-'}</td>
                                       <td>${channel.conf_htmode ?: '-'}</td>

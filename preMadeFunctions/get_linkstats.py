@@ -53,7 +53,9 @@ def get_linkstats(host, radio_ind):
             "rx_rate": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.9.{radio_ind}.{i}"),
             "local_rtx_rate": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.47.{radio_ind}.{i}"),
             "remote_rtx_rate": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.48.{radio_ind}.{i}"),
-            "link_uptime": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.52.{radio_ind}.{i}")
+            "link_uptime": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.52.{radio_ind}.{i}"),
+            "local_noise": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.26.{radio_ind}.{i}"),
+            "remote_noise": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.27.{radio_ind}.{i}"),
         }
 
         # Print nicely
@@ -63,7 +65,7 @@ def get_linkstats(host, radio_ind):
         print("\t\t\t\tA1\t   A2 \tA1\t   A2")
         print("----------------------------------------------------------------")
         print(
-            "{}\t{}\t   {} \t{}\t   {}\t  {}\t  {}".format(
+            "{}\t{}\t   {} \t{}\t   {}\t  {}\t  {}  \t{}".format(
                 stats["ip_address"],
                 stats["local_SNR_A1"], stats["local_SNR_A2"],
                 stats["remote_SNR_A1"], stats["remote_SNR_A2"],
@@ -80,6 +82,6 @@ def get_linkstats(host, radio_ind):
         "local_SNR_A1": "-", "local_SNR_A2": "-",
         "remote_SNR_A1": "-", "remote_SNR_A2": "-",
         "tx_rate": "-", "rx_rate": "-",
-        "local_rtx_rate": "-", "remote_rtx_rate": "-", "link_uptime": "-"
+        "local_rtx_rate": "-", "remote_rtx_rate": "-", "link_uptime": "-", "local_noise":"-", "remote_noise":"-"
     }
 
