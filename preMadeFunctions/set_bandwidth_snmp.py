@@ -10,4 +10,4 @@ def change_bandwidth(host, radio_ind, bandwidth):
 
     # Apply the configuration
     os.system("snmpset -v 2c -c private {} .1.3.6.1.4.1.52619.1.2.1.1.0 i 1".format(host))
-    time.sleep(60)
+    time.sleep(20)

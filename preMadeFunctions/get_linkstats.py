@@ -14,11 +14,11 @@ def safe_snmp_get(oid_cmd):
         output = subprocess.check_output(oid_cmd, shell=True).decode("utf-8")
 
         # Match INTEGER
-        int_match = re.search(r'INTEGER:\s*(\d+)', output)
+        int_match = re.search(r'INTEGER:\s*(-?\d+)', output)
         if int_match:
             return int_match.group(1)
 
-        # Match STRING (with or without quotes)
+        # Match STRING
         str_match = re.search(r'STRING:\s*"?([\w\d:]+)"?', output)
         if str_match:
             return str_match.group(1)
@@ -55,7 +55,7 @@ def get_linkstats(host, radio_ind):
             "remote_rtx_rate": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.48.{radio_ind}.{i}"),
             "link_uptime": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.52.{radio_ind}.{i}"),
             "local_noise": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.26.{radio_ind}.{i}"),
-            "remote_noise": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.27.{radio_ind}.{i}"),
+            "remote_noise": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.27.{radio_ind}.{i}")
         }
 
         # Print nicely
