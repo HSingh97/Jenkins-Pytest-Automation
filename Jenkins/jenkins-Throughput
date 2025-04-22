@@ -125,11 +125,14 @@ pipeline {
                                 def filename = "Throughput_${bandwidth.trim()}_${mcsrate.trim()}.json"
                                 writeJSON file: filename, json: [iterations: newTests]
 
-                                newTests.each {
-                                    echo "Iteration ${it.iteration} - ${it.test} => ${it.status}"
-                                    echo "Bandwidth: ${it.bandwidth}, MCS: ${it.data_rate}, Direction: ${it.Direction}"
-                                    echo "Throughput: ${it.throughput} Mbps"
+                                newTests.each { test ->
+                                    echo "Iteration ${test.iteration} - ${test.test} => ${test.status}"
+                                    test.results_direction.eachWithIndex { result, idx ->
+                                        echo "  ↪ Run ${idx + 1} => Dir: ${result.Direction}, Type: ${result.traffic_type}"
+                                        echo "     Bandwidth: ${result.bandwidth}, MCS: ${result.data_rate}, Throughput: ${result.throughput} Mbps"
+                                    }
                                 }
+
                             }
                         }
                     }
