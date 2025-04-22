@@ -15,6 +15,7 @@ def change_bandwidth(host, radio_ind, bandwidth):
 
 def change_ddrs_rate(host, radio_ind, mcs_rate):
     print("[DEBUG] MCS Rate : {}".format(mcs_rate))
+    mcs_rate = int(mcs_rate)
 
     if mcs_rate > 11:
         spatial_stream = 2
