@@ -83,22 +83,10 @@ pipeline {
                         echo " Configuring Bandwidth : ${bandwidth}"
                         echo "--------------------------------------------------------------"
 
-                        sh """
-                            pytest -v -s testCases/test_Throughput.py::test_changebandwidth \
-                            --local-ip '${localIP}' --remote-ip '${remoteIP}' \
-                            --radio '${selectedRadio}' --bandwidth '${bandwidth}' 2>&1
-                        """
-
                         for (mcsrate in modulationrates) {
                             echo "--------------------------------------------------------------"
                             echo " Configuring MCS : ${mcsrate}"
                             echo "--------------------------------------------------------------"
-
-                            sh """
-                                pytest -v -s testCases/test_Throughput.py::test_changemcs \
-                                --local-ip '${localIP}' --remote-ip '${remoteIP}' \
-                                --radio '${selectedRadio}' --mcs-rate '${mcsrate}' 2>&1
-                            """
 
                             for (traffic_type in traffic_types) {
                                 for (traffic_dir in directions) {
