@@ -8,6 +8,7 @@ import paramiko
 import sys
 import argparse
 import subprocess
+import json
 
 from preMadeFunctions.param_helpers import get_radio_index
 from utilities.readProperties import readConfig
