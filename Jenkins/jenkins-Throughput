@@ -66,7 +66,7 @@ pipeline {
                         sh "killall -q iperf3 || true"
 
                         // Step 3: Start iperf3 server in background
-                        sh "iperf3 -s -i1 -1 -D > /dev/null 2>&1 &"
+                        sh "iperf3 -s -i1 -1 -D"
                     }
 
                     def localIP = params['Local IP Address']
