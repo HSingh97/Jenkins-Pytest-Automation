@@ -4,7 +4,9 @@ def pytest_addoption(parser):
     parser.addoption("--radio", action="store", default="Radio1", help="Radio")
     parser.addoption("--local-ip", action="store", default="192.168.1.1", help="Local IP Address")
     parser.addoption("--remote-ip", action="store", default="192.168.1.1", help="Remote IP Address")
+    parser.addoption("--remote-pc-ip", action="store", default="192.168.1.1", help="Remote PC IP Address")
     parser.addoption("--bandwidth", action="store", default="HT20", help="Bandwidth")
+    parser.addoption("--mcs-rate", action="store", default="MCS0", help="MCS Rate")
     parser.addoption("--country", action="store", default="US 5GHz All", help="Country")
     parser.addoption("--pdu-port", action="store", default="1", help="PDU Port")
     parser.addoption("--pdu-ip", action="store", default="192.168.1.1", help="PDU IP Address")
@@ -17,6 +19,9 @@ def pytest_addoption(parser):
     parser.addoption("--sleep", action="store", default="30", help="Sleep")
     parser.addoption("--check_bw", action="store", default="Null", help="Check Bandwidth")
     parser.addoption("--check_rate", action="store", default="Null", help="Check Data Rate")
+    parser.addoption("--traffic-type", action="store", default="Null", help="Traffic Type ( TCP/UDP )")
+    parser.addoption("--traffic-dir", action="store", default="Null", help="Traffic Type ( Uplink/Downlink/Bi-Di )")
+
 
 @pytest.fixture
 def radio(request):
@@ -31,8 +36,16 @@ def remote_ip(request):
     return request.config.getoption("--remote-ip")
 
 @pytest.fixture
+def remote_pc_ip(request):
+    return request.config.getoption("--remote-pc-ip")
+
+@pytest.fixture
 def bandwidth(request):
     return request.config.getoption("--bandwidth")
+
+@pytest.fixture
+def mcs_rate(request):
+    return request.config.getoption("--mcs-rate")
 
 @pytest.fixture
 def country(request):
@@ -81,3 +94,11 @@ def check_bw(request):
 @pytest.fixture
 def check_rates(request):
     return request.config.getoption("--check_rate")
+
+@pytest.fixture
+def traffic_type(request):
+    return request.config.getoption("--traffic-type")
+
+@pytest.fixture
+def traffic_dir(request):
+    return request.config.getoption("--traffic-dir")

@@ -17,9 +17,7 @@ from utilities.serial_Logging import *
 from preMadeFunctions import pingFunction
 from preMadeFunctions import get_linkstats
 from preMadeFunctions import fetch_ssh_values
-from preMadeFunctions import set_channel_snmp
-from preMadeFunctions import set_bandwidth_snmp
-from preMadeFunctions import set_country_snmp
+from preMadeFunctions import snmp_operations
 from preMadeFunctions import get_snmp_values
 from preMadeFunctions import ssh_operations
 from preMadeFunctions import param_helpers
@@ -99,7 +97,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
         if i >= 1:
             break
 
-        set_channel_snmp.change_channel(local_ip, radio_ind, channels)
+        snmp_operations.change_channel(local_ip, radio_ind, channels)
         frequency = (int(channels)*5)+5000
         formatted_channel = "{} ({} MHz)".format(channels, frequency)
 

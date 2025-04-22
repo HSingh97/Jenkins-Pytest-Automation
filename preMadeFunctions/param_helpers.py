@@ -17,3 +17,20 @@ def get_time(req_type, seconds):
         timeval = f"{d:02d}:{h:02d}:{m:02d}:{s:02d}"
 
     return timeval
+
+def get_radio_index(radio):
+    if radio == "Radio1":
+        return {
+            "radio_ind": 2,
+            "intf": "ath1",
+            "wifi_intf": "wifi1"
+        }
+    elif radio == "Radio2":
+        return {
+            "radio_ind": 3,
+            "intf": "ath2",
+            "wifi_intf": "wifi2"
+        }
+    else:
+        raise ValueError("Invalid radio")
+
