@@ -69,27 +69,44 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
                 print("iPerf3 Command : {}".format(cmd))
 
                 try:
-
                     if direction == "bi-di":
                         output = subprocess.check_output(cmd, shell=True, universal_newlines=True)
                         print(output)
-                        sent = subprocess.check_output(
-                            f"echo \"{output}\" | awk '{{if(NR==10) print $8}}'", shell=True).decode().strip()
-                        received = subprocess.check_output(
-                            f"echo \"{output}\" | awk '{{if(NR==12) print $8}}'", shell=True).decode().strip()
 
-                        throughput_mbps = float(sent) + float(received)
+                        throughput_mbps = 0
+                        lines = output.splitlines()
+
+                        try:
+                            sent = float(lines[9].split()[7])  # Line 10, field 8
+                            received = float(lines[11].split()[7])  # Line 12, field 8
+                            throughput_mbps = sent + received
+                        except (IndexError, ValueError):
+                            print("❌ Failed to parse Bi-Directional throughput")
+                            status = False
+                        else:
+                            status = True
+
                     else:
                         output = subprocess.check_output(cmd, shell=True)
-                        print(output)
-                        throughput = subprocess.check_output(
-                            f"echo \"{output}\" | awk '/receiver/{{print $7}}'", shell=True).decode().strip()
+                        output_decoded = output.decode()
+                        print(output_decoded)
 
-                        throughput_mbps = float(throughput)
+                        throughput_mbps = 0
+                        for line in output_decoded.splitlines():
+                            if "receiver" in line:
+                                try:
+                                    throughput_mbps = float(line.split()[6])  # 7th column
+                                    break
+                                except (IndexError, ValueError):
+                                    print("❌ Failed to parse Uplink/Downlink throughput")
+                                    status = False
+                                    break
+                        else:
+                            status = False
+                        if throughput_mbps > 0:
+                            status = True
 
                     print(f"✅ Throughput: {throughput_mbps} Mbps")
-
-                    status = True
 
                 except subprocess.CalledProcessError as e:
                     print(f"❌ iPerf3 command failed:\n{e.output}")
