@@ -47,17 +47,19 @@ pipeline {
             steps {
                 script {
 
-                    node('Remote PC') {
+                    def remotePCIP = null
+
+                    node('remote-pc') {
                         remotePCIP = sh(
-                            script: "ip -4 -o addr show | awk '$4 ~ /^192\.168\.1\./ {print $4}' | cut -d'/' -f1 | head -n1",
+                            script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$4}' | cut -d'/' -f1 | head -n1",
                             returnStdout: true
                         ).trim()
 
                         if (!remotePCIP) {
-                            error("❌ Failed to fetch remote PC IP in 192.168.1.x range from node 'Remote PC'")
+                            error("❌ Could not find 192.168.1.x IP on node 'remote-pc'")
                         }
 
-                        echo "✅ Remote PC IP found: ${remotePCIP}"
+                        echo "✅ Remote PC IP: ${remotePCIP}"
                     }
 
                     def localIP = params['Local IP Address']
