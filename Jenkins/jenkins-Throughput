@@ -15,8 +15,8 @@ pipeline {
             steps {
                 script {
 
-                    local_pc = params['Local PC']
-                    remote_pc = params['Remote PC']
+                    def local_pc = params['Local PC']
+                    def remote_pc = params['Remote PC']
 
                     echo "------------------------------------------"
                     echo "---> Local TARGET STAND: ${local_pc} "
@@ -46,8 +46,8 @@ pipeline {
             steps {
                 script {
 
-                    remotePC = params['Remote PC']
-                    remotePCIP = null
+                    def remotePC = params['Remote PC']
+                    def remotePCIP = null
 
                     node(remotePC) {
                         remotePCIP = sh(

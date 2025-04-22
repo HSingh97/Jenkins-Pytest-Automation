@@ -12,13 +12,13 @@ import subprocess
 from preMadeFunctions.param_helpers import get_radio_index
 from utilities.readProperties import readConfig
 from utilities.serial_Logging import *
-from preMadeFunctions import pingFunction, get_linkstats, snmp_operations
+from preMadeFunctions import pingFunction, get_linkstats, snmp_operations, ssh_operations
 from preMadeFunctions import param_helpers
 
 
 def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traffic_dir, remote_pc_ip, bandwidth, sleep):
 
-    print("**************** Input Params **********************\n\n")
+    print("**************** Input Params **********************\n")
 
     print(f"Selected Radio          : {radio}")
     print(f"Local IP Address        : {local_ip}")
@@ -29,7 +29,7 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
     print(f"Selected Bandwidth      : {bandwidth}")
     print(f"Selected Data Rate      : {mcs_rate}")
 
-    print("****************************************************")
+    print("\n****************************************************")
 
     local_ping = pingFunction.check_access(local_ip)
     remote_ping = pingFunction.check_access(remote_ip) if local_ping else False
@@ -194,10 +194,10 @@ def test_changemcs(local_ip, remote_ip, radio, mcs_rate):
     if pingFunction.check_access(local_ip):
         if pingFunction.check_access(remote_ip):
             print("\nConfiguring Data Rate : {} for {} ".format(mcs, remote_ip))
-            snmp_operations.change_bandwidth(remote_ip, get_radio_index(radio)["radio_ind"], mcs)
+            snmp_operations.change_ddrs_rate(remote_ip, get_radio_index(radio)["radio_ind"], mcs)
 
             print("\nConfiguring Data Rate : {} for {} ".format(mcs, local_ip))
-            snmp_operations.change_bandwidth(local_ip, get_radio_index(radio)["radio_ind"], mcs)
+            snmp_operations.change_ddrs_rate(local_ip, get_radio_index(radio)["radio_ind"], mcs)
         else:
             print("!!!! Device : {} Not Reachable !!!!".format(remote_ip))
     else:
