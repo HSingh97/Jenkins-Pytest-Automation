@@ -87,10 +87,22 @@ pipeline {
                         echo " Configuring Bandwidth : ${bandwidth}"
                         echo "--------------------------------------------------------------"
 
+                        sh """
+                            pytest -v -s testCases/test_Throughput.py::test_changebandwidth \
+                            --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                            --radio '${selectedRadio}' --bandwidth '${bandwidth}' 2>&1
+                        """
+
                         for (mcsrate in modulationrates) {
                             echo "--------------------------------------------------------------"
                             echo " Configuring MCS : ${mcsrate}"
                             echo "--------------------------------------------------------------"
+
+                            sh """
+                                pytest -v -s testCases/test_Throughput.py::test_changemcs \
+                                --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                                --radio '${selectedRadio}' --mcs-rate '${mcsrate}' 2>&1
+                            """
 
                             for (traffic_type in traffic_types) {
 
@@ -159,6 +171,25 @@ pipeline {
 
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
+
+                    def local_fw_version = sh(
+                        script: """
+                            ssh-keygen -R ${localIP} >/dev/null 2>&1 || true
+                            ssh-keyscan -H ${localIP} >> ~/.ssh/known_hosts 2>/dev/null
+                            sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    def remote_fw_version = sh(
+                        script: """
+                            ssh-keygen -R ${remoteIP} >/dev/null 2>&1 || true
+                            ssh-keyscan -H ${remoteIP} >> ~/.ssh/known_hosts 2>/dev/null
+                            sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'
+                        """,
+                        returnStdout: true
+                    ).trim()
+
                     def buildParams = [
                         "Local IP Address" : localIP,
                         "Remote IP Address": remoteIP,
@@ -167,7 +198,7 @@ pipeline {
                         "MCS Rates"        : params['MCS'],
                         "Traffic Types"    : params['Traffic Type'],
                         "Directions"       : params['Direction'],
-                        "FW Version (Local / Remote)" : "N/A"
+                        "FW Version (Local / Remote)"      : "${local_fw_version} / ${remote_fw_version}"
                     ]
 
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
@@ -180,30 +211,49 @@ pipeline {
                     def htmlContent = """
                         <html><head><title>Throughput Test Report</title>
                         <style>
-                            body { font-family: 'Segoe UI', sans-serif; padding: 20px; background-color: #f9f9f9; }
-                            .header { display: flex; justify-content: space-between; background: #fff; padding: 20px; border-bottom: 2px solid #e0e0e0; }
+                            body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 20px; background-color: #f9f9f9; color: #2c3e50; }
+                            .header { display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 20px; border-bottom: 2px solid #e0e0e0; }
                             .header img { height: 60px; }
-                            h2 { border-bottom: 2px solid #ddd; padding-bottom: 5px; margin-top: 30px; }
-                            table { width: 100%; border-collapse: collapse; margin-top: 10px; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-                            th, td { padding: 10px; border: 1px solid #ddd; text-align: center; }
+                            .header-info { text-align: right; }
+                            .header-info h1 { margin: 0; font-size: 24px; }
+                            .header-info p { margin: 5px 0; font-size: 14px; color: #555; }
+                            h2 { margin-top: 40px; font-size: 20px; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
+                            table {
+                                width: 100%;
+                                border-collapse: collapse;
+                                margin-top: 15px;
+                                background: #fff;
+                                box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+                            }
+
+                            th, td {
+                                padding: 12px 15px;
+                                border: 1px solid #ddd;
+                                text-align: center; /* ✅ Center the content inside */
+                                vertical-align: middle;
+                            }
                             th { background: #2c3e50; color: white; }
+                            table.build-params td, table.build-params th {
+                                text-align: left !important;
+                            }
                             tr:nth-child(even) { background-color: #f4f4f4; }
                             .pass { color: green; font-weight: bold; }
                             .fail { color: red; font-weight: bold; }
-                        </style>
-                        </head><body>
-                        <div class="header">
-                            <img src="${companyLogoUrl}" />
-                            <div><h1>Automated Throughput Report</h1>
-                            <p><strong>Pipeline:</strong> ${pipelineName}</p>
-                            <p><strong>Build:</strong> #${buildNumber}</p>
-                            <p><strong>Date:</strong> ${currentDateTime}</p></div>
-                        </div>
+                        </head>
+                        <body>
+                            <div class="header">
+                                <img src="${companyLogoUrl}" />
+                                <div class="header-info">
+                                    <h1>Automated Channel Connectivity Report</h1>
+                                    <p><strong>Pipeline:</strong> ${pipelineName}</p>
+                                    <p><strong>Date:</strong> ${currentDateTime}</p>
+                                </div>
+                            </div>
 
-                        <h2>Build Parameters</h2>
-                        <table>
-                            ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
-                        </table>
+                            <h2>Build Parameters</h2>
+                            <table class="build-params">
+                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
+                            </table>
                     """
 
                     allResults.each { fileBlock ->
