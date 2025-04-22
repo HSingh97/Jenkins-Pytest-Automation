@@ -50,8 +50,6 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
         print("Direction : ".format(direction))
         if pingFunction.check_access(local_ip):
             if pingFunction.check_access(remote_ip):
-                print("Able to Access Remote Device ")
-
                 direction_argument = None
                 init_direction = direction
                 direction = direction.lower()
@@ -67,6 +65,7 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
                     sys.exit(1)
 
                 cmd = f"iperf3 -c {remote_pc_ip} -i0 {direction_argument} {traffic_type_argument} -t {sleep} -f m -b 0".strip()
+                print("iPerf3 Command : {}".format(cmd))
 
                 try:
                     output = subprocess.check_output(cmd, shell=True, universal_newlines=True)
@@ -112,10 +111,10 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
                 throughput_results.append(result)
 
             else:
-                print("Unable to access Remote Device")
+                print("Unable to access {}".format(remote_ip))
 
         else:
-            print("Unable to access Local Device")
+            print("Unable to access {}".format(local_ip))
 
         i+=1
 

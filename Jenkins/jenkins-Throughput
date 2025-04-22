@@ -89,46 +89,45 @@ pipeline {
                             echo "--------------------------------------------------------------"
 
                             for (traffic_type in traffic_types) {
-                                for (traffic_dir in directions) {
-                                    echo "--------------------------------------------------------------"
-                                    echo " Testing: Bandwidth=${bandwidth} | MCS=${mcsrate} | Type=${traffic_type} | Direction=${traffic_dir}"
-                                    echo "--------------------------------------------------------------"
 
-                                    sh "echo '{\"iterations\": []}' > custom_results.json"
+                                echo "--------------------------------------------------------------"
+                                echo " Testing: Bandwidth=${bandwidth} | MCS=${mcsrate} | Type=${traffic_type} "
+                                echo "--------------------------------------------------------------"
 
-                                    def pytest_output = sh(script: """
-                                        pytest -v -s testCases/test_Throughput.py::test_throughputtest \
-                                        --local-ip '${localIP}' \
-                                        --remote-ip '${remoteIP}' \
-                                        --radio '${selectedRadio}' \
-                                        --mcs-rate '${mcsrate}' \
-                                        --traffic-type '${traffic_type}' \
-                                        --traffic-dir '${traffic_dir}' \
-                                        --remote-pc-ip '${remotePCIP}' \
-                                        --bandwidth '${bandwidth}' \
-                                        --sleep '${test_time}' \
-                                        2>&1
-                                    """, returnStdout: true).trim()
+                                sh "echo '{\"iterations\": []}' > custom_results.json"
 
-                                    echo "Pytest Output:\n${pytest_output}"
+                                def pytest_output = sh(script: """
+                                    pytest -v -s testCases/test_Throughput.py::test_throughputtest \
+                                    --local-ip '${localIP}' \
+                                    --remote-ip '${remoteIP}' \
+                                    --radio '${selectedRadio}' \
+                                    --mcs-rate '${mcsrate}' \
+                                    --traffic-type '${traffic_type}' \
+                                    --traffic-dir '${traffic_dir}' \
+                                    --remote-pc-ip '${remotePCIP}' \
+                                    --bandwidth '${bandwidth}' \
+                                    --sleep '${test_time}' \
+                                    2>&1
+                                """, returnStdout: true).trim()
 
-                                    def iterationResults = readJSON file: 'custom_results.json'
+                                echo "Pytest Output:\n${pytest_output}"
 
-                                    def newTests = iterationResults.iterations
+                                def iterationResults = readJSON file: 'custom_results.json'
 
-                                    newTests.each { test ->
-                                        test.iteration = iteration++
-                                        test.logs = pytest_output
-                                    }
+                                def newTests = iterationResults.iterations
 
-                                    def filename = "Throughput_${bandwidth.trim()}_${mcsrate.trim()}.json"
-                                    writeJSON file: filename, json: [iterations: newTests]
+                                newTests.each { test ->
+                                    test.iteration = iteration++
+                                    test.logs = pytest_output
+                                }
 
-                                    newTests.each {
-                                        echo "Iteration ${it.iteration} - ${it.test} => ${it.status}"
-                                        echo "Bandwidth: ${it.bandwidth}, MCS: ${it.data_rate}, Direction: ${it.Direction}"
-                                        echo "Throughput: ${it.throughput} Mbps"
-                                    }
+                                def filename = "Throughput_${bandwidth.trim()}_${mcsrate.trim()}.json"
+                                writeJSON file: filename, json: [iterations: newTests]
+
+                                newTests.each {
+                                    echo "Iteration ${it.iteration} - ${it.test} => ${it.status}"
+                                    echo "Bandwidth: ${it.bandwidth}, MCS: ${it.data_rate}, Direction: ${it.Direction}"
+                                    echo "Throughput: ${it.throughput} Mbps"
                                 }
                             }
                         }
