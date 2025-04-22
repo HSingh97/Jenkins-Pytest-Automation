@@ -46,20 +46,21 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
     throughput_results = []
 
     i = 0
-    for i, directions in enumerate(traffic_dir):
+    for i, direction in enumerate(traffic_dir.split(',')):
+        print("Direction : ".format(direction))
         if pingFunction.check_access(local_ip):
             if pingFunction.check_access(remote_ip):
                 print("Able to Access Remote Device ")
 
                 direction_argument = None
+                init_direction = direction
+                direction = direction.lower()
 
-                directions = directions.lower()
-
-                if directions == "bi-di":
+                if direction == "bi-di":
                     direction_argument = "--bidir"
-                elif directions == "uplink":
+                elif direction == "uplink":
                     direction_argument = ""
-                elif directions == "downlink":
+                elif direction == "downlink":
                     direction_argument = "-R"
                 else:
                     print("❌ Invalid direction selected. Choose from: uplink, downlink, bi-di")
@@ -101,7 +102,7 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
                     "link_stats": get_linkstats.get_linkstats(local_ip, get_radio_index(radio)["radio_ind"]),
                     "data_rate": mcs_rate,
                     "bandwidth": bandwidth,
-                    "Direction": directions,
+                    "Direction": init_direction,
                     "traffic_type" : traffic_type,
                     "throughput" : throughput_mbps
                 }
@@ -175,14 +176,8 @@ def test_changebandwidth(local_ip, remote_ip, radio, bandwidth):
         new_bandwidth = bandwidth
 
     if pingFunction.check_access(local_ip):
-        if pingFunction.check_access(remote_ip):
-            print("\nConfiguring Bandwidth : {} for {} ".format(new_bandwidth, remote_ip))
-            snmp_operations.change_bandwidth(remote_ip, get_radio_index(radio)["radio_ind"], new_bandwidth)
-
-            print("\nConfiguring Bandwidth : {} for {} ".format(new_bandwidth, local_ip))
-            snmp_operations.change_bandwidth(local_ip, get_radio_index(radio)["radio_ind"], new_bandwidth)
-        else:
-            print("!!!! Device : {} Not Reachable !!!!".format(remote_ip))
+        print("\nConfiguring Bandwidth : {} for {} ".format(new_bandwidth, local_ip))
+        snmp_operations.change_bandwidth(local_ip, get_radio_index(radio)["radio_ind"], new_bandwidth)
     else:
         print("!!!! Device : {} Not Reachable !!!!".format(local_ip))
 
