@@ -50,6 +50,7 @@ pipeline {
                     def remotePCIP = null
 
                     node(remotePC) {
+                        // Step 1 : Fetch Remote PC IP
                         remotePCIP = sh(
                             script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$4}' | cut -d'/' -f1 | head -n1",
                             returnStdout: true
@@ -60,6 +61,12 @@ pipeline {
                         }
 
                         echo "✅ Remote PC IP: ${remotePCIP}"
+
+                        // Step 2: Kill any existing iperf3 server
+                        sh "killall -q iperf3 || true"
+
+                        // Step 3: Start iperf3 server in background
+                        sh "nohup iperf3 -s -D > /dev/null 2>&1 &"
                     }
 
                     def localIP = params['Local IP Address']

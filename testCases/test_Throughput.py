@@ -142,7 +142,7 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
     print("Test Result to append to JSON:")
     print(test_result)
 
-    get_linkstats.get_linkstats(local_ip, radio_ind)
+    get_linkstats.get_linkstats(local_ip, get_radio_index(radio)["radio_ind"])
     # Log to iteration_results.json
     json_report_file = "custom_results.json"
 
