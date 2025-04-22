@@ -4,6 +4,9 @@ def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
+def dateStamp = new Date().format("yyyyMMdd", TimeZone.getTimeZone("Asia/Kolkata"))
+def reportFilename = "throughput_report_${env.BUILD_NUMBER}_${dateStamp}.html"
+
 
 // Main Pipeline
 
@@ -139,12 +142,195 @@ pipeline {
                 }
             }
         }
+
+        stage('Generate Report') {
+            steps {
+                script {
+                    def reportFiles = findFiles(glob: 'Throughput_*.json').findAll { it.length > 20 }
+
+                    def allResults = []
+
+                    reportFiles.each { file ->
+                        def data = readJSON file: file.name
+                        if (data?.iterations && !data.iterations.isEmpty()) {
+                            allResults << [filename: file.name, content: data.iterations]
+                        }
+                    }
+
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
+                    def buildParams = [
+                        "Local IP Address" : localIP,
+                        "Remote IP Address": remoteIP,
+                        "Radio"            : params['Radio'],
+                        "Bandwidths"       : params['Bandwidth'],
+                        "MCS Rates"        : params['MCS'],
+                        "Traffic Types"    : params['Traffic Type'],
+                        "Directions"       : params['Direction'],
+                        "FW Version (Local / Remote)" : "N/A"
+                    ]
+
+                    def istZone = TimeZone.getTimeZone("Asia/Kolkata")
+                    def istDate = Calendar.getInstance(istZone).getTime()
+                    def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
+                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+                    def pipelineName = env.JOB_NAME
+                    def buildNumber = env.BUILD_NUMBER
+
+                    def htmlContent = """
+                        <html><head><title>Throughput Test Report</title>
+                        <style>
+                            body { font-family: 'Segoe UI', sans-serif; padding: 20px; background-color: #f9f9f9; }
+                            .header { display: flex; justify-content: space-between; background: #fff; padding: 20px; border-bottom: 2px solid #e0e0e0; }
+                            .header img { height: 60px; }
+                            h2 { border-bottom: 2px solid #ddd; padding-bottom: 5px; margin-top: 30px; }
+                            table { width: 100%; border-collapse: collapse; margin-top: 10px; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+                            th, td { padding: 10px; border: 1px solid #ddd; text-align: center; }
+                            th { background: #2c3e50; color: white; }
+                            tr:nth-child(even) { background-color: #f4f4f4; }
+                            .pass { color: green; font-weight: bold; }
+                            .fail { color: red; font-weight: bold; }
+                        </style>
+                        </head><body>
+                        <div class="header">
+                            <img src="${companyLogoUrl}" />
+                            <div><h1>Automated Throughput Report</h1>
+                            <p><strong>Pipeline:</strong> ${pipelineName}</p>
+                            <p><strong>Build:</strong> #${buildNumber}</p>
+                            <p><strong>Date:</strong> ${currentDateTime}</p></div>
+                        </div>
+
+                        <h2>Build Parameters</h2>
+                        <table>
+                            ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
+                        </table>
+                    """
+
+                    allResults.each { fileBlock ->
+                        def parts = fileBlock.filename.replace('.json','').split('_')
+                        def bandwidth = parts[1]
+                        def mcs = parts[2]
+
+                        fileBlock.content.each { iteration ->
+                            def iterationStatus = iteration.status ?: "UNKNOWN"
+                            def statusColor = iterationStatus == "PASS" ? "green" :
+                                              iterationStatus == "FAIL" ? "red" : "orange"
+
+                            htmlContent += """
+                                <h2>
+                                    Bandwidth: <span style="background-color:#e1f5fe; padding:2px 6px;"><b>${bandwidth}</b></span> |
+                                    MCS: <span style="background-color:#fff3e0; padding:2px 6px;"><b>${mcs}</b></span> |
+                                    Status: <span style="color:${statusColor}; font-weight:bold;">${iterationStatus}</span>
+                                </h2>
+
+                                <table>
+                                  <tr>
+                                    <th>Direction</th>
+                                    <th>Type</th>
+                                    <th>Throughput (Mbps)</th>
+                                    <th>Remote IP</th>
+                                    <th>Link Uptime</th>
+                                    <th>Local SNR (A1/A2)</th>
+                                    <th>Remote SNR (A1/A2)</th>
+                                    <th>Noise Floor (Local/Remote)</th>
+                                    <th>Tx / Rx Rate</th>
+                                  </tr>
+                            """
+
+                            iteration.results_direction.each { result ->
+                                def stats = result.link_stats
+                                htmlContent += """
+                                  <tr>
+                                    <td>${result.Direction}</td>
+                                    <td>${result.traffic_type}</td>
+                                    <td>${result.throughput}</td>
+                                    <td>${stats?.ip_address ?: '-'}</td>
+                                    <td>${stats?.link_uptime ?: '-'}</td>
+                                    <td>${stats?.local_SNR_A1}/${stats?.local_SNR_A2}</td>
+                                    <td>${stats?.remote_SNR_A1}/${stats?.remote_SNR_A2}</td>
+                                    <td>${stats?.local_noise}/${stats?.remote_noise}</td>
+                                    <td>${stats?.tx_rate}/${stats?.rx_rate}</td>
+                                  </tr>
+                                """
+                            }
+
+                            htmlContent += "</table>"
+                        }
+                    }
+
+                    htmlContent += "</body></html>"
+                    writeFile file: reportFilename, text: htmlContent
+                    echo "✅ HTML report generated: ${reportFilename}"
+                }
+            }
+        }
     }
     post {
         always {
+            publishHTML (target: [
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: '.',
+                reportFiles: "${reportFilename}",
+                reportName: "Throughput Report - Build ${env.BUILD_NUMBER}"
+            ])
             echo "-----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
+            script {
+                def buildCauses = currentBuild.getBuildCauses()
+                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+
+                def buildUserName = userCause?.userName ?: "Unknown User"
+                def buildUserId = userCause?.userId ?: "unknown"
+
+                echo "Build started by: ${buildUserName} (${buildUserId})"
+
+                // Define a mapping of user IDs to emails (update as needed)
+                def userEmails = [
+                    "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@senao.com",
+                    "sandeep": "sandeep.manchikanti@senao.com",
+                    "sampath": "sampath.marella@senao.com",
+                    "jayanth": "jayanth.munnaluru@senao.com",
+                    "srilatha": "srilatha.tadiboina@senao.com",
+                    "phani": "phani.darla@senao.com",
+                    "dinesh": "dinesh.redddy@senao.com"
+                ]
+
+                // Get email from predefined mapping, else use default
+                def userEmail = userEmails.get(buildUserId, "harmanjot.singh@senao.com")
+
+                echo "Sending email to: ${userEmail}"
+
+                // Send email notification
+                emailext(
+                    subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    body: """
+                        <html>
+                        <body>
+                            <h2 style="color:blue;">Jenkins Build Notification</h2>
+                            <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
+                            <p><strong>Status:</strong>
+                                <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
+                                ${currentBuild.currentResult}</span>
+                            </p>
+                            <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
+                            <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                            <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                            <p><strong>HTML Report:</strong> <a href="${env.BUILD_URL}artifact/${reportFilename}">Click here to view</a></p>
+                            <br/>
+                            <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
+                        </body>
+                        </html>
+                    """,
+                    to: userEmail,
+                    mimeType: 'text/html',
+                    attachmentsPattern: "${reportFilename}"
+                )
+
+            }
         }
 
         success {

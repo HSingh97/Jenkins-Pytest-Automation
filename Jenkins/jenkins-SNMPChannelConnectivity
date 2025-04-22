@@ -326,7 +326,7 @@ pipeline {
 
                     htmlContent += "</body></html>"
                     writeFile file: reportFilename, text: htmlContent
-                    echo "📄 HTML report generated: channel_test_report.html"
+                    echo "📄 HTML report generated: ${reportFilename}"
                 }
             }
         }
