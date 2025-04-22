@@ -19,6 +19,6 @@ def perform_operation(ip, username, password, cmd):
         time.sleep(60)
         print("Reloading Configuration")
     else:
-        time.sleep(30)
+        time.sleep(3)
 
     ssh_client.close()

@@ -60,17 +60,6 @@ pipeline {
                         }
 
                         echo "✅ Remote PC IP: ${remotePCIP}"
-
-                        // Clean up any old servers
-                        sh "killall -q iperf3 || true"
-                        sh "sleep 2"
-
-                        // Start iperf3 server
-                        sh "iperf3 -s -i0 &"
-                        sh "sleep 2"
-
-                        // Debug
-                        sh "pgrep -a iperf3 || echo '❌ iperf3 is not running'"
                     }
 
 

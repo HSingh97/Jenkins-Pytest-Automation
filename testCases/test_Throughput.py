@@ -13,7 +13,7 @@ import json
 from preMadeFunctions.param_helpers import get_radio_index
 from utilities.readProperties import readConfig
 from utilities.serial_Logging import *
-from preMadeFunctions import pingFunction, get_linkstats, snmp_operations, ssh_operations
+from preMadeFunctions import pingFunction, get_linkstats, snmp_operations, ssh_operations,execute_ssh_command
 from preMadeFunctions import param_helpers
 
 
@@ -45,6 +45,14 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
         traffic_type_argument = "-u"
 
     throughput_results = []
+
+    # kill any existing server
+    execute_ssh_command.perform_operation(remote_pc_ip, "root", "senao1234#", "killall iperf3")
+    time.sleep(1)
+
+    # start iperf3 server
+    execute_ssh_command.perform_operation(remote_pc_ip, "root", "senao1234#", "iperf3 -s -i0 &")
+    time.sleep(1)
 
     for direction in traffic_dir.split(','):
 
@@ -181,6 +189,10 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
         json.dump(json_data, f, indent=4)
 
     print("Updated JSON Report")
+
+    # kill server
+    execute_ssh_command.perform_operation(remote_pc_ip, "root", "senao1234#", "killall iperf3")
+    time.sleep(1)
     # assert test_result["status"] == "PASS"
 
 
