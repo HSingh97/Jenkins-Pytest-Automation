@@ -38,7 +38,7 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
                                                                              "cat /proc/uptime | cut -d ' ' -f 1 | cut -d '.' -f 1")))
 
     throughput_mbps = "Null"
-    status = FALSE
+    status = "FAIL"
 
     if traffic_type == "TCP":
         traffic_type_argument = ""
@@ -91,9 +91,9 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
                             throughput_mbps = sent + received
                         except (IndexError, ValueError):
                             print("❌ Failed to parse Bi-Directional throughput")
-                            status = FAIL
+                            status = "FAIL"
                         else:
-                            status = PASS
+                            status = "PASS"
 
                     else:
                         output = subprocess.check_output(cmd, shell=True)
@@ -108,18 +108,18 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
                                     break
                                 except (IndexError, ValueError):
                                     print("❌ Failed to parse Uplink/Downlink throughput")
-                                    status = FAIL
+                                    status = "FAIL"
                                     break
                         else:
-                            status = FAIL
+                            status = "FAIL"
                         if throughput_mbps > 0:
-                            status = PASS
+                            status = "PASS"
 
                     print(f"✅ Throughput: {throughput_mbps} Mbps")
 
                 except subprocess.CalledProcessError as e:
                     print(f"❌ iPerf3 command failed:\n{e.output}")
-                    status = FAIL
+                    status = "FAIL"
 
                 result = {
                     "LocalPing": local_ping,
