@@ -8,8 +8,7 @@ def archiveArtifacts(pattern) {
 // Main Pipeline
 
 pipeline {
-    local_pc = params['Local PC']
-    agent { node { label "${local_pc}"} }
+    agent { node { label "${params['Local PC']}" } }
 
     stages {
         stage('Prepare Testbed') {
