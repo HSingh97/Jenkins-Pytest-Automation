@@ -63,13 +63,11 @@ pipeline {
 
                         // Clean up any old servers
                         sh "killall -q iperf3 || true"
+                        sh "sleep 2"
 
                         // Start iperf3 with nohup + logging
                         sh "nohup iperf3 -s -i1 > /tmp/iperf3.log 2>&1 &"
-                        sh "sleep 2"
-
-                        // Show logs if needed
-                        sh "tail -n 10 /tmp/iperf3.log || echo '⚠️ No logs yet'"
+                        sh "sleep 1"
                     }
 
 
