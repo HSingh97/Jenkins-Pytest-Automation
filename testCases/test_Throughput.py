@@ -69,10 +69,10 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
                 print("iPerf3 Command : {}".format(cmd))
 
                 try:
-                    output = subprocess.check_output(cmd, shell=True, universal_newlines=True)
-                    print(output)
-                    if directions == "bi-di":
 
+                    if directions == "bi-di":
+                        output = subprocess.check_output(cmd, shell=True, universal_newlines=True)
+                        print(output)
                         sent = subprocess.check_output(
                             f"echo \"{output}\" | awk '{{if(NR==10) print $8}}'", shell=True).decode().strip()
                         received = subprocess.check_output(
@@ -80,7 +80,8 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
 
                         throughput_mbps = float(sent) + float(received)
                     else:
-
+                        output = subprocess.check_output(cmd, shell=True)
+                        print(output)
                         throughput = subprocess.check_output(
                             f"echo \"{output}\" | awk '/receiver/{{print $7}}'", shell=True).decode().strip()
 
