@@ -45,14 +45,14 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
 
     throughput_results = []
 
-    i = 0
-    for i, direction in enumerate(traffic_dir.split(',')):
+    for direction in traffic_dir.split(','):
+
         print("Direction : ".format(direction))
         if pingFunction.check_access(local_ip):
             if pingFunction.check_access(remote_ip):
                 direction_argument = None
                 init_direction = direction
-                direction = direction.lower()
+                direction = direction.strip().lower()
 
                 if direction == "bi-di":
                     direction_argument = "--bidir"
@@ -115,8 +115,6 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
 
         else:
             print("Unable to access {}".format(local_ip))
-
-        i+=1
 
     print("Final Throughput Results:")
 

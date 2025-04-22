@@ -103,7 +103,7 @@ pipeline {
                                     --radio '${selectedRadio}' \
                                     --mcs-rate '${mcsrate}' \
                                     --traffic-type '${traffic_type}' \
-                                    --traffic-dir '${traffic_dir}' \
+                                    --traffic-dir '${directions.join(",")}' \
                                     --remote-pc-ip '${remotePCIP}' \
                                     --bandwidth '${bandwidth}' \
                                     --sleep '${test_time}' \
