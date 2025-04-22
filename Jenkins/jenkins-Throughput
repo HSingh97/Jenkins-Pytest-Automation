@@ -56,27 +56,23 @@ pipeline {
                         ).trim()
 
                         if (!remotePCIP) {
-                            error("❌ Could not find 192.168.1.x IP on node '$remotePC'")
+                            error("❌ Could not find 192.168.1.x IP on node '$remotePC' ")
                         }
 
                         echo "✅ Remote PC IP: ${remotePCIP}"
 
-                        // Step 1: Create and run wrapper script directly on this node
-                        sh '''
-                            echo '#!/bin/bash
-                            killall -q iperf3 2>/dev/null
-                            sleep 1
-                            nohup iperf3 -s -i1 > /tmp/iperf3.log 2>&1 &' > /tmp/start_iperf3.sh
-
-                            chmod +x /tmp/start_iperf3.sh
-                            bash /tmp/start_iperf3.sh
-                        '''
-
-                        // Step 2: Wait and check
+                        // Clean up any old servers
+                        sh "killall -q iperf3 || true"
                         sh "sleep 2"
+
+                        // Start iperf3 server
+                        sh "iperf3 -s -i0 &"
+                        sh "sleep 2"
+
+                        // Debug
                         sh "pgrep -a iperf3 || echo '❌ iperf3 is not running'"
-                        sh "tail -n 10 /tmp/iperf3.log || echo '⚠️ No logs written'"
                     }
+
 
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
