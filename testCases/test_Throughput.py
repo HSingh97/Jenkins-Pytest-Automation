@@ -70,7 +70,7 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
 
                 try:
 
-                    if directions == "bi-di":
+                    if direction == "bi-di":
                         output = subprocess.check_output(cmd, shell=True, universal_newlines=True)
                         print(output)
                         sent = subprocess.check_output(
