@@ -40,19 +40,23 @@ def change_ddrs_rate(host, radio_ind, mcs_rate):
 
     # Set only if needed
     if current_ddrs_status != 0:
+        print("[DEBUG] Configuring DDRS Status : Disable")
         os.system(f"snmpset -v 2c -c private {host} {ddrs_status_oid} i 0")
         time.sleep(1)
 
     if current_spatial_stream != spatial_stream:
+        print("[DEBUG] Configuring Spatial Stream : {}".format(spatial_stream))
         os.system(f"snmpset -v 2c -c private {host} {spatial_stream_oid} i {spatial_stream}")
         time.sleep(1)
 
     if current_mcs_rate != mcs_rate:
+        print("[DEBUG] Configuring Modulation Rate : {}".format(mcs_rate))
         os.system(f"snmpset -v 2c -c private {host} {mcs_rate_oid} i {mcs_rate}")
         time.sleep(1)
 
     # Apply config only if any change was made
     if current_ddrs_status != 0 or current_spatial_stream != spatial_stream or current_mcs_rate != mcs_rate:
+        print("[DEBUG] Applying Configuration")
         os.system(f"snmpset -v 2c -c private {host} {apply_config_oid} i 1")
         time.sleep(30)
 

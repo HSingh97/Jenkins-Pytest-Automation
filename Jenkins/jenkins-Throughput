@@ -204,12 +204,12 @@ pipeline {
                                 def value = (val as double)
                                 def percent = Math.round(value / tx * 100)
                                 def color = percent < 40 ? "red" : percent < 65 ? "orange" : "green"
-                                def percentText = "<span style='color:${color};'>(~${percent}%)</span>"
+                                def percentText = "<span style='color:${color};'>( ~${percent}% )</span>"
 
                                 if (key.endsWith("_bi-di")) {
                                     def txVal = data["${key}_tx"] ?: 0
                                     def rxVal = data["${key}_rx"] ?: 0
-                                    cell = "<b style='color:black;'>${value}</b> <span style='color:${color};'>(${txVal}+${rxVal}) (~${percent}%)</span>"
+                                    cell = "<b style='color:black;'>${value}</b> ( ${txVal}+${rxVal} ) ${percentText}"
                                 } else {
                                     cell = "<b style='color:black;'>${value}</b> ${percentText}"
                                 }
