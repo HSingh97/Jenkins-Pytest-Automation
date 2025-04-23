@@ -216,50 +216,81 @@ pipeline {
                         "MCS9": "256-QAM 5/6", "MCS10": "1024-QAM 3/4", "MCS11": "1024-QAM 5/6"
                     ]
 
-
                     def htmlContent = """
                         <html><head><title>Throughput Test Report</title>
                         <style>
-                            body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 20px; background-color: #f9f9f9; color: #2c3e50; }
-                            .header { display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 20px; border-bottom: 2px solid #e0e0e0; }
-                            .header img { height: 60px; }
-                            .header-info { text-align: right; }
-                            .header-info h1 { margin: 0; font-size: 24px; }
-                            .header-info p { margin: 5px 0; font-size: 14px; color: #555; }
-                            h2 { margin-top: 40px; font-size: 20px; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
+                            body {
+                                font-family: 'Segoe UI', Tahoma, sans-serif;
+                                padding: 30px;
+                                background-color: #f0f2f5;
+                                color: #2c3e50;
+                                line-height: 1.6;
+                            }
+                            .header {
+                                background: linear-gradient(90deg, #1e88e5, #42a5f5);
+                                color: white;
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                padding: 20px;
+                                border-radius: 10px;
+                                margin-bottom: 30px;
+                            }
+                            .header h1 { font-size: 28px; }
+                            .header p { font-weight: 300; }
+
+                            .card {
+                                background: white;
+                                border-radius: 12px;
+                                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+                                padding: 20px;
+                                margin-bottom: 30px;
+                            }
+
                             table {
                                 width: 100%;
                                 border-collapse: collapse;
                                 margin-top: 15px;
-                                background: #fff;
-                                box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+                                border-radius: 8px;
+                                overflow: hidden;
                             }
-                            th, td {
-                                padding: 10px 12px;
-                                border: 1px solid #ddd;
+
+                            th {
+                                background: #263238;
+                                color: white;
+                                padding: 12px;
+                                font-size: 14px;
+                                text-transform: uppercase;
+                                letter-spacing: 0.5px;
+                            }
+
+                            td {
+                                padding: 12px;
+                                border: 1px solid #e0e0e0;
+                                font-size: 13px;
                                 text-align: center;
                                 vertical-align: middle;
                             }
-                            th { background: #2c3e50; color: white; }
-                            table.build-params td, table.build-params th {
-                                text-align: left !important;
-                            }
-                            tr:nth-child(even) { background-color: #f4f4f4; }
+
+                            tr:nth-child(even) { background-color: #f7f9fc; }
                         </style>
                         </head><body>
+
                         <div class="header">
-                            <img src="${companyLogoUrl}" />
-                            <div class="header-info">
+                            <img src="${companyLogoUrl}" height="60"/>
+                            <div>
                                 <h1>Automated Throughput Test Report</h1>
                                 <p><strong>Pipeline:</strong> ${pipelineName}</p>
                                 <p><strong>Date:</strong> ${currentDateTime}</p>
                             </div>
                         </div>
 
-                        <h2>Build Parameters</h2>
-                        <table class="build-params">
-                            ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
-                        </table>
+                        <div class="card">
+                            <h2>Build Parameters</h2>
+                            <table class="build-params">
+                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
+                            </table>
+                        </div>
                     """
 
                     def groupedByBandwidth = allResults.groupBy { it.filename.split('_')[1] }
@@ -281,24 +312,25 @@ pipeline {
                         }
 
                         htmlContent += """
-                            <h2>Bandwidth: <span style="background-color:#e1f5fe; padding:2px 6px;"><b>${bandwidth}</b></span></h2>
-                            <table>
-                                <tr>
-                                    <th rowspan="2">MCS</th>
-                                    <th rowspan="2">Modulation</th>
-                                    <th colspan="2">Rate (Mbps)</th>
+                            <div class="card">
+                                <h2>Bandwidth: <span style="background-color:#e1f5fe; padding:2px 6px;"><b>${bandwidth}</b></span></h2>
+                                <table>
+                                    <tr>
+                                        <th rowspan="2">MCS</th>
+                                        <th rowspan="2">Modulation</th>
+                                        <th colspan="2">Rate (Mbps)</th>
                         """
 
                         trafficTypes.each {
-                            htmlContent += "<th colspan=\"${directions.size()}\">${it}</th>"
+                            htmlContent += "<th colspan=\"${directions.size()}\">Throughput (${it}) (Mbps)</th>"
                         }
 
                         htmlContent += """
                             <th colspan="2">Local SNR (dB)</th>
                             <th colspan="2">Remote SNR (dB)</th>
                             <th colspan="2">Noise (dBm)</th>
-                                </tr><tr>
-                                    <th>Tx</th><th>Rx</th>
+                                    </tr><tr>
+                                        <th>Tx</th><th>Rx</th>
                         """
 
                         trafficTypes.each {
@@ -308,18 +340,18 @@ pipeline {
                         }
 
                         htmlContent += """
-                                    <th>A1</th><th>A2</th>
-                                    <th>A1</th><th>A2</th>
-                                    <th>Local</th><th>Remote</th>
-                                </tr>
+                            <th>A1</th><th>A2</th>
+                            <th>A1</th><th>A2</th>
+                            <th>Local</th><th>Remote</th>
+                                    </tr>
                         """
 
                         mcsMap.each { mcs, data ->
                             def stats = data.link_stats ?: [:]
                             def mcsKey = mcs.toUpperCase()
                             def tx = ((stats.tx_rate ?: "0") as double).intValue()
-                            def modulation = modulationTable[mcsKey] ?: "-"
                             def rx = ((stats.rx_rate ?: "0") as double).intValue()
+                            def modulation = modulationTable[mcsKey] ?: "-"
 
                             htmlContent += "<tr><td>${mcs}</td><td>${modulation}</td><td>${tx}</td><td>${rx}</td>"
 
@@ -348,16 +380,24 @@ pipeline {
                             """
                         }
 
-                        htmlContent += "</table>"
+                        htmlContent += "</table></div>"
                     }
 
-                    htmlContent += "</body></html>"
+                    htmlContent += """
+                        <div style="margin-top:30px;">
+                            <b>Throughput % Legend:</b><br>
+                            <span style="color:red;">Red</span>: Below 40%<br>
+                            <span style="color:orange;">Orange</span>: 40% - 65%<br>
+                            <span style="color:green;">Green</span>: Above 65%
+                        </div>
+                        </body></html>
+                    """
+
                     writeFile file: reportFilename, text: htmlContent
                     echo "✅ HTML report generated: ${reportFilename}"
                 }
             }
         }
-
     }
     post {
         always {
