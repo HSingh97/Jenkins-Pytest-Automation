@@ -170,8 +170,22 @@ pipeline {
 
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
-                    def local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
-                    def remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
+
+                    def local_fw_version = sh(
+                        script: """
+                            ssh-keygen -R ${localIP} >/dev/null 2>&1 || true
+                            ssh-keyscan -H ${localIP} >> ~/.ssh/known_hosts 2>/dev/null
+                            sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'
+                        """, returnStdout: true
+                    ).trim()
+
+                    def remote_fw_version = sh(
+                        script: """
+                            ssh-keygen -R ${remoteIP} >/dev/null 2>&1 || true
+                            ssh-keyscan -H ${remoteIP} >> ~/.ssh/known_hosts 2>/dev/null
+                            sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'
+                        """, returnStdout: true
+                    ).trim()
 
                     def buildParams = [
                         "Local IP Address" : localIP,
@@ -181,7 +195,7 @@ pipeline {
                         "MCS Rates"        : params['MCS'],
                         "Traffic Types"    : params['Traffic Type'],
                         "Directions"       : params['Direction'],
-                        "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
+                        "FW Version (Local / Remote)" : "${local_fw_version} / ${remote_fw_version}"
                     ]
 
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
@@ -191,46 +205,66 @@ pipeline {
                     def pipelineName = env.JOB_NAME
 
                     def trafficTypes = params['Traffic Type'].split(',').collect { it.trim().toUpperCase() }
+                    if (!trafficTypes || trafficTypes.isEmpty()) {
+                        error("❌ No traffic type selected. Please choose at least one: TCP or UDP")
+                    }
                     def directions = params['Direction'].split(',').collect { it.trim().capitalize() }
 
-                    def baseModulations = [
+                    def modulationTable = [
                         "MCS0": "BPSK 1/2", "MCS1": "QPSK 1/2", "MCS2": "QPSK 3/4",
                         "MCS3": "16-QAM 1/2", "MCS4": "16-QAM 3/4", "MCS5": "64-QAM 2/3",
                         "MCS6": "64-QAM 3/4", "MCS7": "64-QAM 5/6", "MCS8": "256-QAM 3/4",
                         "MCS9": "256-QAM 5/6", "MCS10": "1024-QAM 3/4", "MCS11": "1024-QAM 5/6"
                     ]
-                    def modulationTable = [:]
-                    (0..23).each { i -> modulationTable["MCS${i}"] = baseModulations["MCS${i % 12}"] }
+
 
                     def htmlContent = """
                         <html><head><title>Throughput Test Report</title>
-                        <script src='https://cdn.jsdelivr.net/npm/chart.js'></script>
                         <style>
-                            body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 20px; background: #f9f9f9; color: #2c3e50; }
-                            .header { display: flex; justify-content: space-between; align-items: center; padding: 20px; background: #fff; border-bottom: 2px solid #e0e0e0; }
-                            .header img { height: 60px; } .header-info { text-align: right; }
+                            body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 20px; background-color: #f9f9f9; color: #2c3e50; }
+                            .header { display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 20px; border-bottom: 2px solid #e0e0e0; }
+                            .header img { height: 60px; }
+                            .header-info { text-align: right; }
+                            .header-info h1 { margin: 0; font-size: 24px; }
+                            .header-info p { margin: 5px 0; font-size: 14px; color: #555; }
                             h2 { margin-top: 40px; font-size: 20px; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
-                            table { width: 100%; border-collapse: collapse; margin-top: 15px; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-                            th, td { padding: 10px 12px; border: 1px solid #ddd; text-align: center; vertical-align: middle; }
+                            table {
+                                width: 100%;
+                                border-collapse: collapse;
+                                margin-top: 15px;
+                                background: #fff;
+                                box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+                            }
+                            th, td {
+                                padding: 10px 12px;
+                                border: 1px solid #ddd;
+                                text-align: center;
+                                vertical-align: middle;
+                            }
                             th { background: #2c3e50; color: white; }
-                            table.build-params td, table.build-params th { text-align: left !important; }
+                            table.build-params td, table.build-params th {
+                                text-align: left !important;
+                            }
                             tr:nth-child(even) { background-color: #f4f4f4; }
-                        </style></head><body>
-                        <div class='header'>
-                            <img src='${companyLogoUrl}' />
-                            <div class='header-info'>
+                        </style>
+                        </head><body>
+                        <div class="header">
+                            <img src="${companyLogoUrl}" />
+                            <div class="header-info">
                                 <h1>Automated Throughput Test Report</h1>
                                 <p><strong>Pipeline:</strong> ${pipelineName}</p>
                                 <p><strong>Date:</strong> ${currentDateTime}</p>
                             </div>
                         </div>
+
                         <h2>Build Parameters</h2>
-                        <table class='build-params'>
+                        <table class="build-params">
                             ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
                         </table>
                     """
 
                     def groupedByBandwidth = allResults.groupBy { it.filename.split('_')[1] }
+
                     groupedByBandwidth.each { bandwidth, entries ->
                         def mcsMap = [:]
                         entries.each { entry ->
@@ -247,90 +281,99 @@ pipeline {
                             }
                         }
 
-                        htmlContent += "<h2>Bandwidth: ${bandwidth}</h2><table><tr>
-                            <th rowspan='2'>MCS</th>
-                            <th rowspan='2'>Modulation</th>
-                            <th colspan='2'>Rate (Mbps)</th>"
-                        trafficTypes.each { htmlContent += "<th colspan='${directions.size()}'>Throughput (${it})</th>" }
-                        htmlContent += "<th colspan='2'>Local SNR (dB)</th><th colspan='2'>Remote SNR (dB)</th><th colspan='2'>Noise (dBm)</th></tr><tr>
-                            <th>Tx</th><th>Rx</th>"
-                        trafficTypes.each { directions.each { htmlContent += "<th>${it}</th>" } }
-                        htmlContent += "<th>A1</th><th>A2</th><th>A1</th><th>A2</th><th>Local</th><th>Remote</th></tr>"
+                        htmlContent += """
+                            <h2>Bandwidth: <span style="background-color:#e1f5fe; padding:2px 6px;"><b>${bandwidth}</b></span></h2>
+                            <table>
+                                <tr>
+                                    <th rowspan="2">MCS</th>
+                                    <th rowspan="2">Modulation</th>
+                                    <th colspan="2">Rate (Mbps)</th>
+                        """
 
-                        mcsMap.sort().each { mcs, data ->
+                        trafficTypes.each {
+                            htmlContent += "<th colspan=\"${directions.size()}\">Throughput (${it}) (Mbps)</th>"
+                        }
+
+                        htmlContent += """
+                            <th colspan="2">Local SNR (dB)</th>
+                            <th colspan="2">Remote SNR (dB)</th>
+                            <th colspan="2">Noise (dBm)</th>
+                                </tr><tr>
+                                    <th>Tx</th><th>Rx</th>
+                        """
+
+                        trafficTypes.each {
+                            directions.each { dir ->
+                                htmlContent += "<th>${dir}</th>"
+                            }
+                        }
+
+                        htmlContent += """
+                                    <th>A1</th><th>A2</th>
+                                    <th>A1</th><th>A2</th>
+                                    <th>Local</th><th>Remote</th>
+                                </tr>
+                        """
+
+                        mcsMap.each { mcs, data ->
                             def stats = data.link_stats ?: [:]
+                            def mcsKey = mcs.toUpperCase()
                             def tx = ((stats.tx_rate ?: "0") as double).intValue()
+                            def modulation = modulationTable[mcsKey] ?: "-"
                             def rx = ((stats.rx_rate ?: "0") as double).intValue()
-                            def modulation = modulationTable[mcs.toUpperCase()] ?: "-"
-                            def rateTxStyle = tx != rx ? "style='color:red; font-weight:bold;'" : ""
-                            def rateRxStyle = tx != rx ? "style='color:red; font-weight:bold;'" : ""
-                            htmlContent += "<tr><td>${mcs}</td><td>${modulation}</td><td ${rateTxStyle}>${tx}</td><td ${rateRxStyle}>${rx}</td>"
+
+                            def rateTxStyle = ""
+                            def rateRxStyle = ""
+                            if (tx != rx) {
+                                rateTxStyle = "style='color:red; font-weight:bold;'"
+                                rateRxStyle = "style='color:red; font-weight:bold;'"
+                            }
+                            htmlContent += "<td ${rateTxStyle}>${tx}</td><td ${rateRxStyle}>${rx}</td>"
+
 
                             trafficTypes.each { t ->
                                 directions.each { d ->
                                     def key = "${t.toLowerCase()}_${d.toLowerCase()}"
-                                    def val = data[key] ?: "-"
+                                    def val = (data[key] ?: "-")
                                     def out = val
                                     if (val != "-" && tx > 0) {
                                         try {
-                                            def percent = Math.round((val as double) / tx * 100)
+                                            def ratio = (val as double) / tx * 100
+                                            def percent = Math.round(ratio)
                                             def color = percent < 40 ? "red" : percent < 65 ? "orange" : "green"
                                             out = "<b style='color:black;'>${val}</b> <span style='color:${color};'>(~${percent}%)</span>"
                                         } catch (Exception ignored) {}
                                     }
+
                                     htmlContent += "<td>${out}</td>"
                                 }
                             }
 
-                            htmlContent += "<td>${stats.local_SNR_A1 ?: '-'}</td><td>${stats.local_SNR_A2 ?: '-'}</td>"
-                            htmlContent += "<td>${stats.remote_SNR_A1 ?: '-'}</td><td>${stats.remote_SNR_A2 ?: '-'}</td>"
-                            htmlContent += "<td>${stats.local_noise ?: '-'}</td><td>${stats.remote_noise ?: '-'}</td></tr>"
+                            htmlContent += """
+                                <td>${stats.local_SNR_A1 ?: '-'}</td><td>${stats.local_SNR_A2 ?: '-'}</td>
+                                <td>${stats.remote_SNR_A1 ?: '-'}</td><td>${stats.remote_SNR_A2 ?: '-'}</td>
+                                <td>${stats.local_noise ?: '-'}</td><td>${stats.remote_noise ?: '-'}</td>
+                            </tr>
+                            """
                         }
+
                         htmlContent += "</table>"
-
-                        trafficTypes.each { t ->
-                            def canvasId = "chart_${bandwidth}_${t}"
-                            htmlContent += "<h3>${t} Throughput vs MCS</h3><canvas id='${canvasId}' height='300'></canvas><script>"
-                            htmlContent += "const ctx_${canvasId} = document.getElementById('${canvasId}').getContext('2d');"
-                            def labels = mcsMap.keySet().sort().collect { "\"${it}\"" }.join(',')
-                            htmlContent += "new Chart(ctx_${canvasId}, {
-                                type: 'line',
-                                data: {
-                                    labels: [${labels}],
-                                    datasets: ["
-
-                            // Expected
-                            htmlContent += "{ label: 'Expected', data: [${mcsMap.sort().collect { it.value.link_stats?.tx_rate ?: 0 }.join(',')}], borderColor: 'gray', borderWidth: 2, tension: 0.3 },"
-
-                            // Per direction
-                            directions.each { d ->
-                                def key = "${t.toLowerCase()}_${d.toLowerCase()}"
-                                if (mcsMap.values().any { it[key] != null }) {
-                                    def color = d == "Uplink" ? "blue" : d == "Downlink" ? "green" : "orange"
-                                    def dataLine = mcsMap.sort().collect { it.value[key] ?: 0 }.join(',')
-                                    htmlContent += "{ label: '${d}', data: [${dataLine}], borderColor: '${color}', borderWidth: 2, tension: 0.3 },"
-                                }
-                            }
-
-                            htmlContent += "]},
-                                options: {
-                                    responsive: true,
-                                    plugins: { legend: { position: 'top' } },
-                                    scales: {
-                                        y: { beginAtZero: true, title: { display: true, text: 'Throughput (Mbps)' } },
-                                        x: { title: { display: true, text: 'MCS Index' } }
-                                    }
-                                }
-                            });</script>"
-                        }
                     }
+                    htmlContent += """
+                        <p style="margin-top: 30px; font-size: 13px; color: #555;">
+                            Note: Throughput percentage is calculated relative to the Tx rate.
+                            Mismatched Tx/Rx rates are highlighted in <b style="color:red;">red</b>.
+                        </p>
+                    </body></html>
+                    """
 
-                    htmlContent += "<p style='margin-top: 10px; font-size: 13px; color: #555;'>Note: Throughput percentage is calculated relative to the Tx rate. Mismatched Tx/Rx rates are highlighted in <b style='color:red;'>red</b>.</p></body></html>"
+                    htmlContent += "</body></html>"
                     writeFile file: reportFilename, text: htmlContent
                     echo "✅ HTML report generated: ${reportFilename}"
                 }
             }
         }
+
     }
     post {
         always {
