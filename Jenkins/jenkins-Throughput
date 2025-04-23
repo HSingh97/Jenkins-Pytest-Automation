@@ -203,19 +203,19 @@ pipeline {
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
 
-                    // Traffic type + direction validation
                     def trafficTypes = params['Traffic Type'].split(',').collect { it.trim().toUpperCase() }
                     if (!trafficTypes || trafficTypes.isEmpty()) {
                         error("❌ No traffic type selected. Please choose at least one: TCP or UDP")
                     }
                     def directions = params['Direction'].split(',').collect { it.trim().capitalize() }
 
-                    def trafficDirectionLabels = []
-                    trafficTypes.each { traffic ->
-                        directions.each { dir ->
-                            trafficDirectionLabels << "${traffic} ${dir}"
-                        }
-                    }
+                    def modulationTable = [
+                        "MCS0": "BPSK 1/2", "MCS1": "QPSK 1/2", "MCS2": "QPSK 3/4",
+                        "MCS3": "16-QAM 1/2", "MCS4": "16-QAM 3/4", "MCS5": "64-QAM 2/3",
+                        "MCS6": "64-QAM 3/4", "MCS7": "64-QAM 5/6", "MCS8": "256-QAM 3/4",
+                        "MCS9": "256-QAM 5/6", "MCS10": "1024-QAM 3/4", "MCS11": "1024-QAM 5/6"
+                    ]
+
 
                     def htmlContent = """
                         <html><head><title>Throughput Test Report</title>
@@ -285,6 +285,8 @@ pipeline {
                             <table>
                                 <tr>
                                     <th rowspan="2">MCS</th>
+                                    <th rowspan="2">Modulation</th>
+                                    <th colspan="2">Rate (Mbps)</th>
                         """
 
                         trafficTypes.each {
@@ -292,12 +294,11 @@ pipeline {
                         }
 
                         htmlContent += """
-                            <th colspan="2">Local SNR</th>
-                            <th colspan="2">Remote SNR</th>
-                            <th colspan="2">Noise</th>
-                            <th colspan="2">Rate</th>
-                            </tr>
-                            <tr>
+                            <th colspan="2">Local SNR (dB)</th>
+                            <th colspan="2">Remote SNR (dB)</th>
+                            <th colspan="2">Noise (dBm)</th>
+                                </tr><tr>
+                                    <th>Tx</th><th>Rx</th>
                         """
 
                         trafficTypes.each {
@@ -305,30 +306,34 @@ pipeline {
                                 htmlContent += "<th>${dir}</th>"
                             }
                         }
-                        htmlContent += """
-                            <th>A1</th><th>A2</th>
-                            <th>A1</th><th>A2</th>
-                            <th>Local</th><th>Remote</th>
-                            <th>Tx</th><th>Rx</th>
-                        </tr>
-                        """
 
+                        htmlContent += """
+                                    <th>A1</th><th>A2</th>
+                                    <th>A1</th><th>A2</th>
+                                    <th>Local</th><th>Remote</th>
+                                </tr>
+                        """
 
                         mcsMap.each { mcs, data ->
                             def stats = data.link_stats ?: [:]
-                            def txRate = (stats.tx_rate ?: "0") as double
-                            htmlContent += "<tr><td>${mcs}</td>"
+                            def mcsKey = mcs.toUpperCase()
+                            def tx = (stats.tx_rate ?: "0") as double
+                            def modulation = modulationTable[mcsKey] ?: "-"
+                            def rx = stats.rx_rate ?: '-'
+
+                            htmlContent += "<tr><td>${mcs}</td><td>${modulation}</td><td>${tx}</td><td>${rx}</td>"
 
                             trafficTypes.each { t ->
                                 directions.each { d ->
                                     def key = "${t.toLowerCase()}_${d.toLowerCase()}"
                                     def val = (data[key] ?: "-")
                                     def out = val
-                                    if (val != "-" && txRate > 0) {
+                                    if (val != "-" && tx > 0) {
                                         try {
-                                            def ratio = (val as double) / txRate * 100
+                                            def ratio = (val as double) / tx * 100
                                             def percent = Math.round(ratio)
-                                            out = "${val} (~${percent}%)"
+                                            def color = percent < 40 ? "red" : percent < 65 ? "orange" : "green"
+                                            out = "<span style='color:${color};'>${val} (~${percent}%)</span>"
                                         } catch (Exception ignored) {}
                                     }
                                     htmlContent += "<td>${out}</td>"
@@ -339,11 +344,9 @@ pipeline {
                                 <td>${stats.local_SNR_A1 ?: '-'}</td><td>${stats.local_SNR_A2 ?: '-'}</td>
                                 <td>${stats.remote_SNR_A1 ?: '-'}</td><td>${stats.remote_SNR_A2 ?: '-'}</td>
                                 <td>${stats.local_noise ?: '-'}</td><td>${stats.remote_noise ?: '-'}</td>
-                                <td>${stats.tx_rate ?: '-'}</td><td>${stats.rx_rate ?: '-'}</td>
                             </tr>
                             """
                         }
-
 
                         htmlContent += "</table>"
                     }
