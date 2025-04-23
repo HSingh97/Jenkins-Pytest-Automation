@@ -238,7 +238,6 @@ pipeline {
                                 <p><strong>Date:</strong> ${currentDateTime}</p>
                             </div>
                         </div>
-
                         <h2>Build Parameters</h2>
                         <table class='build-params'>
                             ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
@@ -262,55 +261,72 @@ pipeline {
                             }
                         }
 
-                        htmlContent += "<h2>Bandwidth: ${bandwidth}</h2><table><tr><th rowspan='2'>MCS</th><th rowspan='2'>Modulation</th><th colspan='2'>Rate (Mbps)</th>"
-                        trafficTypes.each { htmlContent += "<th colspan='${directions.size()}'>Throughput (${it}) (Mbps)</th>" }
-                        htmlContent += "<th colspan='2'>Local SNR (dB)</th><th colspan='2'>Remote SNR (dB)</th><th colspan='2'>Noise (dBm)</th></tr><tr><th>Tx</th><th>Rx</th>"
-                        trafficTypes.each { directions.each { htmlContent += "<th>${it}</th>" } }
-                        htmlContent += "<th>A1</th><th>A2</th><th>A1</th><th>A2</th><th>Local</th><th>Remote</th></tr>"
-
-                        mcsMap.sort().each { mcs, data ->
-                            def stats = data.link_stats ?: [:]
-                            def tx = ((stats.tx_rate ?: "0") as double).intValue()
-                            def rx = ((stats.rx_rate ?: "0") as double).intValue()
-                            def modulation = modulationTable[mcs.toUpperCase()] ?: "-"
-                            def rateTxStyle = tx != rx ? "style='color:red; font-weight:bold;'" : ""
-                            def rateRxStyle = tx != rx ? "style='color:red; font-weight:bold;'" : ""
-                            htmlContent += "<tr><td>${mcs}</td><td>${modulation}</td><td ${rateTxStyle}>${tx}</td><td ${rateRxStyle}>${rx}</td>"
-                            trafficTypes.each { t ->
-                                directions.each { d ->
-                                    def key = "${t.toLowerCase()}_${d.toLowerCase()}"
-                                    def val = data[key] ?: "-"
-                                    def out = val
-                                    if (val != "-" && tx > 0) {
-                                        try {
-                                            def percent = Math.round((val as double) / tx * 100)
-                                            def color = percent < 40 ? "red" : percent < 65 ? "orange" : "green"
-                                            out = "<b style='color:black;'>${val}</b> <span style='color:${color};'>(~${percent}%)</span>"
-                                        } catch (Exception ignored) {}
-                                    }
-                                    htmlContent += "<td>${out}</td>"
-                                }
-                            }
-                            htmlContent += "<td>${stats.local_SNR_A1 ?: '-'}</td><td>${stats.local_SNR_A2 ?: '-'}</td><td>${stats.remote_SNR_A1 ?: '-'}</td><td>${stats.remote_SNR_A2 ?: '-'}</td><td>${stats.local_noise ?: '-'}</td><td>${stats.remote_noise ?: '-'}</td></tr>"
-                        }
-                        htmlContent += "</table>"
-
                         trafficTypes.each { t ->
                             def canvasId = "chart_${bandwidth}_${t}"
-                            htmlContent += "<h3>${t} Throughput vs MCS</h3><canvas id='${canvasId}' height='300'></canvas><script>"
-                            htmlContent += "const ctx_${canvasId} = document.getElementById('${canvasId}').getContext('2d');"
-                            htmlContent += "new Chart(ctx_${canvasId}, { type: 'line', data: { labels: [${mcsMap.keySet().sort().collect { "\"${it}\"" }.join(',')}], datasets: ["
-                            htmlContent += "{ label: 'Expected', data: [${mcsMap.sort().collect { it.value.link_stats?.tx_rate ?: 0 }.join(',')}], borderColor: 'gray', borderWidth: 2, tension: 0.3 },"
-                            directions.findAll { d -> mcsMap.values().any { it["${t.toLowerCase()}_${d.toLowerCase()}"] } }.each { d ->
-                                def color = d == "Uplink" ? "blue" : d == "Downlink" ? "green" : "orange"
+                            def mcsLabels = mcsMap.keySet().sort().collect { "\"${it}\"" }.join(',')
+                            def expectedData = mcsMap.sort().collect { it.value.link_stats?.tx_rate ?: 0 }.join(',')
+                            htmlContent += """
+                                <h3>${t} Throughput vs MCS</h3>
+                                <canvas id='${canvasId}' height='300'></canvas>
+                                <script>
+                                const ctx_${canvasId} = document.getElementById('${canvasId}').getContext('2d');
+                                new Chart(ctx_${canvasId}, {
+                                    type: 'line',
+                                    data: {
+                                        labels: [${mcsLabels}],
+                                        datasets: [
+                                            {
+                                                label: 'Expected',
+                                                data: [${expectedData}],
+                                                borderColor: 'gray',
+                                                borderWidth: 2,
+                                                tension: 0.3
+                                            },
+                            """
+                            directions.each { d ->
                                 def key = "${t.toLowerCase()}_${d.toLowerCase()}"
-                                htmlContent += "{ label: '${d}', data: [${mcsMap.sort().collect { it.value[key] ?: 0 }.join(',')}], borderColor: '${color}', borderWidth: 2, tension: 0.3 },"
+                                if (mcsMap.values().any { it.containsKey(key) }) {
+                                    def color = d == "Uplink" ? "blue" : d == "Downlink" ? "green" : "orange"
+                                    def lineData = mcsMap.sort().collect { it.value[key] ?: 0 }.join(',')
+                                    htmlContent += """
+                                            {
+                                                label: '${d}',
+                                                data: [${lineData}],
+                                                borderColor: '${color}',
+                                                borderWidth: 2,
+                                                tension: 0.3
+                                            },
+                                    """
+                                }
                             }
-                            htmlContent += "]}, options: { plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'Throughput (Mbps)' } }, x: { title: { display: true, text: 'MCS Index' } } } });</script>"
+                            htmlContent += """
+                                        ]
+                                    },
+                                    options: {
+                                        plugins: { legend: { position: 'top' } },
+                                        scales: {
+                                            y: {
+                                                beginAtZero: true,
+                                                title: { display: true, text: 'Throughput (Mbps)' }
+                                            },
+                                            x: {
+                                                title: { display: true, text: 'MCS Index' }
+                                            }
+                                        }
+                                    }
+                                });
+                                </script>
+                            """
                         }
                     }
 
-                    htmlContent += "<p style='margin-top: 10px; font-size: 13px; color: #555;'>Note: Throughput percentage is calculated relative to the Tx rate. Mismatched Tx/Rx rates are highlighted in <b style='color:red;'>red</b>.</p></body></html>"
+                    htmlContent += """
+                        <p style='margin-top: 10px; font-size: 13px; color: #555;'>
+                            Note: Throughput percentage is calculated relative to the Tx rate. Mismatched Tx/Rx rates are highlighted in <b style='color:red;'>red</b>.
+                        </p>
+                        </body></html>
+                    """
+
                     writeFile file: reportFilename, text: htmlContent
                     echo "✅ HTML report generated: ${reportFilename}"
                 }
