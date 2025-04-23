@@ -285,29 +285,56 @@ pipeline {
                             <table>
                                 <tr>
                                     <th rowspan="2">MCS</th>
-                                    ${trafficDirectionLabels.collect { "<th>${it}</th>" }.join('')}
-                                    <th colspan="2">Local SNR</th>
-                                    <th colspan="2">Remote SNR</th>
-                                    <th colspan="2">Noise</th>
-                                    <th colspan="2">Rate</th>
-                                </tr>
-                                <tr>
-                                    ${trafficDirectionLabels.collect { "<th>${it.split(' ')[1]}</th>" }.join('')}
-                                    <th>A1</th><th>A2</th>
-                                    <th>A1</th><th>A2</th>
-                                    <th>Local</th><th>Remote</th>
-                                    <th>Tx</th><th>Rx</th>
-                                </tr>
                         """
+
+                        trafficTypes.each {
+                            htmlContent += "<th colspan=\"${directions.size()}\">${it}</th>"
+                        }
+
+                        htmlContent += """
+                            <th colspan="2">Local SNR</th>
+                            <th colspan="2">Remote SNR</th>
+                            <th colspan="2">Noise</th>
+                            <th colspan="2">Rate</th>
+                            </tr>
+                            <tr>
+                        """
+
+                        trafficTypes.each {
+                            directions.each { dir ->
+                                htmlContent += "<th>${dir}</th>"
+                            }
+                        }
+                        htmlContent += """
+                            <th>A1</th><th>A2</th>
+                            <th>A1</th><th>A2</th>
+                            <th>Local</th><th>Remote</th>
+                            <th>Tx</th><th>Rx</th>
+                        </tr>
+                        """
+
 
                         mcsMap.each { mcs, data ->
                             def stats = data.link_stats ?: [:]
+                            def txRate = (stats.tx_rate ?: "0") as double
                             htmlContent += "<tr><td>${mcs}</td>"
-                            trafficDirectionLabels.each { label ->
-                                def (type, dir) = label.toLowerCase().split(' ')
-                                def val = data["${type}_${dir}"] ?: "-"
-                                htmlContent += "<td>${val}</td>"
+
+                            trafficTypes.each { t ->
+                                directions.each { d ->
+                                    def key = "${t.toLowerCase()}_${d.toLowerCase()}"
+                                    def val = (data[key] ?: "-")
+                                    def out = val
+                                    if (val != "-" && txRate > 0) {
+                                        try {
+                                            def ratio = (val as double) / txRate * 100
+                                            def percent = Math.round(ratio)
+                                            out = "${val} (~${percent}%)"
+                                        } catch (Exception ignored) {}
+                                    }
+                                    htmlContent += "<td>${out}</td>"
+                                }
                             }
+
                             htmlContent += """
                                 <td>${stats.local_SNR_A1 ?: '-'}</td><td>${stats.local_SNR_A2 ?: '-'}</td>
                                 <td>${stats.remote_SNR_A1 ?: '-'}</td><td>${stats.remote_SNR_A2 ?: '-'}</td>
@@ -316,6 +343,7 @@ pipeline {
                             </tr>
                             """
                         }
+
 
                         htmlContent += "</table>"
                     }
