@@ -79,64 +79,54 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
 
                 try:
                     if direction == "bi-di":
-                        print("[DEBUG] ---- Testing Bi-Di ----  ")
+                        print("[DEBUG] ---- Testing Bi-Di ----")
                         output = subprocess.check_output(cmd, shell=True, universal_newlines=True)
                         print(output)
 
-                        throughput_mbps = 0
+                        tx_throughput = 0.0
+                        rx_throughput = 0.0
+                        throughput_mbps = 0.0
                         status = "FAIL"
 
                         try:
-                            tx_line = None
-                            rx_line = None
-
                             for line in output.splitlines():
                                 if "receiver" in line and "[TX-C]" in line:
-                                    parts = line.split()
-                                    tx_line = parts
+                                    tx_throughput = float(line.split()[6])
                                 elif "receiver" in line and "[RX-C]" in line:
-                                    parts = line.split()
-                                    rx_line = parts
+                                    rx_throughput = float(line.split()[6])
 
-                            if tx_line and rx_line:
-                                tx_throughput = float(tx_line[6])
-                                rx_throughput = float(rx_line[6])
-                                throughput_mbps = tx_throughput + rx_throughput
+                            throughput_mbps = tx_throughput + rx_throughput
+
+                            if throughput_mbps > 0:
                                 status = "PASS"
-                            else:
-                                print("❌ Failed to find both TX-C and RX-C sender lines")
                         except Exception as e:
-                            print(f"❌ Exception while parsing bi-directional throughput: {e}")
-                            throughput_mbps = 0
+                            print(f"❌ Exception while parsing BiDi throughput: {e}")
+                            throughput_mbps = 0.0
                             status = "FAIL"
 
                     else:
-                        print("[DEBUG] ---- Testing {} ----  ".format(direction))
-                        output = subprocess.check_output(cmd, shell=True)
-                        output_decoded = output.decode()
-                        print(output_decoded)
+                        print(f"[DEBUG] ---- Testing {direction} ----")
+                        output = subprocess.check_output(cmd, shell=True, universal_newlines=True)
+                        print(output)
 
-                        throughput_mbps = 0
-                        for line in output_decoded.splitlines():
+                        throughput_mbps = 0.0
+                        for line in output.splitlines():
                             if "receiver" in line:
                                 try:
-                                    throughput_mbps = float(line.split()[6])  # 7th column
+                                    throughput_mbps = float(line.split()[6])
                                     break
                                 except (IndexError, ValueError):
-                                    print("❌ Failed to parse Uplink/Downlink throughput")
-                                    status = "FAIL"
+                                    print("❌ Failed to parse throughput")
+                                    throughput_mbps = 0.0
                                     break
-                        else:
-                            status = "FAIL"
-                        if throughput_mbps > 0:
-                            status = "PASS"
-
-                    print(f"✅ Throughput: {throughput_mbps} Mbps")
+                        status = "PASS" if throughput_mbps > 0 else "FAIL"
 
                 except subprocess.CalledProcessError as e:
                     print(f"❌ iPerf3 command failed:\n{e.output}")
+                    throughput_mbps = 0.0
                     status = "FAIL"
 
+                # ✅ Append properly parsed values to result
                 result = {
                     "LocalPing": local_ping,
                     "RemotePing": remote_ping,
@@ -146,9 +136,13 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
                     "data_rate": mcs_rate,
                     "bandwidth": bandwidth,
                     "Direction": init_direction,
-                    "traffic_type" : traffic_type,
-                    "throughput" : throughput_mbps
+                    "traffic_type": traffic_type,
+                    "throughput": round(throughput_mbps, 2)
                 }
+
+                if direction == "bi-di":
+                    result["tx_value"] = round(tx_throughput, 2)
+                    result["rx_value"] = round(rx_throughput, 2)
 
                 print(result)
 
