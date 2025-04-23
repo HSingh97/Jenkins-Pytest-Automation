@@ -84,17 +84,31 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
                         print(output)
 
                         throughput_mbps = 0
-                        lines = output.splitlines()
+                        status = "FAIL"
 
                         try:
-                            sent = float(lines[9].split()[7])  # Line 10, field 8
-                            received = float(lines[11].split()[7])  # Line 12, field 8
-                            throughput_mbps = sent + received
-                        except (IndexError, ValueError):
-                            print("❌ Failed to parse Bi-Directional throughput")
+                            tx_line = None
+                            rx_line = None
+
+                            for line in output.splitlines():
+                                if "receiver" in line and "[TX-C]" in line:
+                                    parts = line.split()
+                                    tx_line = parts
+                                elif "receiver" in line and "[RX-C]" in line:
+                                    parts = line.split()
+                                    rx_line = parts
+
+                            if tx_line and rx_line:
+                                tx_throughput = float(tx_line[6])
+                                rx_throughput = float(rx_line[6])
+                                throughput_mbps = tx_throughput + rx_throughput
+                                status = "PASS"
+                            else:
+                                print("❌ Failed to find both TX-C and RX-C sender lines")
+                        except Exception as e:
+                            print(f"❌ Exception while parsing bi-directional throughput: {e}")
+                            throughput_mbps = 0
                             status = "FAIL"
-                        else:
-                            status = "PASS"
 
                     else:
                         print("[DEBUG] ---- Testing {} ----  ".format(direction))
