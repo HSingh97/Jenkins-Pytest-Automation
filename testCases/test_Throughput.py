@@ -79,11 +79,13 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
 
                 try:
                     if direction == "bi-di":
+                        print("[DEBUG] ---- Testing Bi-Di ----  ")
                         output = subprocess.check_output(cmd, shell=True, universal_newlines=True)
-                        print(output)
+                        output_decoded = output.decode()
+                        print(output_decoded)
 
                         throughput_mbps = 0
-                        lines = output.splitlines()
+                        lines = output_decoded.splitlines()
 
                         try:
                             sent = float(lines[9].split()[7])  # Line 10, field 8
@@ -96,6 +98,7 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
                             status = "PASS"
 
                     else:
+                        print("[DEBUG] ---- Testing {} ----  ".format(direction))
                         output = subprocess.check_output(cmd, shell=True)
                         output_decoded = output.decode()
                         print(output_decoded)
