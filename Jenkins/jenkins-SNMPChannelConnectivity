@@ -151,8 +151,6 @@ pipeline {
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
-                    def buildNumber = env.BUILD_NUMBER
-                    def reportFilename = "throughput_report_${buildNumber}_${dateStamp}.html"
 
                     def htmlContent = """
                         <html><head><title>Throughput Test Report</title>
