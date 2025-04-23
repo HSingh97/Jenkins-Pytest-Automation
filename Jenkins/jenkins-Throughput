@@ -218,62 +218,85 @@ pipeline {
 
                     def htmlContent = """
                         <html><head><title>Throughput Test Report</title>
-                        <style>
-                            body {
-                                font-family: 'Segoe UI', Tahoma, sans-serif;
-                                padding: 30px;
-                                background-color: #f0f2f5;
-                                color: #2c3e50;
-                                line-height: 1.6;
-                            }
-                            .header {
-                                background: linear-gradient(90deg, #1e88e5, #42a5f5);
-                                color: white;
-                                display: flex;
-                                justify-content: space-between;
-                                align-items: center;
-                                padding: 20px;
-                                border-radius: 10px;
-                                margin-bottom: 30px;
-                            }
-                            .header h1 { font-size: 28px; }
-                            .header p { font-weight: 300; }
+                        body {
+                            font-family: 'Segoe UI', Tahoma, sans-serif;
+                            padding: 30px;
+                            background-color: #f0f2f5;
+                            color: #2c3e50;
+                            font-size: 15px;
+                            line-height: 1.6;
+                        }
 
-                            .card {
-                                background: white;
-                                border-radius: 12px;
-                                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-                                padding: 20px;
-                                margin-bottom: 30px;
-                            }
+                        .header {
+                            display: flex;
+                            align-items: center;
+                            background: #1565c0;
+                            color: white;
+                            padding: 16px 24px;
+                            border-radius: 10px;
+                            margin-bottom: 30px;
+                        }
+                        .header img {
+                            height: 60px;
+                            margin-right: 20px;
+                        }
+                        .header-info {
+                            display: flex;
+                            flex-direction: column;
+                            justify-content: center;
+                        }
+                        .header-info h1 {
+                            font-size: 22px;
+                            margin: 0;
+                        }
+                        .header-info p {
+                            font-size: 13px;
+                            margin: 2px 0;
+                        }
 
-                            table {
-                                width: 100%;
-                                border-collapse: collapse;
-                                margin-top: 15px;
-                                border-radius: 8px;
-                                overflow: hidden;
-                            }
 
-                            th {
-                                background: #263238;
-                                color: white;
-                                padding: 12px;
-                                font-size: 14px;
-                                text-transform: uppercase;
-                                letter-spacing: 0.5px;
-                            }
+                        .card {
+                            background: white;
+                            border-radius: 12px;
+                            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+                            padding: 20px;
+                            margin-bottom: 30px;
+                        }
 
-                            td {
-                                padding: 12px;
-                                border: 1px solid #e0e0e0;
-                                font-size: 13px;
-                                text-align: center;
-                                vertical-align: middle;
-                            }
+                        h2 {
+                            font-size: 18px;
+                            margin-bottom: 10px;
+                        }
 
-                            tr:nth-child(even) { background-color: #f7f9fc; }
-                        </style>
+                        table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin-top: 15px;
+                            border-radius: 8px;
+                            overflow: hidden;
+                        }
+
+                        th {
+                            background: #37474f;
+                            color: white;
+                            padding: 10px;
+                            font-size: 13px;
+                            text-transform: uppercase;
+                            letter-spacing: 0.3px;
+                        }
+
+                        td {
+                            padding: 10px;
+                            border: 1px solid #e0e0e0;
+                            font-size: 13px;
+                            text-align: center;
+                            vertical-align: middle;
+                        }
+
+                        tr:nth-child(even) {
+                            background-color: #f7f9fc;
+                        }
+
                         </head><body>
 
                         <div class="header">
@@ -353,7 +376,14 @@ pipeline {
                             def rx = ((stats.rx_rate ?: "0") as double).intValue()
                             def modulation = modulationTable[mcsKey] ?: "-"
 
-                            htmlContent += "<tr><td>${mcs}</td><td>${modulation}</td><td>${tx}</td><td>${rx}</td>"
+                            def rateTxStyle = ""
+                            def rateRxStyle = ""
+                            if (tx != rx) {
+                                rateTxStyle = "style='color:red; font-weight:bold;'"
+                                rateRxStyle = "style='color:red; font-weight:bold;'"
+                            }
+                            htmlContent += "<td ${rateTxStyle}>${tx}</td><td ${rateRxStyle}>${rx}</td>"
+
 
                             trafficTypes.each { t ->
                                 directions.each { d ->
