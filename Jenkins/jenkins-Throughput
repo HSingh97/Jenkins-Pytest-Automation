@@ -170,18 +170,8 @@ pipeline {
 
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
-
-                    def local_fw_version = sh(script: """
-                        ssh-keygen -R ${localIP} >/dev/null 2>&1 || true
-                        ssh-keyscan -H ${localIP} >> ~/.ssh/known_hosts 2>/dev/null
-                        sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'
-                    """, returnStdout: true).trim()
-
-                    def remote_fw_version = sh(script: """
-                        ssh-keygen -R ${remoteIP} >/dev/null 2>&1 || true
-                        ssh-keyscan -H ${remoteIP} >> ~/.ssh/known_hosts 2>/dev/null
-                        sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'
-                    """, returnStdout: true).trim()
+                    def local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
+                    def remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
 
                     def buildParams = [
                         "Local IP Address" : localIP,
@@ -210,26 +200,22 @@ pipeline {
                         "MCS9": "256-QAM 5/6", "MCS10": "1024-QAM 3/4", "MCS11": "1024-QAM 5/6"
                     ]
                     def modulationTable = [:]
-                    (0..23).each { i ->
-                        modulationTable["MCS${i}"] = baseModulations["MCS${i % 12}"]
-                    }
+                    (0..23).each { i -> modulationTable["MCS${i}"] = baseModulations["MCS${i % 12}"] }
 
                     def htmlContent = """
                         <html><head><title>Throughput Test Report</title>
                         <script src='https://cdn.jsdelivr.net/npm/chart.js'></script>
                         <style>
-                            body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 20px; background-color: #f9f9f9; color: #2c3e50; }
-                            .header { display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 20px; border-bottom: 2px solid #e0e0e0; }
-                            .header img { height: 60px; }
-                            .header-info { text-align: right; }
+                            body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 20px; background: #f9f9f9; color: #2c3e50; }
+                            .header { display: flex; justify-content: space-between; align-items: center; padding: 20px; background: #fff; border-bottom: 2px solid #e0e0e0; }
+                            .header img { height: 60px; } .header-info { text-align: right; }
                             h2 { margin-top: 40px; font-size: 20px; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
                             table { width: 100%; border-collapse: collapse; margin-top: 15px; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
                             th, td { padding: 10px 12px; border: 1px solid #ddd; text-align: center; vertical-align: middle; }
                             th { background: #2c3e50; color: white; }
                             table.build-params td, table.build-params th { text-align: left !important; }
                             tr:nth-child(even) { background-color: #f4f4f4; }
-                        </style>
-                        </head><body>
+                        </style></head><body>
                         <div class='header'>
                             <img src='${companyLogoUrl}' />
                             <div class='header-info'>
@@ -261,72 +247,85 @@ pipeline {
                             }
                         }
 
-                        trafficTypes.each { t ->
-                            def canvasId = "chart_${bandwidth}_${t}"
-                            def mcsLabels = mcsMap.keySet().sort().collect { "\"${it}\"" }.join(',')
-                            def expectedData = mcsMap.sort().collect { it.value.link_stats?.tx_rate ?: 0 }.join(',')
-                            htmlContent += """
-                                <h3>${t} Throughput vs MCS</h3>
-                                <canvas id='${canvasId}' height='300'></canvas>
-                                <script>
-                                const ctx_${canvasId} = document.getElementById('${canvasId}').getContext('2d');
-                                new Chart(ctx_${canvasId}, {
-                                    type: 'line',
-                                    data: {
-                                        labels: [${mcsLabels}],
-                                        datasets: [
-                                            {
-                                                label: 'Expected',
-                                                data: [${expectedData}],
-                                                borderColor: 'gray',
-                                                borderWidth: 2,
-                                                tension: 0.3
-                                            },
-                            """
-                            directions.each { d ->
-                                def key = "${t.toLowerCase()}_${d.toLowerCase()}"
-                                if (mcsMap.values().any { it.containsKey(key) }) {
-                                    def color = d == "Uplink" ? "blue" : d == "Downlink" ? "green" : "orange"
-                                    def lineData = mcsMap.sort().collect { it.value[key] ?: 0 }.join(',')
-                                    htmlContent += """
-                                            {
-                                                label: '${d}',
-                                                data: [${lineData}],
-                                                borderColor: '${color}',
-                                                borderWidth: 2,
-                                                tension: 0.3
-                                            },
-                                    """
+                        htmlContent += "<h2>Bandwidth: ${bandwidth}</h2><table><tr>
+                            <th rowspan='2'>MCS</th>
+                            <th rowspan='2'>Modulation</th>
+                            <th colspan='2'>Rate (Mbps)</th>"
+                        trafficTypes.each { htmlContent += "<th colspan='${directions.size()}'>Throughput (${it})</th>" }
+                        htmlContent += "<th colspan='2'>Local SNR (dB)</th><th colspan='2'>Remote SNR (dB)</th><th colspan='2'>Noise (dBm)</th></tr><tr>
+                            <th>Tx</th><th>Rx</th>"
+                        trafficTypes.each { directions.each { htmlContent += "<th>${it}</th>" } }
+                        htmlContent += "<th>A1</th><th>A2</th><th>A1</th><th>A2</th><th>Local</th><th>Remote</th></tr>"
+
+                        mcsMap.sort().each { mcs, data ->
+                            def stats = data.link_stats ?: [:]
+                            def tx = ((stats.tx_rate ?: "0") as double).intValue()
+                            def rx = ((stats.rx_rate ?: "0") as double).intValue()
+                            def modulation = modulationTable[mcs.toUpperCase()] ?: "-"
+                            def rateTxStyle = tx != rx ? "style='color:red; font-weight:bold;'" : ""
+                            def rateRxStyle = tx != rx ? "style='color:red; font-weight:bold;'" : ""
+                            htmlContent += "<tr><td>${mcs}</td><td>${modulation}</td><td ${rateTxStyle}>${tx}</td><td ${rateRxStyle}>${rx}</td>"
+
+                            trafficTypes.each { t ->
+                                directions.each { d ->
+                                    def key = "${t.toLowerCase()}_${d.toLowerCase()}"
+                                    def val = data[key] ?: "-"
+                                    def out = val
+                                    if (val != "-" && tx > 0) {
+                                        try {
+                                            def percent = Math.round((val as double) / tx * 100)
+                                            def color = percent < 40 ? "red" : percent < 65 ? "orange" : "green"
+                                            out = "<b style='color:black;'>${val}</b> <span style='color:${color};'>(~${percent}%)</span>"
+                                        } catch (Exception ignored) {}
+                                    }
+                                    htmlContent += "<td>${out}</td>"
                                 }
                             }
-                            htmlContent += """
-                                        ]
-                                    },
-                                    options: {
-                                        plugins: { legend: { position: 'top' } },
-                                        scales: {
-                                            y: {
-                                                beginAtZero: true,
-                                                title: { display: true, text: 'Throughput (Mbps)' }
-                                            },
-                                            x: {
-                                                title: { display: true, text: 'MCS Index' }
-                                            }
-                                        }
+
+                            htmlContent += "<td>${stats.local_SNR_A1 ?: '-'}</td><td>${stats.local_SNR_A2 ?: '-'}</td>"
+                            htmlContent += "<td>${stats.remote_SNR_A1 ?: '-'}</td><td>${stats.remote_SNR_A2 ?: '-'}</td>"
+                            htmlContent += "<td>${stats.local_noise ?: '-'}</td><td>${stats.remote_noise ?: '-'}</td></tr>"
+                        }
+                        htmlContent += "</table>"
+
+                        trafficTypes.each { t ->
+                            def canvasId = "chart_${bandwidth}_${t}"
+                            htmlContent += "<h3>${t} Throughput vs MCS</h3><canvas id='${canvasId}' height='300'></canvas><script>"
+                            htmlContent += "const ctx_${canvasId} = document.getElementById('${canvasId}').getContext('2d');"
+                            def labels = mcsMap.keySet().sort().collect { "\"${it}\"" }.join(',')
+                            htmlContent += "new Chart(ctx_${canvasId}, {
+                                type: 'line',
+                                data: {
+                                    labels: [${labels}],
+                                    datasets: ["
+
+                            // Expected
+                            htmlContent += "{ label: 'Expected', data: [${mcsMap.sort().collect { it.value.link_stats?.tx_rate ?: 0 }.join(',')}], borderColor: 'gray', borderWidth: 2, tension: 0.3 },"
+
+                            // Per direction
+                            directions.each { d ->
+                                def key = "${t.toLowerCase()}_${d.toLowerCase()}"
+                                if (mcsMap.values().any { it[key] != null }) {
+                                    def color = d == "Uplink" ? "blue" : d == "Downlink" ? "green" : "orange"
+                                    def dataLine = mcsMap.sort().collect { it.value[key] ?: 0 }.join(',')
+                                    htmlContent += "{ label: '${d}', data: [${dataLine}], borderColor: '${color}', borderWidth: 2, tension: 0.3 },"
+                                }
+                            }
+
+                            htmlContent += "]},
+                                options: {
+                                    responsive: true,
+                                    plugins: { legend: { position: 'top' } },
+                                    scales: {
+                                        y: { beginAtZero: true, title: { display: true, text: 'Throughput (Mbps)' } },
+                                        x: { title: { display: true, text: 'MCS Index' } }
                                     }
-                                });
-                                </script>
-                            """
+                                }
+                            });</script>"
                         }
                     }
 
-                    htmlContent += """
-                        <p style='margin-top: 10px; font-size: 13px; color: #555;'>
-                            Note: Throughput percentage is calculated relative to the Tx rate. Mismatched Tx/Rx rates are highlighted in <b style='color:red;'>red</b>.
-                        </p>
-                        </body></html>
-                    """
-
+                    htmlContent += "<p style='margin-top: 10px; font-size: 13px; color: #555;'>Note: Throughput percentage is calculated relative to the Tx rate. Mismatched Tx/Rx rates are highlighted in <b style='color:red;'>red</b>.</p></body></html>"
                     writeFile file: reportFilename, text: htmlContent
                     echo "✅ HTML report generated: ${reportFilename}"
                 }
