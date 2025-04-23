@@ -328,6 +328,7 @@ pipeline {
                                 rateTxStyle = "style='color:red; font-weight:bold;'"
                                 rateRxStyle = "style='color:red; font-weight:bold;'"
                             }
+                            htmlContent += "<tr><td>${mcs}</td><td>${modulation}</td>"
                             htmlContent += "<td ${rateTxStyle}>${tx}</td><td ${rateRxStyle}>${rx}</td>"
 
 
