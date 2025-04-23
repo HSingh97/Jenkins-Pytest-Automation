@@ -158,7 +158,6 @@ pipeline {
             steps {
                 script {
                     def reportFiles = findFiles(glob: 'Throughput_*.json').findAll { it.length > 20 }
-
                     def allResults = []
 
                     reportFiles.each { file ->
@@ -204,6 +203,20 @@ pipeline {
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
 
+                    // Traffic type + direction validation
+                    def trafficTypes = params['Traffic Type'].split(',').collect { it.trim().toUpperCase() }
+                    if (!trafficTypes || trafficTypes.isEmpty()) {
+                        error("❌ No traffic type selected. Please choose at least one: TCP or UDP")
+                    }
+                    def directions = params['Direction'].split(',').collect { it.trim().capitalize() }
+
+                    def trafficDirectionLabels = []
+                    trafficTypes.each { traffic ->
+                        directions.each { dir ->
+                            trafficDirectionLabels << "${traffic} ${dir}"
+                        }
+                    }
+
                     def htmlContent = """
                         <html><head><title>Throughput Test Report</title>
                         <style>
@@ -237,7 +250,7 @@ pipeline {
                         <div class="header">
                             <img src="${companyLogoUrl}" />
                             <div class="header-info">
-                                <h1>Automated Channel Connectivity Report</h1>
+                                <h1>Automated Throughput Test Report</h1>
                                 <p><strong>Pipeline:</strong> ${pipelineName}</p>
                                 <p><strong>Date:</strong> ${currentDateTime}</p>
                             </div>
@@ -249,16 +262,12 @@ pipeline {
                         </table>
                     """
 
-                    echo "✅ JSON files: ${reportFiles*.name}"
-                    echo "✅ Iteration counts: ${allResults.collect { it.content.size() }}"
-
                     def groupedByBandwidth = allResults.groupBy { it.filename.split('_')[1] }
 
                     groupedByBandwidth.each { bandwidth, entries ->
                         def mcsMap = [:]
-
                         entries.each { entry ->
-                            def mcs = entry.filename.split('_')[2]
+                            def mcs = entry.filename.split('_')[2].replace(".json", "")
                             if (!mcsMap[mcs]) mcsMap[mcs] = [:]
                             entry.content.each { iteration ->
                                 iteration.results_direction.each { result ->
@@ -266,64 +275,44 @@ pipeline {
                                     mcsMap[mcs][key] = result.throughput
                                     if (!mcsMap[mcs].link_stats) {
                                         mcsMap[mcs].link_stats = result.link_stats
-                                        mcsMap[mcs].ht_config = [
-                                            configured: iteration?.ht_configured ?: '-',
-                                            local: iteration?.local_htmode ?: '-',
-                                            remote: iteration?.remote_htmode ?: '-'
-                                        ]
                                     }
                                 }
                             }
                         }
-
-                        def trafficTypes = params['Traffic Type'].split(',').collect { it.trim().toUpperCase() }
-                        def directions = params['Direction'].split(',').collect { it.trim().capitalize() }
 
                         htmlContent += """
                             <h2>Bandwidth: <span style="background-color:#e1f5fe; padding:2px 6px;"><b>${bandwidth}</b></span></h2>
                             <table>
                                 <tr>
                                     <th rowspan="2">MCS</th>
-                        """
-                        trafficTypes.each { t ->
-                            directions.each {
-                                htmlContent += "<th>${t} ${it}</th>"
-                            }
-                        }
-                        htmlContent += """
-                            <th colspan="2">Local SNR</th>
-                            <th colspan="2">Remote SNR</th>
-                            <th colspan="2">Noise</th>
-                            <th colspan="2">Rate</th>
-                            <th colspan="3">HT Mode</th>
-                            </tr>
-                            <tr>
-                                ${trafficTypes.collectMany { t -> directions.collect { "<th>Mbps</th>" } }.join('')}
-                                <th>A1</th><th>A2</th>
-                                <th>A1</th><th>A2</th>
-                                <th>Local</th><th>Remote</th>
-                                <th>Tx</th><th>Rx</th>
-                                <th>Configured</th><th>Local</th><th>Remote</th>
-                            </tr>
+                                    ${trafficDirectionLabels.collect { "<th>${it}</th>" }.join('')}
+                                    <th colspan="2">Local SNR</th>
+                                    <th colspan="2">Remote SNR</th>
+                                    <th colspan="2">Noise</th>
+                                    <th colspan="2">Rate</th>
+                                </tr>
+                                <tr>
+                                    ${trafficDirectionLabels.collect { "<th>${it.split(' ')[1]}</th>" }.join('')}
+                                    <th>A1</th><th>A2</th>
+                                    <th>A1</th><th>A2</th>
+                                    <th>Local</th><th>Remote</th>
+                                    <th>Tx</th><th>Rx</th>
+                                </tr>
                         """
 
                         mcsMap.each { mcs, data ->
                             def stats = data.link_stats ?: [:]
-                            def ht = data.ht_config ?: [:]
-
                             htmlContent += "<tr><td>${mcs}</td>"
-                            trafficTypes.each { t ->
-                                directions.each { d ->
-                                    def val = data["${t.toLowerCase()}_${d.toLowerCase()}"] ?: "-"
-                                    htmlContent += "<td>${val}</td>"
-                                }
+                            trafficDirectionLabels.each { label ->
+                                def (type, dir) = label.toLowerCase().split(' ')
+                                def val = data["${type}_${dir}"] ?: "-"
+                                htmlContent += "<td>${val}</td>"
                             }
                             htmlContent += """
                                 <td>${stats.local_SNR_A1 ?: '-'}</td><td>${stats.local_SNR_A2 ?: '-'}</td>
                                 <td>${stats.remote_SNR_A1 ?: '-'}</td><td>${stats.remote_SNR_A2 ?: '-'}</td>
                                 <td>${stats.local_noise ?: '-'}</td><td>${stats.remote_noise ?: '-'}</td>
                                 <td>${stats.tx_rate ?: '-'}</td><td>${stats.rx_rate ?: '-'}</td>
-                                <td>${ht.configured ?: '-'}</td><td>${ht.local ?: '-'}</td><td>${ht.remote ?: '-'}</td>
                             </tr>
                             """
                         }
