@@ -317,9 +317,9 @@ pipeline {
                         mcsMap.each { mcs, data ->
                             def stats = data.link_stats ?: [:]
                             def mcsKey = mcs.toUpperCase()
-                            def tx = (stats.tx_rate ?: "0") as double
+                            def tx = ((stats.tx_rate ?: "0") as double).intValue()
                             def modulation = modulationTable[mcsKey] ?: "-"
-                            def rx = stats.rx_rate ?: '-'
+                            def rx = ((stats.rx_rate ?: "0") as double).intValue()
 
                             htmlContent += "<tr><td>${mcs}</td><td>${modulation}</td><td>${tx}</td><td>${rx}</td>"
 
@@ -333,7 +333,7 @@ pipeline {
                                             def ratio = (val as double) / tx * 100
                                             def percent = Math.round(ratio)
                                             def color = percent < 40 ? "red" : percent < 65 ? "orange" : "green"
-                                            out = "<span style='color:${color};'>${val} (~${percent}%)</span>"
+                                            out = "<b style='color:black;'>${val}</b> <span style='color:${color};'>(~${percent}%)</span>"
                                         } catch (Exception ignored) {}
                                     }
                                     htmlContent += "<td>${out}</td>"
