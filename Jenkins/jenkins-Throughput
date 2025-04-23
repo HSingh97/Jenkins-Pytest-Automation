@@ -299,7 +299,7 @@ pipeline {
                             def canvasId = "chart_${bandwidth}_${t}"
                             htmlContent += "<h3>${t} Throughput vs MCS</h3><canvas id='${canvasId}' height='300'></canvas><script>"
                             htmlContent += "const ctx_${canvasId} = document.getElementById('${canvasId}').getContext('2d');"
-                            htmlContent += "new Chart(ctx_${canvasId}, { type: 'line', data: { labels: [${mcsMap.keySet().sort().collect { \"\"\"\"${it}\"\"\"\" }.join(',')}], datasets: ["
+                            htmlContent += "new Chart(ctx_${canvasId}, { type: 'line', data: { labels: [${mcsMap.keySet().sort().collect { "\"${it}\"" }.join(',')}], datasets: ["
                             htmlContent += "{ label: 'Expected', data: [${mcsMap.sort().collect { it.value.link_stats?.tx_rate ?: 0 }.join(',')}], borderColor: 'gray', borderWidth: 2, tension: 0.3 },"
                             directions.findAll { d -> mcsMap.values().any { it["${t.toLowerCase()}_${d.toLowerCase()}"] } }.each { d ->
                                 def color = d == "Uplink" ? "blue" : d == "Downlink" ? "green" : "orange"
