@@ -151,7 +151,7 @@ pipeline {
                                     }
                                 }
                             }
-                        } // <-- close for (bandwidth in bandwidths)
+                        }
                     } catch (Exception e) {
                         echo "⚠️ Exception occurred during Throughput Testing: ${e.message}"
                     }
@@ -265,7 +265,7 @@ pipeline {
                         def groupedByBandwidth = allResults.groupBy { it.filename.split('_')[1] }
 
                         def bandwidthOrder = ["HT20", "HT40", "HT80", "HT160"]
-                            bandwidthOrder.findAll { groupedByBandwidth.containsKey(it) }.each { bandwidth ->
+                            bandwidthOrder.findAll { groupedByBandwidth.containsKey(it) }.toList().each { bandwidth ->
                                 def entries = groupedByBandwidth[bandwidth]
 
                             def mcsMap = [:]
@@ -293,7 +293,7 @@ pipeline {
                             trafficTypes.each { directions.each { htmlContent += "<th>${it}</th>" } }
                             htmlContent += "<th>A1</th><th>A2</th><th>A1</th><th>A2</th><th>Local</th><th>Remote</th></tr>"
 
-                            mcsMap.keySet().sort { a, b ->
+                            mcsMap.keySet().toList().sort { a, b ->
                                 (a.replaceAll(/[^\d]/, '') as int) <=> (b.replaceAll(/[^\d]/, '') as int)
                             }.each { mcs ->
                                 def data = mcsMap[mcs]
