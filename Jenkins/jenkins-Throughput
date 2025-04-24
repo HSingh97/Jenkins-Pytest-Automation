@@ -262,9 +262,6 @@ pipeline {
                             </table>
                         """
 
-                        import java.util.Collections
-                        import java.util.Comparator
-
                         def groupedByBandwidth = allResults.groupBy { it.filename.split('_')[1] }
 
                         def bandwidthOrder = ["HT20", "HT40", "HT80", "HT160"]
