@@ -162,7 +162,6 @@ pipeline {
             steps {
                 script {
                     try {
-                        // 🔽 BEGIN: your full report generation logic
                         def reportFiles = findFiles(glob: 'Throughput_*.json').findAll { it.length > 20 }
                         def allResults = []
 
@@ -178,9 +177,9 @@ pipeline {
                             writeFile file: reportFilename, text: "<html><body><h2>No results found.</h2></body></html>"
                             return
                         }
+
                         def localIP = params['Local IP Address']
                         def remoteIP = params['Remote IP Address']
-
                         def local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
                         def remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
 
@@ -206,6 +205,11 @@ pipeline {
                         ]
                         def modulationTable = [:]
                         (0..23).each { i -> modulationTable["MCS${i}"] = modulationBase["MCS${i % 12}"] }
+
+                        def mcsOrder = (0..23).collect { "MCS$it".toUpperCase() }
+                        def bandwidthOrder = ["HT20", "HT40", "HT80", "HT160"]
+
+                        def groupedByBandwidth = allResults.groupBy { it.filename.split('_')[1].trim().toUpperCase() }
 
                         def getThroughputCell = { val, tx, key, data ->
                             def cell = "-"
@@ -262,17 +266,12 @@ pipeline {
                             </table>
                         """
 
-                        def groupedByBandwidth = allResults.groupBy { it.filename.split('_')[1].trim().toUpperCase() }
-
-                        def bandwidthDisplayOrder = ["HT20", "HT40", "HT80", "HT160"]
-
-                        bandwidthDisplayOrder.each { bandwidth ->
-                            if (!groupedByBandwidth.containsKey(bandwidth)) {
-                                return
-                            }
+                        bandwidthOrder.each { bandwidth ->
+                            if (!groupedByBandwidth.containsKey(bandwidth)) return
 
                             def entries = groupedByBandwidth[bandwidth]
                             def mcsMap = [:]
+
                             entries.each { entry ->
                                 def mcs = entry.filename.split('_')[2].replace(".json", "").trim().toUpperCase()
                                 if (!mcsMap[mcs]) mcsMap[mcs] = [:]
@@ -281,12 +280,10 @@ pipeline {
                                     iteration.results_direction.each { result ->
                                         def key = "${result.traffic_type}_${result.Direction}".toLowerCase()
                                         mcsMap[mcs][key] = result.throughput
-
                                         if (result.Direction.toLowerCase() == "bi-di") {
                                             mcsMap[mcs]["${key}_tx"] = result.tx_value ?: 0.0
                                             mcsMap[mcs]["${key}_rx"] = result.rx_value ?: 0.0
                                         }
-
                                         if (!mcsMap[mcs].link_stats) {
                                             mcsMap[mcs].link_stats = result.link_stats
                                         }
@@ -300,20 +297,13 @@ pipeline {
                             trafficTypes.each { directions.each { htmlContent += "<th>${it}</th>" } }
                             htmlContent += "<th>A1</th><th>A2</th><th>A1</th><th>A2</th><th>Local</th><th>Remote</th></tr>"
 
-                            def sortedMcsKeys = mcsMap.keySet().toList()
-                            sortedMcsKeys = sortedMcsKeys.sort(false) { it.replaceAll(/[^\d]/, '').toInteger() }
-
-                            echo "✅ Sorted MCS Order for ${bandwidth}: ${sortedMcsKeys.join(', ')}"
-
-                            sortedMcsKeys.each { mcs ->
+                            mcsOrder.each { mcs ->
                                 def data = mcsMap[mcs]
                                 if (!data) return
                                 def stats = data.link_stats ?: [:]
-
-                                def mcsKey = mcs.toUpperCase()
                                 def tx = ((stats.tx_rate ?: "0") as double)
                                 def rx = ((stats.rx_rate ?: "0") as double)
-                                def modulation = modulationTable[mcsKey] ?: "-"
+                                def modulation = modulationTable[mcs] ?: "-"
                                 def rateTxStyle = tx != rx ? "style='color:red; font-weight:bold;'" : ""
                                 def rateRxStyle = tx != rx ? "style='color:red; font-weight:bold;'" : ""
 
@@ -333,13 +323,13 @@ pipeline {
                             }
 
                             htmlContent += "</table>"
-
                         }
 
                         htmlContent += "<p style='margin-top: 20px; font-size: 13px; color: #555;'>Note: Throughput percentage is calculated relative to Tx rate. Mismatched Tx/Rx are shown in <b style='color:red;'>red</b>.</p></body></html>"
 
                         writeFile file: reportFilename, text: htmlContent
                         echo "✅ HTML report generated: ${reportFilename}"
+
                     } catch (Exception e) {
                         echo "❌ Report generation failed: ${e.message}"
                         writeFile file: reportFilename, text: """
