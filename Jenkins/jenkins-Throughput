@@ -301,11 +301,7 @@ pipeline {
                             htmlContent += "<th>A1</th><th>A2</th><th>A1</th><th>A2</th><th>Local</th><th>Remote</th></tr>"
 
                             def sortedMcsKeys = mcsMap.keySet().toList()
-                            sortedMcsKeys.sort { a, b ->
-                                def aNum = a.replaceAll(/[^\d]/, '').toInteger()
-                                def bNum = b.replaceAll(/[^\d]/, '').toInteger()
-                                return aNum <=> bNum
-                            }
+                            sortedMcsKeys = sortedMcsKeys.sort(false) { it.replaceAll(/[^\d]/, '').toInteger() }
 
                             echo "✅ Sorted MCS Order for ${bandwidth}: ${sortedMcsKeys.join(', ')}"
 
