@@ -262,17 +262,19 @@ pipeline {
                             </table>
                         """
 
-                        def groupedByBandwidth = allResults.groupBy { it.filename.split('_')[1] }
+                        def groupedByBandwidth = allResults.groupBy { it.filename.split('_')[1].trim().toUpperCase() }
 
-                        def bandwidthOrder = ["HT20", "HT40", "HT80", "HT160"]
-                        def safeSortedBandwidths = bandwidthOrder.findAll { groupedByBandwidth.containsKey(it) }.toList()
+                        def bandwidthDisplayOrder = ["HT20", "HT40", "HT80", "HT160"]
 
-                        safeSortedBandwidths.each { bandwidth ->
+                        bandwidthDisplayOrder.each { bandwidth ->
+                            if (!groupedByBandwidth.containsKey(bandwidth)) {
+                                return
+                            }
+
                             def entries = groupedByBandwidth[bandwidth]
-
                             def mcsMap = [:]
                             entries.each { entry ->
-                                def mcs = entry.filename.split('_')[2].replace(".json", "")
+                                def mcs = entry.filename.split('_')[2].replace(".json", "").trim().toUpperCase()
                                 if (!mcsMap[mcs]) mcsMap[mcs] = [:]
 
                                 entry.content.each { iteration ->
@@ -300,9 +302,12 @@ pipeline {
 
                             def sortedMcsKeys = mcsMap.keySet().toList()
                             sortedMcsKeys.sort { a, b ->
-                                (a.replaceAll(/[^\d]/, '') as int) <=> (b.replaceAll(/[^\d]/, '') as int)
+                                def aNum = a.replaceAll(/[^\d]/, '').toInteger()
+                                def bNum = b.replaceAll(/[^\d]/, '').toInteger()
+                                return aNum <=> bNum
                             }
 
+                            echo "✅ Sorted MCS Order for ${bandwidth}: ${sortedMcsKeys.join(', ')}"
 
                             sortedMcsKeys.each { mcs ->
                                 def data = mcsMap[mcs]
@@ -332,8 +337,8 @@ pipeline {
                             }
 
                             htmlContent += "</table>"
-                        }
 
+                        }
 
                         htmlContent += "<p style='margin-top: 20px; font-size: 13px; color: #555;'>Note: Throughput percentage is calculated relative to Tx rate. Mismatched Tx/Rx are shown in <b style='color:red;'>red</b>.</p></body></html>"
 
