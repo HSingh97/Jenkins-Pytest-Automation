@@ -262,10 +262,15 @@ pipeline {
                             </table>
                         """
 
+                        import java.util.Collections
+                        import java.util.Comparator
+
                         def groupedByBandwidth = allResults.groupBy { it.filename.split('_')[1] }
 
                         def bandwidthOrder = ["HT20", "HT40", "HT80", "HT160"]
                         def safeSortedBandwidths = bandwidthOrder.findAll { groupedByBandwidth.containsKey(it) }.toList()
+
+                        // You don't need to sort this list unless you want to override order — it’s already ordered
 
                         safeSortedBandwidths.each { bandwidth ->
                             def entries = groupedByBandwidth[bandwidth]
@@ -274,21 +279,23 @@ pipeline {
                             entries.each { entry ->
                                 def mcs = entry.filename.split('_')[2].replace(".json", "")
                                 if (!mcsMap[mcs]) mcsMap[mcs] = [:]
+
                                 entry.content.each { iteration ->
                                     iteration.results_direction.each { result ->
                                         def key = "${result.traffic_type}_${result.Direction}".toLowerCase()
                                         mcsMap[mcs][key] = result.throughput
+
                                         if (result.Direction.toLowerCase() == "bi-di") {
                                             mcsMap[mcs]["${key}_tx"] = result.tx_value ?: 0.0
                                             mcsMap[mcs]["${key}_rx"] = result.rx_value ?: 0.0
                                         }
+
                                         if (!mcsMap[mcs].link_stats) {
                                             mcsMap[mcs].link_stats = result.link_stats
                                         }
                                     }
                                 }
                             }
-
 
                             htmlContent += "<h2>Bandwidth: ${bandwidth}</h2><table><tr><th rowspan='2'>MCS</th><th rowspan='2'>Modulation</th><th colspan='2'>Rate (Mbps)</th>"
                             trafficTypes.each { htmlContent += "<th colspan='${directions.size()}'>Throughput (${it}) (Mbps)</th>" }
@@ -297,9 +304,8 @@ pipeline {
                             htmlContent += "<th>A1</th><th>A2</th><th>A1</th><th>A2</th><th>Local</th><th>Remote</th></tr>"
 
                             def sortedMcsKeys = mcsMap.keySet().toList()
-                            sortedMcsKeys.sort { a, b ->
-                                (a.replaceAll(/[^\d]/, '') as int) <=> (b.replaceAll(/[^\d]/, '') as int)
-                            }
+                            Collections.sort(sortedMcsKeys, Comparator.comparingInt { it.replaceAll(/[^\d]/, '').toInteger() })
+
                             sortedMcsKeys.each { mcs ->
                                 def data = mcsMap[mcs]
                                 if (!data) return
@@ -327,9 +333,9 @@ pipeline {
                                 htmlContent += "<td>${stats.local_noise ?: '-'}</td><td>${stats.remote_noise ?: '-'}</td></tr>"
                             }
 
-
                             htmlContent += "</table>"
                         }
+
 
                         htmlContent += "<p style='margin-top: 20px; font-size: 13px; color: #555;'>Note: Throughput percentage is calculated relative to Tx rate. Mismatched Tx/Rx are shown in <b style='color:red;'>red</b>.</p></body></html>"
 
