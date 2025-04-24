@@ -254,7 +254,10 @@ pipeline {
 
                     def groupedByBandwidth = allResults.groupBy { it.filename.split('_')[1] }
 
-                    groupedByBandwidth.each { bandwidth, entries ->
+                    def bandwidthOrder = ["HT20", "HT40", "HT80", "HT160"]
+                        bandwidthOrder.findAll { groupedByBandwidth.containsKey(it) }.each { bandwidth ->
+                            def entries = groupedByBandwidth[bandwidth]
+
                         def mcsMap = [:]
                         entries.each { entry ->
                             def mcs = entry.filename.split('_')[2].replace(".json", "")
@@ -280,7 +283,10 @@ pipeline {
                         trafficTypes.each { directions.each { htmlContent += "<th>${it}</th>" } }
                         htmlContent += "<th>A1</th><th>A2</th><th>A1</th><th>A2</th><th>Local</th><th>Remote</th></tr>"
 
-                        mcsMap.sort().each { mcs, data ->
+                        mcsMap.keySet().sort { a, b ->
+                            (a.replaceAll(/[^\d]/, '') as int) <=> (b.replaceAll(/[^\d]/, '') as int)
+                        }.each { mcs ->
+                            def data = mcsMap[mcs]
                             def stats = data.link_stats ?: [:]
                             def mcsKey = mcs.toUpperCase()
                             def tx = ((stats.tx_rate ?: "0") as double)
