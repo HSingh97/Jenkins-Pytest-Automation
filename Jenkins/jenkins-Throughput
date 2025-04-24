@@ -265,8 +265,10 @@ pipeline {
                         def groupedByBandwidth = allResults.groupBy { it.filename.split('_')[1] }
 
                         def bandwidthOrder = ["HT20", "HT40", "HT80", "HT160"]
-                            bandwidthOrder.findAll { groupedByBandwidth.containsKey(it) }.toList().each { bandwidth ->
-                                def entries = groupedByBandwidth[bandwidth]
+                        def safeSortedBandwidths = bandwidthOrder.findAll { groupedByBandwidth.containsKey(it) }.toList()
+
+                        safeSortedBandwidths.each { bandwidth ->
+                            def entries = groupedByBandwidth[bandwidth]
 
                             def mcsMap = [:]
                             entries.each { entry ->
@@ -287,15 +289,18 @@ pipeline {
                                 }
                             }
 
+
                             htmlContent += "<h2>Bandwidth: ${bandwidth}</h2><table><tr><th rowspan='2'>MCS</th><th rowspan='2'>Modulation</th><th colspan='2'>Rate (Mbps)</th>"
                             trafficTypes.each { htmlContent += "<th colspan='${directions.size()}'>Throughput (${it}) (Mbps)</th>" }
                             htmlContent += "<th colspan='2'>Local SNR (dB)</th><th colspan='2'>Remote SNR (dB)</th><th colspan='2'>Noise (dBm)</th></tr><tr><th>Tx</th><th>Rx</th>"
                             trafficTypes.each { directions.each { htmlContent += "<th>${it}</th>" } }
                             htmlContent += "<th>A1</th><th>A2</th><th>A1</th><th>A2</th><th>Local</th><th>Remote</th></tr>"
 
-                            mcsMap.keySet().toList().sort { a, b ->
+                            def sortedMcsKeys = mcsMap.keySet().toList()
+                            sortedMcsKeys.sort { a, b ->
                                 (a.replaceAll(/[^\d]/, '') as int) <=> (b.replaceAll(/[^\d]/, '') as int)
-                            }.each { mcs ->
+                            }
+                            sortedMcsKeys.each { mcs ->
                                 def data = mcsMap[mcs]
                                 if (!data) return
                                 def stats = data.link_stats ?: [:]
@@ -321,6 +326,7 @@ pipeline {
                                 htmlContent += "<td>${stats.remote_SNR_A1 ?: '-'}</td><td>${stats.remote_SNR_A2 ?: '-'}</td>"
                                 htmlContent += "<td>${stats.local_noise ?: '-'}</td><td>${stats.remote_noise ?: '-'}</td></tr>"
                             }
+
 
                             htmlContent += "</table>"
                         }
