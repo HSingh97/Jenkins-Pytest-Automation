@@ -151,6 +151,7 @@ pipeline {
                                     }
                                 }
                             }
+                        } // <-- close for (bandwidth in bandwidths)
                     } catch (Exception e) {
                         echo "⚠️ Exception occurred during Throughput Testing: ${e.message}"
                     }
