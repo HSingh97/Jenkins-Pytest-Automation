@@ -270,8 +270,6 @@ pipeline {
                         def bandwidthOrder = ["HT20", "HT40", "HT80", "HT160"]
                         def safeSortedBandwidths = bandwidthOrder.findAll { groupedByBandwidth.containsKey(it) }.toList()
 
-                        // You don't need to sort this list unless you want to override order — it’s already ordered
-
                         safeSortedBandwidths.each { bandwidth ->
                             def entries = groupedByBandwidth[bandwidth]
 
@@ -304,7 +302,10 @@ pipeline {
                             htmlContent += "<th>A1</th><th>A2</th><th>A1</th><th>A2</th><th>Local</th><th>Remote</th></tr>"
 
                             def sortedMcsKeys = mcsMap.keySet().toList()
-                            Collections.sort(sortedMcsKeys, Comparator.comparingInt { it.replaceAll(/[^\d]/, '').toInteger() })
+                            sortedMcsKeys.sort { a, b ->
+                                (a.replaceAll(/[^\d]/, '') as int) <=> (b.replaceAll(/[^\d]/, '') as int)
+                            }
+
 
                             sortedMcsKeys.each { mcs ->
                                 def data = mcsMap[mcs]
