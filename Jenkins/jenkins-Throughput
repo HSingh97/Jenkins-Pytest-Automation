@@ -45,6 +45,119 @@ pipeline {
                 }
             }
         }
+        stage('Throughput Testing') {
+            steps {
+                script {
+                    try {
+                        def remotePC = params['Remote PC']
+                        def remotePCIP = null
+
+                        node(remotePC) {
+                            remotePCIP = sh(
+                                script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$4}' | cut -d'/' -f1 | head -n1",
+                                returnStdout: true
+                            ).trim()
+
+                            if (!remotePCIP) {
+                                error("❌ Could not find 192.168.1.x IP on node '$remotePC' ")
+                            }
+
+                            echo "✅ Remote PC IP: ${remotePCIP}"
+                        }
+
+
+                        def localIP = params['Local IP Address']
+                        def remoteIP = params['Remote IP Address']
+                        def selectedRadio = params['Radio']
+                        def selectedTrafficGenerator = params['Traffic Generator']
+                        def traffic_types = params.'Traffic Type'.split(',')
+                        def directions = params.Direction.split(',')
+                        def bandwidths = params.Bandwidth.split(',')
+                        def modulationrates = params.MCS.split(',')
+                        def test_time = params['Throughput Test Time']
+
+                        sh 'rm -f *_HT*.json iteration_results.json'
+                        sh 'rm -f throughput_report_*.html'
+                        echo "✅ Cleared old workspace"
+                        sh "echo {\\\"iterations\\\": []} > iteration_results.json"
+
+                        def iteration = 1
+
+                        for (bandwidth in bandwidths) {
+                            echo "--------------------------------------------------------------"
+                            echo " Configuring Bandwidth : ${bandwidth}"
+                            echo "--------------------------------------------------------------"
+
+                            sh """
+                                pytest -v -s testCases/test_Throughput.py::test_changebandwidth \
+                                --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                                --radio '${selectedRadio}' --bandwidth '${bandwidth}' 2>&1
+                            """
+
+                            for (mcsrate in modulationrates) {
+                                echo "--------------------------------------------------------------"
+                                echo " Configuring MCS : ${mcsrate}"
+                                echo "--------------------------------------------------------------"
+
+                                sh """
+                                    pytest -v -s testCases/test_Throughput.py::test_changemcs \
+                                    --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                                    --radio '${selectedRadio}' --mcs-rate '${mcsrate}' 2>&1
+                                """
+
+                                for (traffic_type in traffic_types) {
+
+                                    echo "--------------------------------------------------------------"
+                                    echo " Testing: Bandwidth=${bandwidth} | MCS=${mcsrate} | Type=${traffic_type} "
+                                    echo "--------------------------------------------------------------"
+
+                                    sh "echo '{\"iterations\": []}' > custom_results.json"
+
+                                    def pytest_output = sh(script: """
+                                        pytest -v -s testCases/test_Throughput.py::test_throughputtest \
+                                        --local-ip '${localIP}' \
+                                        --remote-ip '${remoteIP}' \
+                                        --radio '${selectedRadio}' \
+                                        --mcs-rate '${mcsrate}' \
+                                        --traffic-type '${traffic_type}' \
+                                        --traffic-dir '${directions.join(",")}' \
+                                        --remote-pc-ip '${remotePCIP}' \
+                                        --bandwidth '${bandwidth}' \
+                                        --sleep '${test_time}' \
+                                        2>&1
+                                    """, returnStdout: true).trim()
+
+                                    echo "Pytest Output:\n${pytest_output}"
+
+                                    def iterationResults = readJSON file: 'custom_results.json'
+                                    def normalizedBandwidth = bandwidth == "HT40" ? "HT40+" : bandwidth
+
+                                    def newTests = iterationResults.iterations
+
+                                    newTests.each { test ->
+                                        test.iteration = iteration++
+                                        test.logs = pytest_output
+                                    }
+
+                                    def filename = "Throughput_${bandwidth.trim()}_${mcsrate.trim()}.json"
+                                    writeJSON file: filename, json: [iterations: newTests]
+
+                                    newTests.each { test ->
+                                        echo "Iteration ${test.iteration} - ${test.test} => ${test.status}"
+                                        test.results_direction.eachWithIndex { result, idx ->
+                                            echo "  ↪ Run ${idx + 1} => Dir: ${result.Direction}, Type: ${result.traffic_type}"
+                                            echo "     Bandwidth: ${result.bandwidth}, MCS: ${result.data_rate}, Throughput: ${result.throughput} Mbps"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        echo "⚠️ Exception occurred during Throughput Testing: ${e.message}"
+                    }
+                }
+            }
+        }
         stage('Generate Report') {
             steps {
                 script {
