@@ -46,14 +46,16 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
         traffic_type_argument = "-u"
 
     throughput_results = []
+    if pingFunction.check_access(remote_ip):
+        # kill any existing server
+        execute_ssh_command.perform_operation(remote_pc_ip, "root", "senao1234#", "killall iperf3")
+        time.sleep(1)
 
-    # kill any existing server
-    execute_ssh_command.perform_operation(remote_pc_ip, "root", "senao1234#", "killall iperf3")
-    time.sleep(1)
-
-    # start iperf3 server
-    execute_ssh_command.perform_operation(remote_pc_ip, "root", "senao1234#", "iperf3 -s -i0 &")
-    time.sleep(1)
+        # start iperf3 server
+        execute_ssh_command.perform_operation(remote_pc_ip, "root", "senao1234#", "iperf3 -s -i0 &")
+        time.sleep(1)
+    else:
+        print("[DEBUG] !!!! Unable to SSH remote devive !!!!")
 
     for direction in traffic_dir.split(','):
 
