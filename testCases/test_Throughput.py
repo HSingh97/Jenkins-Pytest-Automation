@@ -219,6 +219,10 @@ def test_changebandwidth(local_ip, remote_ip, radio, bandwidth):
     if pingFunction.check_access(local_ip):
         print("\nConfiguring Bandwidth : {} for {} ".format(new_bandwidth, local_ip))
         snmp_operations.change_bandwidth(local_ip, get_radio_index(radio)["radio_ind"], new_bandwidth)
+
+        print("\nSetting Channel : {} for {} ".format('124', local_ip))
+        snmp_operations.change_channel(local_ip, get_radio_index(radio)["radio_ind"], "124")
+
     else:
         print("!!!! Device : {} Not Reachable !!!!".format(local_ip))
 
