@@ -70,14 +70,14 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
     print("\nChannels available for current selection : {}".format(channel_list))
 
     print("\nConfiguring Country {} for Remote Device ".format(country_code))
-    set_country_snmp.change_country(remote_ip, radio_ind, country_code, 5)
+    snmp_operations.change_country(remote_ip, radio_ind, country_code, 5)
 
     print("\nConfiguring Country {} for Local Device ".format(country_code))
-    set_country_snmp.change_country(local_ip, radio_ind, country_code, 60)
+    snmp_operations.change_country(local_ip, radio_ind, country_code, 60)
 
     bandwidth_param = "wireless.{}.htmode".format(wifi_intf)
     print("\nConfiguring Bandwidth : {} for Local Device ".format(new_bandwidth))
-    set_bandwidth_snmp.change_bandwidth(local_ip, radio_ind, new_bandwidth)
+    snmp_operations.change_bandwidth(local_ip, radio_ind, new_bandwidth)
     #ssh_operations.ucidyn_set(local_ip, bandwidth_param, new_bandwidth)
 
     if pingFunction.check_access(local_ip):
