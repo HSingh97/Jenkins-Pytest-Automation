@@ -1,8 +1,9 @@
 import time
 import os
+import subprocess
 
 
-def change_bandwidth(host, radio_ind, bandwidth):
+def change_bandwidth_original(host, radio_ind, bandwidth):
     # Change Bandwidth
     os.system(
         "snmpset -v 2c -c private {} .1.3.6.1.4.1.52619.1.1.1.1.1.7.{} s {}".format(host, radio_ind, bandwidth))
@@ -10,6 +11,27 @@ def change_bandwidth(host, radio_ind, bandwidth):
 
     # Apply the configuration
     os.system("snmpset -v 2c -c private {} .1.3.6.1.4.1.52619.1.2.1.1.0 i 1".format(host))
+    time.sleep(60)
+
+def change_bandwidth(host, radio_ind, bandwidth):
+    # Change Bandwidth
+    cmd_bandwidth = [
+        "snmpset", "-v", "2c", "-c", "private",
+        host,
+        f".1.3.6.1.4.1.52619.1.1.1.1.1.7.{radio_ind}",
+        "s", str(bandwidth)
+    ]
+    subprocess.run(cmd_bandwidth, check=False)
+    time.sleep(2)
+
+    # Apply the configuration
+    cmd_apply = [
+        "snmpset", "-v", "2c", "-c", "private",
+        host,
+        ".1.3.6.1.4.1.52619.1.2.1.1.0",
+        "i", "1"
+    ]
+    subprocess.run(cmd_apply, check=False)
     time.sleep(60)
 
 
