@@ -3,7 +3,7 @@ import platform
 import warnings
 import subprocess
 import pytest
-
+import time
 from pageObjects.HomePage import HomePage
 from pageObjects.LoginPage import LoginPage
 from pageObjects.FactoryResetPage import ResetPage
@@ -15,8 +15,8 @@ from preMadeFunctions import accessWeb
 from preMadeFunctions import ssh_operations
 
 
-username = readConfig.get_username()
-password = readConfig.get_passwd()
+username = "root"
+password = "admin"
 # serial_port = readConfig.getSerialPortDevice()
 # serial_port_log = readConfig.getSerialLogsDevice()
 driver = setup
