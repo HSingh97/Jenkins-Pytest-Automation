@@ -11,8 +11,8 @@ from preMadeFunctions import accessWeb
 
 
 
-username = readConfig.get_username()
-password = readConfig.get_passwd()
+username = "root"
+password = "admin"
 # serial_port = readConfig.getSerialPortDevice()
 # serial_port_log = readConfig.getSerialLogsDevice()
 driver = setup
