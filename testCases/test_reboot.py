@@ -24,7 +24,7 @@ def test_Reboot(driver, local_ip, remote_ip):
     print(f"Remote IP Address: {remote_ip}")
     URL = "http://" + local_ip + "/cgi-bin/luci"
 
-    accessWeb.access_and_login(driver, URL, username, password)
+    accessWeb.access_and_login(driver, URL, "root", "admin")
 
     hp = HomePage(driver)
     hp.clickReboot()
