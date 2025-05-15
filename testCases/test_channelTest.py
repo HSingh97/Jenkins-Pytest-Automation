@@ -106,19 +106,23 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
 
         expected_channel = int(channels)
 
-        for attempt in range(2):
+        try:
             local_active_raw = get_snmp_values.fetch_active_channel(local_ip, radio_ind)
-            if local_active_raw.isdigit():
-                local_active_channel = int(local_active_raw)
-                break
-            else:
-                print(f"[WARN] Attempt {attempt + 1}: Invalid local active channel: '{local_active_raw}'")
-                time.sleep(1)
-        else:
-            print(f"[ERROR] Failed to get valid local active channel for {channels}")
-            local_active_channel = "Null"
+            local_active_channel = int(local_active_raw)
+            local_htmode = fetch_ssh_values.fetch_htmode(local_ip, intf)
 
-        local_htmode = fetch_ssh_values.fetch_htmode(local_ip, intf)
+        except ValueError:
+            print(f"[WARN] Remote active channel fetch failed. Retrying once...")
+            local_active_raw = get_snmp_values.fetch_active_channel(local_ip, radio_ind)
+            try:
+                local_active_channel = int(local_active_raw)
+                local_htmode = fetch_ssh_values.fetch_htmode(local_ip, intf)
+            except ValueError:
+                print(f"[ERROR] Remote active channel invalid: '{local_active_raw}'")
+                local_active_channel = "Null"
+                local_htmode = "Null"
+                print(f"Invalid Local active channel for {formatted_channel}")
+
         configured_htmode = ssh_operations.ssh_get(local_ip, "uci get wireless.wifi1.htmode")
         device_uptime = (param_helpers.get_time("uptime", ssh_operations.ssh_get(local_ip, "cat /proc/uptime | cut -d ' ' -f 1 | cut -d '.' -f 1")))
 
