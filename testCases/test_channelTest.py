@@ -81,7 +81,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
     #ssh_operations.ucidyn_set(local_ip, bandwidth_param, new_bandwidth)
 
     if pingFunction.check_access(local_ip):
-
+        print("Able to Access Local Device")
         if pingFunction.check_access(remote_ip):
             print("\nAble to Access Remote Device")
         else:
@@ -94,8 +94,8 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
 
     i = 0
     for i, channels in enumerate(channel_list):
-        # if i >= 1:
-        #     break
+        if i >= 1:
+            break
 
         snmp_operations.change_channel(local_ip, radio_ind, channels)
         frequency = (int(channels)*5)+5000
@@ -104,8 +104,18 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
         local_ping = pingFunction.check_access(local_ip)
         remote_ping = pingFunction.check_access(remote_ip) if local_ping else False
 
-        expected_channel = int(channels)
-        local_active_channel = int(get_snmp_values.fetch_active_channel(local_ip, radio_ind))
+        for attempt in range(2):
+            local_active_raw = get_snmp_values.fetch_active_channel(local_ip, radio_ind)
+            if local_active_raw.isdigit():
+                local_active_channel = int(local_active_raw)
+                break
+            else:
+                print(f"[WARN] Attempt {attempt + 1}: Invalid local active channel: '{local_active_raw}'")
+                time.sleep(1)
+        else:
+            print(f"[ERROR] Failed to get valid local active channel for {channels}")
+            local_active_channel = "Null"
+
         local_htmode = fetch_ssh_values.fetch_htmode(local_ip, intf)
         configured_htmode = ssh_operations.ssh_get(local_ip, "uci get wireless.wifi1.htmode")
         device_uptime = (param_helpers.get_time("uptime", ssh_operations.ssh_get(local_ip, "cat /proc/uptime | cut -d ' ' -f 1 | cut -d '.' -f 1")))
