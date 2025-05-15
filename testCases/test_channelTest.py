@@ -104,6 +104,8 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
         local_ping = pingFunction.check_access(local_ip)
         remote_ping = pingFunction.check_access(remote_ip) if local_ping else False
 
+        expected_channel = int(channels)
+
         for attempt in range(2):
             local_active_raw = get_snmp_values.fetch_active_channel(local_ip, radio_ind)
             if local_active_raw.isdigit():
