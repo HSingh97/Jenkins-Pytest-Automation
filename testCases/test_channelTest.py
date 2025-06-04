@@ -73,7 +73,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
     snmp_operations.change_country(remote_ip, radio_ind, country_code, 5)
 
     print("\nConfiguring Country {} for Local Device ".format(country_code))
-    snmp_operations.change_country(local_ip, radio_ind, country_code, 60)
+    snmp_operations.change_country(local_ip, radio_ind, country_code, 120)
 
     bandwidth_param = "wireless.{}.htmode".format(wifi_intf)
     print("\nConfiguring Bandwidth : {} for Local Device ".format(new_bandwidth))
