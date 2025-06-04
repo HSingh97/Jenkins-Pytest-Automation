@@ -1,3 +1,5 @@
+#!/usr/bin/env python3.10
+
 def get_time(req_type, seconds):
     seconds = int(seconds)
 

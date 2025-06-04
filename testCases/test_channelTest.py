@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.10
 
 import time
 import warnings
@@ -25,11 +25,11 @@ from preMadeFunctions import param_helpers
 
 def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
 
-    print(f"\n\nSelected Radio: {radio}")
-    print(f"Local IP Address: {local_ip}")
-    print(f"Remote IP Address: {remote_ip}")
-    print(f"Selected Bandwidth: {bandwidth}")
-    print(f"Selected Country: {country}")
+    print("\n\nSelected Radio: {}".format(radio))
+    print("Local IP Address: {}".format(local_ip))
+    print("Remote IP Address: {}".format(remote_ip))
+    print("Selected Bandwidth: {}".format(bandwidth))
+    print("Selected Country: {}".format(country))
 
     # Assigning country codes for diff Countries
     if country == "US 5GHz All":
@@ -167,7 +167,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
 
         channel_results.append(result)
 
-        print(f"\nChannel {channels} result: {result['status']}")
+        print("\nChannel {} result: {}".format(channels, result['status']))
 
         i += 1
 
