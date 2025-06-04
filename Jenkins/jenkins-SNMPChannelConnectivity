@@ -65,7 +65,7 @@ pipeline {
                                 }
 
                                 def pytest_output = sh(script: """
-                                    pytest -v -s testCases/test_channelTest.py::test_channelconnectivity \
+                                    python3.10 -m pytest -v -s testCases/test_channelTest.py::test_channelconnectivity \
                                     --local-ip '$localIP' --remote-ip '$remoteIP' \
                                     --radio '$selectedRadio' --bandwidth '$bandwidth' --country '$country' \
                                     2>&1
