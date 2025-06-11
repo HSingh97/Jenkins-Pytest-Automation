@@ -88,7 +88,7 @@ def change_ddrs_rate(host, radio_ind, mcs_rate):
 def change_country(host, radio_ind, country, sleep):
     # Change Bandwidth
     os.system("snmpset -v 2c -c private {} .1.3.6.1.4.1.52619.1.1.1.1.1.4.{} i {}".format(host, radio_ind, country))
-    time.sleep(2)
+    time.sleep(7)
     # Apply the configuration
     os.system("snmpset -v 2c -c private {} .1.3.6.1.4.1.52619.1.2.1.1.0 i 1".format(host))
     time.sleep(sleep)
@@ -97,7 +97,7 @@ def change_country(host, radio_ind, country, sleep):
 def change_channel(host, radio_ind, channel):
     # Change Channel
     os.system("snmpset -v 2c -c private {} .1.3.6.1.4.1.52619.1.1.1.1.1.9.{} i {}".format(host, radio_ind, channel))
-    time.sleep(2)
+    time.sleep(5)
     # Apply the configuration
     os.system("snmpset -v 2c -c private {} .1.3.6.1.4.1.52619.1.2.1.1.0 i 1".format(host))
     time.sleep(30)

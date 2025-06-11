@@ -69,7 +69,7 @@ pipeline {
                         def localIP = params['Local IP Address']
                         def remoteIP = params['Remote IP Address']
                         def selectedRadio = params['Radio']
-                        def selectedTrafficGenerator = params['Traffic Generator']
+                        // def selectedTrafficGenerator = params['Traffic Generator']
                         def traffic_types = params.'Traffic Type'.split(',')
                         def directions = params.Direction.split(',')
                         def bandwidths = params.Bandwidth.split(',')

@@ -69,12 +69,6 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
 
     print("\nChannels available for current selection : {}".format(channel_list))
 
-    #print("\nConfiguring Country {} for Remote Device ".format(country_code))
-    #snmp_operations.change_country(remote_ip, radio_ind, country_code, 5)
-
-    #print("\nConfiguring Country {} for Local Device ".format(country_code))
-    #snmp_operations.change_country(local_ip, radio_ind, country_code, 120)
-
     bandwidth_param = "wireless.{}.htmode".format(wifi_intf)
     print("\nConfiguring Bandwidth : {} for Local Device ".format(new_bandwidth))
     snmp_operations.change_bandwidth(local_ip, radio_ind, new_bandwidth)
@@ -222,6 +216,50 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
 
     print("Updated JSON Report")
     # assert test_result["status"] == "PASS"
+
+def test_changecountry(local_ip, remote_ip, radio, country):
+
+    # Assigning country codes for diff Countries
+    if country == "US 5GHz All":
+        country_code = 5012
+    elif country == "US 5GHz Non-DFS":
+        country_code = 5011
+    elif country == "Europe":
+        country_code = 276
+    elif country == "Canada":
+        country_code = 124
+    elif country == "5GHz":
+        country_code = 5019
+    else:
+        print("No Country Selected")
+        assert False
+
+    # Assigning Index for Radio1 or Radio2
+    if radio == "Radio1":
+        radio_ind = 2
+        intf = "ath1"
+        wifi_intf = "wifi1"
+    elif radio == "Radio2":
+        radio_ind = 3
+        intf = "ath2"
+        wifi_intf = "wifi2"
+    else:
+        print("No Radio Selected")
+        assert False
+
+    time.sleep(5)
+
+    if pingFunction.check_access(local_ip):
+        if pingFunction.check_access(remote_ip):
+            print("\nConfiguring Country {} for Remote Device ".format(country_code))
+            snmp_operations.change_country(remote_ip, radio_ind, country_code, 5)
+
+            print("\nConfiguring Country {} for Local Device ".format(country_code))
+            snmp_operations.change_country(local_ip, radio_ind, country_code, 120)
+        else:
+            print("!!!! Device : {} Not Reachable !!!!".format(remote_ip))
+    else:
+        print("!!!! Device : {} Not Reachable !!!!".format(local_ip))
 
 
 def warn(*args, **kwargs):
