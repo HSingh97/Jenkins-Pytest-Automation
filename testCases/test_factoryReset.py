@@ -26,17 +26,17 @@ def test_configureparams(local_ip, retain, model):
     print("Factory Reset Params : {}".format(retain))
     retained_params = retain.split(" ")
 
-    if "System" not in retained_params:
+    if "System" in retained_params:
         ssh_operations.ssh_set(local_ip, "system.@system[0].email", "jenkins@mail.com")
 
-    if "Network" not in retained_params:
+    if "Network" in retained_params:
         ssh_operations.ssh_set(local_ip, "vlan.ath1.accessvlan", "23")
 
-    if "Wireless-Radio1" not in retained_params:
+    if "Wireless-Radio1" in retained_params:
         ssh_operations.ssh_set(local_ip, "wireless.@wifi-iface[1].ssid", "jenkinstest_r1")
 
     if model == "EOC655":
-        if "Wireless-Radio2" not in retained_params:
+        if "Wireless-Radio2" in retained_params:
             ssh_operations.ssh_set(local_ip, "wireless.@wifi-iface[2].ssid", "jenkinstest_r2")
 
 
@@ -116,7 +116,7 @@ def test_verifyparams(retain, model):
     print("Factory Reset params : {}".format(retain))
     retained_params = retain.split(" ")
 
-    if "System" not in retained_params:
+    if "System" in retained_params:
         conf_email = ssh_operations.ssh_get("192.168.1.1", "ucidyn get system.@system[0].email")
         if  conf_email == "example@mail.com":
             print("\n!!! SYSTEM RESET SUCCESSFUL !!!\n")
@@ -124,7 +124,7 @@ def test_verifyparams(retain, model):
             print("\n!!! SYSTEM RESET FAILED !!!\n")
             assert False
 
-    if "Network" not in retained_params:
+    if "Network" in retained_params:
         conf_network = ssh_operations.ssh_get("192.168.1.1", "ucidyn get vlan.ath1.accessvlan")
         if  conf_network == "10":
             print("\n!!! NETWORK RESET SUCCESSFUL !!!\n")
@@ -132,7 +132,7 @@ def test_verifyparams(retain, model):
             print("\n!!! NETWORK RESET FAILED !!!\n")
             assert False
 
-    if "Wireless-Radio1" not in retained_params:
+    if "Wireless-Radio1" in retained_params:
         conf_ssid_r1 = ssh_operations.ssh_get("192.168.1.1", "ucidyn get wireless.@wifi-iface[1].ssid")
         if  conf_ssid_r1 in ["EOC655_R1", "EOC600_R1", "EOC610_R1", "EOC650_R1"]:
             print("\n!!! RADIO-1 RESET SUCCESSFUL !!!\n")
@@ -142,7 +142,7 @@ def test_verifyparams(retain, model):
 
     if model == "EOC655":
         conf_ssid_r2 = ssh_operations.ssh_get("192.168.1.1", "ucidyn get wireless.@wifi-iface[2].ssid")
-        if "Wireless-Radio2" not in retained_params:
+        if "Wireless-Radio2" in retained_params:
             if conf_ssid_r2 in ["EOC655_R2", "EOC600_R2", "EOC610_R2", "EOC650_R2"]:
                 print("\n!!! RADIO-2 RESET SUCCESSFUL !!!\n")
             elif conf_ssid_r2 == "jenkinstest_r2":
