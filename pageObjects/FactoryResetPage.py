@@ -1,5 +1,6 @@
 import time
 from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoAlertPresentException
 
 
 class ResetPage:
@@ -63,6 +64,6 @@ class ResetPage:
 
     def acceptPopUp(self):
         try:
-            self.driver.switchTo().alert().accept()
+            self.driver.switch_to.alert.accept()
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Alert Found")
