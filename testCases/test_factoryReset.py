@@ -81,6 +81,8 @@ def test_FactoryReset(driver, local_ip, retain, model):
 
     frp.clickProceed()
 
+    frp.acceptPopUp()
+
     time.sleep(250)
 
     wait = 0

@@ -61,3 +61,8 @@ class ResetPage:
         except NoSuchElementException:
             print("No Such Element Found")
 
+    def acceptPopUp(self):
+        try:
+            self.driver.switchTo().alert().accept()
+        except NoSuchElementException:
+            print("No Such Element Found")
