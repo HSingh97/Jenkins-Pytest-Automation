@@ -89,7 +89,7 @@ pipeline {
                             echo "--------------------------------------------------------------"
 
                             sh """
-                                pytest -v -s testCases/test_Throughput.py::test_changebandwidth \
+                                python3.10 -m  pytest -v -s testCases/test_Throughput.py::test_changebandwidth \
                                 --local-ip '${localIP}' --remote-ip '${remoteIP}' \
                                 --radio '${selectedRadio}' --bandwidth '${bandwidth}' 2>&1
                             """
@@ -100,7 +100,7 @@ pipeline {
                                 echo "--------------------------------------------------------------"
 
                                 sh """
-                                    pytest -v -s testCases/test_Throughput.py::test_changemcs \
+                                    python3.10 -m pytest -v -s testCases/test_Throughput.py::test_changemcs \
                                     --local-ip '${localIP}' --remote-ip '${remoteIP}' \
                                     --radio '${selectedRadio}' --mcs-rate '${mcsrate}' 2>&1
                                 """
@@ -114,7 +114,7 @@ pipeline {
                                     sh "echo '{\"iterations\": []}' > custom_results.json"
 
                                     def pytest_output = sh(script: """
-                                        pytest -v -s testCases/test_Throughput.py::test_throughputtest \
+                                        python3.10 -m pytest -v -s testCases/test_Throughput.py::test_throughputtest \
                                         --local-ip '${localIP}' \
                                         --remote-ip '${remoteIP}' \
                                         --radio '${selectedRadio}' \
