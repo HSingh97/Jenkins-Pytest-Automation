@@ -14,18 +14,16 @@ from utilities.serial_Logging import *
 
 
 URL = "http://"+readConfig.getIPaddr()+"/cgi-bin/luci"
-username = readConfig.get_username()
-password = readConfig.get_passwd()
-serial_port = readConfig.getSerialPortDevice()
-serial_port_log = readConfig.getSerialLogsDevice()
+#serial_port = readConfig.getSerialPortDevice()
+#serial_port_log = readConfig.getSerialLogsDevice()
 driver = setup
 
 
 def test_Upgrade(driver):
     # Start Serial Console logging for specific port
-    serial_logging_start(serial_port, serial_port_log)
+    #serial_logging_start(serial_port, serial_port_log)
 
-    accessWeb.access_and_login(driver, URL, username, password)
+    accessWeb.access_and_login(driver, URL, "root", "admin")
 
     time.sleep(2)
 
@@ -82,11 +80,13 @@ def test_Upgrade(driver):
         assert True
 
     # Stop Serial logging
-    serial_logging_stop()
+    #serial_logging_stop()
 
     # Close the driver window
     driver.close()
 
+def test_DownloadFirmware(build):
+    pass
 
 # Ignore Warnings
 def warn(*args, **kwargs):
