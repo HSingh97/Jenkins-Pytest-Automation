@@ -42,6 +42,8 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
         country_code = 124
     elif country == "5GHz":
         country_code = 5019
+    elif country == "India":
+        country_code = "356"
     else:
         print("No Country Selected")
         assert False
@@ -72,7 +74,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
     bandwidth_param = "wireless.{}.htmode".format(wifi_intf)
     print("\nConfiguring Bandwidth : {} for Local Device ".format(new_bandwidth))
     snmp_operations.change_bandwidth(local_ip, radio_ind, new_bandwidth)
-    #ssh_operations.ucidyn_set(local_ip, bandwidth_param, new_bandwidth)
+    # ssh_operations.ucidyn_set(local_ip, bandwidth_param, new_bandwidth)
 
     if pingFunction.check_access(local_ip):
         print("Able to Access Local Device")
@@ -230,6 +232,8 @@ def test_changecountry(local_ip, remote_ip, radio, country):
         country_code = 124
     elif country == "5GHz":
         country_code = 5019
+    elif country == "India":
+        country_code = "356"
     else:
         print("No Country Selected")
         assert False
