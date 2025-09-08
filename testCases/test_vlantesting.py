@@ -46,8 +46,8 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
         tagged_local_IP = f"192.168.{ip_subnet}.1"
         tagged_remote_IP = f"192.168.{ip_subnet}.2"
         vlan_operations.configureVLAN(vlan_code, remote_ip, 0)
-        vlan_id = random.randint(1, 4094)
-        test_iteration_result["VLAN ID"] = vlan_id
+        vlan_id = random.randint(2, 4094)
+        test_iteration_result["vlanID"] = vlan_id
 
         vlan_operations.createTaggedInterface(remote_pc_ip, remote_interface, vlan_id, tagged_remote_IP)
         vlan_operations.createTaggedInterface(local_pc_ip, local_interface, vlan_id, tagged_local_IP)
@@ -71,7 +71,8 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
         ip_subnet = random.randint(5, 254)
         tagged_local_IP = f"192.168.{ip_subnet}.1"
         tagged_remote_IP = f"192.168.{ip_subnet}.2"
-        vlan_id = random.randint(1, 4094)
+        vlan_id = random.randint(2, 4094)
+        test_iteration_result["vlanID"] = vlan_id
         vlan_operations.configureVLAN(vlan_code, remote_ip, vlan_id)
         vlan_operations.createTaggedInterface(local_pc_ip, local_interface, vlan_id, tagged_local_IP)
         vlan_operations.ifconfig(remote_pc_ip, remote_interface, tagged_remote_IP)
