@@ -32,8 +32,8 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
         "Local IP": local_ip,
         "Remote IP": remote_ip,
         "Radio" : radio,
-        "VLAN": vlan,
-        "VLAN ID" : "1",
+        "vlan": vlan,
+        "vlanID" : "1",
         "Tagged Ping Results": {
             "Local": False,
             "Remote": False

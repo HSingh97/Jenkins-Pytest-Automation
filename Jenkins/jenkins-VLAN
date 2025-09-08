@@ -119,6 +119,7 @@ pipeline {
                         "Local IP Address": params['Local IP Address'],
                         "Remote IP Address": params['Remote IP Address'],
                         "Radio" : params['Radio'],
+                        "VLAN" : params['VLAN']
                     ]
 
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
@@ -234,19 +235,21 @@ pipeline {
                             <tr>
                                 <th>Iteration</th>
                                 <th>VLAN</th>
+                                <th>VLAN ID</th>
                                 <th>Status</th>
                             </tr>
                     """
 
                     jsonReport.iterations.each { result ->
                         def iteration = result.iteration ?: "-"
-                        def vlan = result["VLAN"] ?: "-"
+                        def vlanID = result.vlanID ?: "-"
                         def status = result.status == "PASS" ? "<span class='pass'>✅ PASS</span>" : "<span class='fail'>❌ FAIL</span>"
 
                         htmlContent += """
                             <tr>
                                 <td>${iteration}</td>
-                                <td>${vlan}</td>
+                                <td>${VLAN}</td>
+                                <td>${vlanID}</td>
                                 <td>${status}</td>
                         """
 
