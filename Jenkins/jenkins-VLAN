@@ -101,7 +101,7 @@ pipeline {
                         echo "--------------------------------------------------------------"
 
                         sh """
-                            python3.10 -m  pytest -v -s testCases/test_vlantesting.py::test_test_vlan \
+                            python3.10 -m  pytest -v -s testCases/test_vlantesting.py::test_vlan \
                             --local-ip '${localIP}' --remote-ip '${remoteIP}' \
                             --radio '${selectedRadio}' --vlan '${vlanmode}' --remote-pc-ip '${remotePCIP}' 2>&1
                         """
