@@ -5,6 +5,9 @@ def pytest_addoption(parser):
     parser.addoption("--local-ip", action="store", default="192.168.1.1", help="Local IP Address")
     parser.addoption("--remote-ip", action="store", default="192.168.1.1", help="Remote IP Address")
     parser.addoption("--remote-pc-ip", action="store", default="192.168.1.1", help="Remote PC IP Address")
+    parser.addoption("--local-pc-ip", action="store", default="192.168.1.1", help="Local PC IP Address")
+    parser.addoption("--local-interface", action="store", default="enp1s0", help="Local PC Interface")
+    parser.addoption("--remote-interface", action="store", default="enp1s0", help="Remote PC Interface")
     parser.addoption("--bandwidth", action="store", default="HT20", help="Bandwidth")
     parser.addoption("--mcs-rate", action="store", default="MCS0", help="MCS Rate")
     parser.addoption("--country", action="store", default="US 5GHz All", help="Country")
@@ -21,6 +24,7 @@ def pytest_addoption(parser):
     parser.addoption("--check_rate", action="store", default="Null", help="Check Data Rate")
     parser.addoption("--traffic-type", action="store", default="Null", help="Traffic Type ( TCP/UDP )")
     parser.addoption("--traffic-dir", action="store", default="Null", help="Traffic Type ( Uplink/Downlink/Bi-Di )")
+    parser.addoption("--vlan", action="store", default="Transparent", help="Vlan ( Transparent/ Trunk/ Access/ QinQ")
 
 
 @pytest.fixture
@@ -38,6 +42,10 @@ def remote_ip(request):
 @pytest.fixture
 def remote_pc_ip(request):
     return request.config.getoption("--remote-pc-ip")
+
+@pytest.fixture
+def local_pc_ip(request):
+    return request.config.getoption("--local-pc-ip")
 
 @pytest.fixture
 def bandwidth(request):
@@ -102,3 +110,16 @@ def traffic_type(request):
 @pytest.fixture
 def traffic_dir(request):
     return request.config.getoption("--traffic-dir")
+
+@pytest.fixture
+def vlan(request):
+    return request.config.getoption("--vlan")
+
+@pytest.fixture
+def local_interface(request):
+    return request.config.getoption("--local-interface")
+
+@pytest.fixture
+def remote_interface(request):
+    return request.config.getoption("--remote-interface")
+
