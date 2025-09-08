@@ -48,7 +48,7 @@ pipeline {
                         remotePCInterface = sh(
                             script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$2}' | head -n1",
                             returnStdout: true
-                        }.trim()
+                        ).trim()
 
                         if (!remotePCIP) {
                             error("❌ Could not find 192.168.1.x IP on node '$remotePC' ")
@@ -71,7 +71,7 @@ pipeline {
                         localPCInterface = sh(
                             script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$2}' | head -n1",
                             returnStdout: true
-                        }.trim()
+                        ).trim()
 
                         if (!localPCIP) {
                             error("❌ Could not find 192.168.1.x IP on node '$localPC' ")
