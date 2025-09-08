@@ -42,9 +42,9 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
 
     if vlan == "Transparent":
         vlan_code = 0
-        ip_subnet = random.randint(1, 250)
-        tagged_local_IP = f"{ip_subnet}.10.10.1"
-        tagged_remote_IP = f"{ip_subnet}.10.10.2"
+        ip_subnet = random.randint(5, 254)
+        tagged_local_IP = f"192.168.{ip_subnet}.1"
+        tagged_remote_IP = f"192.168.{ip_subnet}.2"
         vlan_operations.configureVLAN(vlan_code, remote_ip, 0)
         vlan_id = random.randint(1, 4094)
         test_iteration_result["VLAN ID"] = vlan_id
@@ -68,8 +68,9 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
 
     elif vlan == "Access":
         vlan_code = 1
-        tagged_local_IP = "192.10.10.1"
-        tagged_remote_IP = "192.10.10.2"
+        ip_subnet = random.randint(5, 254)
+        tagged_local_IP = f"192.168.{ip_subnet}.1"
+        tagged_remote_IP = f"192.168.{ip_subnet}.2"
         vlan_id = random.randint(1, 4094)
         vlan_operations.configureVLAN(vlan_code, remote_ip, vlan_id)
         vlan_operations.createTaggedInterface(local_pc_ip, local_interface, vlan_id, tagged_local_IP)
