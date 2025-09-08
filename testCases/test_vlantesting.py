@@ -41,7 +41,7 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
 
     if vlan == "Transparent":
         vlan_code = 0
-        vlan_operations.configurevlan(vlan_code, remote_ip)
+        vlan_operations.configureVLAN(vlan_code, remote_ip, 0)
         vlan_id = random.randint(1, 4094)
         vlan_operations.createTaggedInterface(remote_interface, vlan_id, "182.10.10.2")
         vlan_operations.createTaggedInterface(local_interface, vlan_id, "182.10.10.1")
@@ -53,7 +53,7 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
     elif vlan == "Access":
         vlan_code = 1
         vlan_id = random.randint(1, 4094)
-        vlan_operations.configurevlan(vlan_code, remote_ip, vlan_id)
+        vlan_operations.configureVLAN(vlan_code, remote_ip, vlan_id)
         vlan_operations.createTaggedInterface(local_interface, vlan_id, "192.10.10.2")
         vlan_operations.ifconfig(remote_interface, "192.10.10.1")
         if pingFunction.check_access("192.10.10.2"):
@@ -63,7 +63,7 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
 
     elif vlan == "Trunk":
         vlan_code = 2
-        vlan_operations.configurevlan(vlan_code, remote_ip)
+        vlan_operations.configureVLAN(vlan_code, remote_ip)
         vlan_id = random.randint(1, 4094)
         vlan_operations.createTaggedInterface(remote_interface, vlan_id, "182.10.10.2")
         vlan_operations.createTaggedInterface(local_interface, vlan_id, "182.10.10.1")
