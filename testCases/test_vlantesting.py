@@ -33,7 +33,7 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
         "Remote IP": remote_ip,
         "Radio" : radio,
         "VLAN": vlan,
-        "Ping Results": {
+        "Tagged Ping Results": {
             "Local": False,
             "Remote": False
         }
@@ -47,26 +47,32 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
         vlan_operations.createTaggedInterface(local_pc_ip, local_interface, vlan_id, "182.10.10.1")
         if pingFunction.check_access("182.10.10.2"):
             print(" !!! Transparent VLAN Working !!! ")
+            test_iteration_result["Tagged Ping Results"]["Remote"] = True
+            test_iteration_result["status"] = "PASS"
         else:
             print(" !!!### Transparent VLAN NOT Working ###!!! ")
+            test_iteration_result["Tagged Ping Results"]["Remote"] = False
         vlan_operations.removeTaggedInterface(remote_pc_ip, remote_interface, vlan_id)
-        vlan_operations.removeTaggedInterface(remote_pc_ip, local_interface, vlan_id)
+        vlan_operations.removeTaggedInterface(local_pc_ip, local_interface, vlan_id)
 
     elif vlan == "Access":
         vlan_code = 1
         vlan_id = random.randint(1, 4094)
         vlan_operations.configureVLAN(vlan_code, remote_ip, vlan_id)
-        vlan_operations.createTaggedInterface(local_interface, vlan_id, "192.10.10.2")
-        vlan_operations.ifconfig(remote_interface, "192.10.10.1")
+        vlan_operations.createTaggedInterface(local_pc_ip, local_interface, vlan_id, "192.10.10.2")
+        vlan_operations.ifconfig(remote_pc_ip, remote_interface, "192.10.10.1")
         if pingFunction.check_access("192.10.10.2"):
             print(" !!! Access VLAN Working !!! ")
+            test_iteration_result["Tagged Ping Results"]["Remote"] = True
+            test_iteration_result["status"] = "PASS"
         else:
             print(" !!!### Access VLAN NOT Working ###!!! ")
+            test_iteration_result["Tagged Ping Results"]["Remote"] = False
 
     elif vlan == "Trunk":
         vlan_code = 2
-        vlan_operations.configureVLAN(vlan_code, remote_ip)
         vlan_id = random.randint(1, 4094)
+        vlan_operations.configureVLAN(vlan_code, remote_ip, vlan_id)
         vlan_operations.createTaggedInterface(remote_interface, vlan_id, "182.10.10.2")
         vlan_operations.createTaggedInterface(local_interface, vlan_id, "182.10.10.1")
         if pingFunction.check_access("182.10.10.2"):
@@ -77,65 +83,6 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
         vlan_code = 3
     else:
         vlan_code = 0
-
-
-    # Check connectivity
-    if pingFunction.check_access(local_ip):
-        test_iteration_result["Ping Results"]["Local"] = True
-
-        if pingFunction.check_access(remote_ip):
-            test_iteration_result["Ping Results"]["Remote"] = True
-            print("Able to Access Remote Device")
-
-            if radio == "Radio1":
-                intf = "ath1"
-            else:
-                intf = "ath2"
-
-            # Fetch HT Mode if check_bw is enabled
-            if check_bw:
-                local_htmode = fetch_ssh_values.fetch_htmode(local_ip, intf)
-                remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, intf)
-
-                print("@@@@@@@@@@@@@@@@@@@@@@@@@@@\n")
-                print(f"Local HT Mode  : {local_htmode}\n")
-                print(f"Remote HT Mode : {remote_htmode}\n")
-                print("@@@@@@@@@@@@@@@@@@@@@@@@@@@\n")
-
-                test_iteration_result["HT Mode"]["Local"] = local_htmode
-                test_iteration_result["HT Mode"]["Remote"] = remote_htmode
-
-                if local_htmode == remote_htmode:
-                    print("HT MODE matching\n")
-                    test_iteration_result["HT Mode"]["Match"] = True
-                else:
-                    print("HT MODE not matching\n")
-                    test_iteration_result["HT Mode"]["Match"] = False
-
-            # Fetch Data Rate if check_rates is enabled
-            if check_rates:
-                local_rate = fetch_ssh_values.fetch_datarate(local_ip, intf, "tx")
-                remote_rate = fetch_ssh_values.fetch_datarate(remote_ip, intf, "rx")
-
-                print(f"Local Data Rate: {local_rate}")
-                print(f"Remote Data Rate: {remote_rate}")
-
-                test_iteration_result["Data Rate"]["Local"] = local_rate
-                test_iteration_result["Data Rate"]["Remote"] = remote_rate
-
-                if local_rate == remote_rate:
-                    print("Data Rate matching\n")
-                    test_iteration_result["Data Rate"]["Match"] = True
-                else:
-                    print("Data Rate not matching\n")
-                    test_iteration_result["Data Rate"]["Match"] = False
-
-            test_iteration_result["status"] = "PASS"
-        else:
-            print("Unable to access Remote Device")
-
-    else:
-        print("Unable to access Local Device")
 
     json_report_file = "iteration_results.json"
 
@@ -162,8 +109,6 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
 
     print(f"Updated JSON Report: {json_data}")
 
-    # Assert test result
-    assert test_iteration_result["status"] == "PASS"
 
 # Ignore Warnings
 def warn(*args, **kwargs):

@@ -7,7 +7,13 @@ from netmiko import ConnectHandler
 #     "password": "senao1234#"
 # }
 
-def ifconfig(interface, IP):
+def ifconfig(ip, interface, IP):
+    pc_details = {
+        "device_type": "generic",
+        "host": ip,
+        "username": "root",
+        "password": "senao1234#"
+    }
 
     connection = ConnectHandler(**device_details)
     connection.send_command(f"sudo ifconfig {interface} {IP} up")
