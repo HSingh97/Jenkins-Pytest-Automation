@@ -27,9 +27,15 @@ def createTaggedInterface(ip, interface, vlanID, IP):
     connection.send_command(f"sudo ifconfig {interface}.{vlanID} {IP} up")
     connection.disconnect()
 
-def removeTaggedInterface(interface, vlanID):
+def removeTaggedInterface(ip, interface, vlanID):
+    pc_details = {
+        "device_type": "generic",
+        "host": ip,
+        "username": "root",
+        "password": "senao1234#"
+    }
 
-    connection = ConnectHandler(**device_details)
+    connection = ConnectHandler(**pc_details)
     connection.send_command(f"sudo vconfig rem {interface}.{vlanID}")
     connection.disconnect()
 
