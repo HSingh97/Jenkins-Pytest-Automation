@@ -1,11 +1,11 @@
 from netmiko import ConnectHandler
 
-pc_details = {
-    "device_type": "generic",
-    "host": ip,
-    "username": "root",
-    "password": "senao1234#"
-}
+# pc_details = {
+#     "device_type": "generic",
+#     "host": ip,
+#     "username": "root",
+#     "password": "senao1234#"
+# }
 
 def ifconfig(interface, IP):
 
