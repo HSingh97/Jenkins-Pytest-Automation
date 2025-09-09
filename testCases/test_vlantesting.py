@@ -74,8 +74,8 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
         vlan_id = random.randint(2, 4094)
         test_iteration_result["vlanID"] = vlan_id
 
-        vlan_operations.configureVLAN(vlan_code, remote_ip, vlan_id)
         vlan_operations.ifconfig(remote_pc_ip, remote_interface, tagged_remote_IP)
+        vlan_operations.configureVLAN(vlan_code, remote_ip, vlan_id)
         vlan_operations.createTaggedInterface(local_pc_ip, local_interface, vlan_id, tagged_local_IP)
 
         if pingFunction.check_access(tagged_local_IP):
