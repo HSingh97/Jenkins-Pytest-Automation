@@ -15,7 +15,7 @@ def ifconfig(ip, interface, IP):
         "password": "senao1234#"
     }
 
-    connection = ConnectHandler(**device_details)
+    connection = ConnectHandler(**pc_details)
     connection.send_command(f"sudo ifconfig {interface} {IP} up")
     connection.disconnect()
 
