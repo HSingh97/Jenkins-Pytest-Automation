@@ -254,11 +254,12 @@ pipeline {
 
                     jsonReport.iterations.each { result ->
                         def vlanID = result.vlanID ?: "-"
+                        def vlanmode = result.vlan ?: "-"
                         def status = result.status == "PASS" ? "<span class='pass'>✅ PASS</span>" : "<span class='fail'>❌ FAIL</span>"
 
                         htmlContent += """
                             <tr>
-                                <td>${VLAN}</td>
+                                <td>${vlanmode}</td>
                                 <td>${vlanID}</td>
                                 <td>${status}</td>
                         """

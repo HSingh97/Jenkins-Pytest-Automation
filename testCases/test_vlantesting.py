@@ -84,11 +84,11 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
             test_iteration_result["Tagged Ping Results"]["Local"] = True
 
             if pingFunction.check_access(tagged_remote_IP):
-                print(" !!! Transparent VLAN Working !!! ")
+                print(" !!! Access VLAN Working !!! ")
                 test_iteration_result["Tagged Ping Results"]["Remote"] = True
                 test_iteration_result["status"] = "PASS"
             else:
-                print(" !!!### Transparent VLAN NOT Working ###!!! ")
+                print(" !!!### Access VLAN NOT Working ###!!! ")
                 test_iteration_result["Tagged Ping Results"]["Remote"] = False
 
         vlan_operations.ifconfig(remote_pc_mgmt_ip, remote_interface, remote_pc_ip)
@@ -114,6 +114,7 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
                 print(" !!! Trunk VLAN ( All ) Working !!! ")
                 test_iteration_result["Tagged Ping Results"]["Remote"] = True
                 test_iteration_result["status"] = "PASS"
+                test_iteration_result["vlan"] = "Trunk - All"
             else:
                 print(" !!!### Trunk VLAN ( All ) NOT Working ###!!! ")
                 test_iteration_result["Tagged Ping Results"]["Remote"] = False
