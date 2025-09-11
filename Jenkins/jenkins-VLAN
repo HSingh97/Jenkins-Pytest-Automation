@@ -51,7 +51,7 @@ pipeline {
                         ).trim()
 
                         remotePCmgmtIP = sh(
-                            script: "ip -4 -o addr show | awk '\$4 ~ /^10\\.0\\.150\\./ {print \$4}' | head -n1",
+                            script: "ip -4 -o addr show | awk '\$4 ~ /^10\\.0\\.150\\./ {print \$4}' | cut -d'/' -f1 | head -n1",
                             returnStdout: true
                         ).trim()
 
@@ -80,7 +80,7 @@ pipeline {
                         ).trim()
 
                         localPCmgmtIP = sh(
-                            script: "ip -4 -o addr show | awk '\$4 ~ /^10\\.0\\.150\\./ {print \$4}' | head -n1",
+                            script: "ip -4 -o addr show | awk '\$4 ~ /^10\\.0\\.150\\./ {print \$4}' | cut -d'/' -f1 | head -n1",
                             returnStdout: true
                         ).trim()
 
