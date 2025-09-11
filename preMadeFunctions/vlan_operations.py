@@ -16,7 +16,9 @@ def ifconfig(access_IP, interface, IP):
     }
     print("******")
     connection = ConnectHandler(**pc_details)
-    connection.send_command(f"sudo ifconfig {interface} {IP} up")
+    #connection.send_command(f"sudo ifconfig {interface} {IP} up")
+    connection.send_command(f"sudo ip addr add {IP}/24 dev {interface}")
+    connection.send_command(f"sudo ip link set {interface} up")
     connection.disconnect()
 
 

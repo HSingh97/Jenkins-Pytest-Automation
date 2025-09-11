@@ -94,6 +94,7 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
 
         vlan_operations.ifconfig(remote_pc_mgmt_ip, remote_interface, remote_pc_ip)
         vlan_operations.removeTaggedInterface(local_pc_mgmt_ip, local_interface, vlan_id)
+        vlan_operations.configureVLAN("0", remote_ip, "0")
 
     elif vlan == "Trunk":
         vlan_code = 2
@@ -111,15 +112,16 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
             test_iteration_result["Tagged Ping Results"]["Local"] = True
 
             if pingFunction.check_access(tagged_remote_IP):
-                print(" !!! Trunk VLAN Working !!! ")
+                print(" !!! Trunk VLAN ( All ) Working !!! ")
                 test_iteration_result["Tagged Ping Results"]["Remote"] = True
                 test_iteration_result["status"] = "PASS"
             else:
-                print(" !!!### Trunk VLAN NOT Working ###!!! ")
+                print(" !!!### Trunk VLAN ( All ) NOT Working ###!!! ")
                 test_iteration_result["Tagged Ping Results"]["Remote"] = False
 
-        vlan_operations.removeTaggedInterface(remote_pc_ip, remote_interface, vlan_id)
-        vlan_operations.removeTaggedInterface(local_pc_ip, local_interface, vlan_id)
+        vlan_operations.removeTaggedInterface(remote_pc_mgmt_ip, remote_interface, vlan_id)
+        vlan_operations.removeTaggedInterface(local_pc_mgmt_ip, local_interface, vlan_id)
+        vlan_operations.configureVLAN("0", remote_ip, "0")
 
     elif vlan == "QinQ":
         vlan_code = 3
