@@ -7,7 +7,7 @@ from testCases.conftest import sleep
 from utilities.readProperties import config
 import random
 
-def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remote_interface, local_interface):
+def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remote_interface, local_interface, local_pc_mgmt_ip, remote_pc_mgmt_ip):
     """
     Executes VLAN Test cases via SSH, checks connectivity, and logs results to a JSON report.
     """
@@ -49,8 +49,8 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
         test_iteration_result["vlanID"] = vlan_id
 
         vlan_operations.configureVLAN(vlan_code, remote_ip, 0)
-        vlan_operations.createTaggedInterface(remote_pc_ip, remote_interface, vlan_id, tagged_remote_IP)
-        vlan_operations.createTaggedInterface(local_pc_ip, local_interface, vlan_id, tagged_local_IP)
+        vlan_operations.createTaggedInterface(remote_pc_mgmt_ip, remote_interface, vlan_id, tagged_remote_IP)
+        vlan_operations.createTaggedInterface(local_pc_mgmt_ip, local_interface, vlan_id, tagged_local_IP)
 
         if pingFunction.check_access(tagged_local_IP):
             test_iteration_result["Tagged Ping Results"]["Local"] = True
@@ -63,8 +63,8 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
                 print(" !!!### Transparent VLAN NOT Working ###!!! ")
                 test_iteration_result["Tagged Ping Results"]["Remote"] = False
 
-        vlan_operations.removeTaggedInterface(remote_pc_ip, remote_interface, vlan_id)
-        vlan_operations.removeTaggedInterface(local_pc_ip, local_interface, vlan_id)
+        vlan_operations.removeTaggedInterface(remote_pc_mgmt_ip, remote_interface, vlan_id)
+        vlan_operations.removeTaggedInterface(local_pc_mgmt_ip, local_interface, vlan_id)
 
     elif vlan == "Access":
         vlan_code = 1
@@ -74,9 +74,9 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
         vlan_id = random.randint(2, 4094)
         test_iteration_result["vlanID"] = vlan_id
 
-        vlan_operations.ifconfig(remote_pc_ip, remote_interface, tagged_remote_IP)
+        vlan_operations.ifconfig(remote_pc_mgmt_ip, remote_interface, tagged_remote_IP)
         vlan_operations.configureVLAN(vlan_code, remote_ip, vlan_id)
-        vlan_operations.createTaggedInterface(local_pc_ip, local_interface, vlan_id, tagged_local_IP)
+        vlan_operations.createTaggedInterface(local_pc_mgmt_ip, local_interface, vlan_id, tagged_local_IP)
 
         if pingFunction.check_access(tagged_local_IP):
             test_iteration_result["Tagged Ping Results"]["Local"] = True
@@ -89,19 +89,35 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
                 print(" !!!### Transparent VLAN NOT Working ###!!! ")
                 test_iteration_result["Tagged Ping Results"]["Remote"] = False
 
-        vlan_operations.ifconfig(tagged_remote_IP, remote_interface, remote_pc_ip)
-        vlan_operations.removeTaggedInterface(local_pc_ip, local_interface, vlan_id)
+        vlan_operations.ifconfig(remote_pc_mgmt_ip, remote_interface, remote_pc_ip)
+        vlan_operations.removeTaggedInterface(local_pc_mgmt_ip, local_interface, vlan_id)
 
     elif vlan == "Trunk":
         vlan_code = 2
-        vlan_id = random.randint(1, 4094)
+        ip_subnet = random.randint(5, 254)
+        tagged_local_IP = f"192.168.{ip_subnet}.1"
+        tagged_remote_IP = f"192.168.{ip_subnet}.2"
+        vlan_id = random.randint(2, 4094)
+        test_iteration_result["vlanID"] = vlan_id
+
         vlan_operations.configureVLAN(vlan_code, remote_ip, vlan_id)
-        vlan_operations.createTaggedInterface(remote_pc_ip, remote_interface, vlan_id, "182.10.10.2")
-        vlan_operations.createTaggedInterface(local_pc_ip, local_interface, vlan_id, "182.10.10.1")
-        if pingFunction.check_access("182.10.10.2"):
-            print(" !!! Transparent VLAN Working !!! ")
-        else:
-            print(" !!!### Transparent VLAN NOT Working ###!!! ")
+        vlan_operations.createTaggedInterface(remote_pc_ip, remote_interface, vlan_id, tagged_remote_IP)
+        vlan_operations.createTaggedInterface(local_pc_ip, local_interface, vlan_id, tagged_local_IP)
+
+        if pingFunction.check_access(tagged_local_IP):
+            test_iteration_result["Tagged Ping Results"]["Local"] = True
+
+            if pingFunction.check_access(tagged_remote_IP):
+                print(" !!! Trunk VLAN Working !!! ")
+                test_iteration_result["Tagged Ping Results"]["Remote"] = True
+                test_iteration_result["status"] = "PASS"
+            else:
+                print(" !!!### Trunk VLAN NOT Working ###!!! ")
+                test_iteration_result["Tagged Ping Results"]["Remote"] = False
+
+        vlan_operations.removeTaggedInterface(remote_pc_ip, remote_interface, vlan_id)
+        vlan_operations.removeTaggedInterface(local_pc_ip, local_interface, vlan_id)
+
     elif vlan == "QinQ":
         vlan_code = 3
     else:

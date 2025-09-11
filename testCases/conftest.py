@@ -6,6 +6,8 @@ def pytest_addoption(parser):
     parser.addoption("--remote-ip", action="store", default="192.168.1.1", help="Remote IP Address")
     parser.addoption("--remote-pc-ip", action="store", default="192.168.1.1", help="Remote PC IP Address")
     parser.addoption("--local-pc-ip", action="store", default="192.168.1.1", help="Local PC IP Address")
+    parser.addoption("--remote-pc-mgmt-ip", action="store", default="192.168.1.1", help="Remote PC Mgmt IP")
+    parser.addoption("--local-pc-mgmt-ip", action="store", default="192.168.1.1", help="Local PC Mgmt IP")
     parser.addoption("--local-interface", action="store", default="enp1s0", help="Local PC Interface")
     parser.addoption("--remote-interface", action="store", default="enp1s0", help="Remote PC Interface")
     parser.addoption("--bandwidth", action="store", default="HT20", help="Bandwidth")
@@ -46,6 +48,14 @@ def remote_pc_ip(request):
 @pytest.fixture
 def local_pc_ip(request):
     return request.config.getoption("--local-pc-ip")
+
+@pytest.fixture
+def remote_pc_mgmt_ip(request):
+    return request.config.getoption("--remote-pc-mgmt-ip")
+
+@pytest.fixture
+def local_pc_mgmt_ip(request):
+    return request.config.getoption("--local-pc-mgmt-ip")
 
 @pytest.fixture
 def bandwidth(request):

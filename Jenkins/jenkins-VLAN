@@ -50,12 +50,18 @@ pipeline {
                             returnStdout: true
                         ).trim()
 
+                        remotePCmgmtInterface = sh(
+                            script: "ip -4 -o addr show | awk '\$4 ~ /^10\\.0\\.150\\./ {print \$2}' | head -n1",
+                            returnStdout: true
+                        ).trim()
+
                         if (!remotePCIP) {
                             error("❌ Could not find 192.168.1.x IP on node '$remotePC' ")
                         }
 
                         echo "✅ Remote PC IP       : ${remotePCIP}"
                         echo "✅ Remote PC Interface: ${remotePCInterface}"
+                        echo "✅ Remote PC Mgmt Interface: ${remotePCmgmtInterface}"
                     }
 
                     def localPC = params['TARGET_STAND']
@@ -73,12 +79,18 @@ pipeline {
                             returnStdout: true
                         ).trim()
 
+                        localPCmgmtInterface = sh(
+                            script: "ip -4 -o addr show | awk '\$4 ~ /^10\\.0\\.150\\./ {print \$2}' | head -n1",
+                            returnStdout: true
+                        ).trim()
+
                         if (!localPCIP) {
                             error("❌ Could not find 192.168.1.x IP on node '$localPC' ")
                         }
 
                         echo "✅ Local PC IP       : ${localPCIP}"
                         echo "✅ Local PC Interface: ${localPCInterface}"
+                        echo "✅ Local PC Mgmt Interface: ${localPCmgmtInterface}"
 
                     }
 
@@ -105,7 +117,8 @@ pipeline {
                             --local-ip '${localIP}' --remote-ip '${remoteIP}' \
                             --radio '${radio}' --vlan '${vlanmode}' \
                             --local-interface '${localPCInterface}' --remote-interface '${remotePCInterface}' \
-                            --local-pc-ip '${localPCIP}' --remote-pc-ip '${remotePCIP}' 2>&1
+                            --local-pc-ip '${localPCIP}' --remote-pc-ip '${remotePCIP}' \
+                             --local-pc-mgmt-ip '${localPCmgmtInterface}' --remote-pc-mgmt-ip '${remotePCmgmtInterface}' 2>&1
                         """
                     }
                 }

@@ -71,6 +71,7 @@ def configureVLAN(vlan, ip, vlanID):
     # If vlan is Trunk, Configure Trunk List to All
     elif vlan == 2:
         connection.send_command(f"ucidyn set vlan.ath1.trunkoption 2")
+        connection.send_command(f"ucidyn set lan.ath1.trunkvlan {vlanID}")
 
     # If vlan is QinQ, Configure SVLAN and CVLAN List to all
     elif vlan == 3:
