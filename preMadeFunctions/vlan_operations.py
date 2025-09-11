@@ -7,23 +7,23 @@ from netmiko import ConnectHandler
 #     "password": "senao1234#"
 # }
 
-def ifconfig(ip, interface, IP):
+def ifconfig(access_IP, interface, IP):
     pc_details = {
         "device_type": "generic",
-        "host": ip,
+        "host": access_IP,
         "username": "root",
         "password": "senao1234#"
     }
-
+    print("******")
     connection = ConnectHandler(**pc_details)
     connection.send_command(f"sudo ifconfig {interface} {IP} up")
     connection.disconnect()
 
 
-def createTaggedInterface(ip, interface, vlanID, IP):
+def createTaggedInterface(access_IP, interface, vlanID, IP):
     pc_details = {
         "device_type": "generic",
-        "host": ip,
+        "host": access_IP,
         "username": "root",
         "password": "senao1234#"
     }
@@ -33,10 +33,10 @@ def createTaggedInterface(ip, interface, vlanID, IP):
     connection.send_command(f"sudo ifconfig {interface}.{vlanID} {IP} up")
     connection.disconnect()
 
-def removeTaggedInterface(ip, interface, vlanID):
+def removeTaggedInterface(access_IP, interface, vlanID):
     pc_details = {
         "device_type": "generic",
-        "host": ip,
+        "host": access_IP,
         "username": "root",
         "password": "senao1234#"
     }
@@ -45,9 +45,16 @@ def removeTaggedInterface(ip, interface, vlanID):
     connection.send_command(f"sudo vconfig rem {interface}.{vlanID}")
     connection.disconnect()
 
-def createDoubleTaggedInterface(interface, svlan, cvlan, IP):
+def createDoubleTaggedInterface(access_IP, interface, svlan, cvlan, IP):
 
-    connection = ConnectHandler(**device_details)
+    pc_details = {
+        "device_type": "generic",
+        "host": access_IP,
+        "username": "root",
+        "password": "senao1234#"
+    }
+
+    connection = ConnectHandler(**pc_details)
     connection.send_command(f"sudo vconfig add {interface} {svlan}")
     connection.send_command(f"sudo vconfig add {interface}.{svlan} {cvlan}")
     connection.send_command(f"sudo ifconfig {interface}.{svlan} up")

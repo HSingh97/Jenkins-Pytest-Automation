@@ -22,6 +22,8 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
     print(f"VLAN                  : {vlan}")
     print(f"Local PC Interface    : {local_interface}")
     print(f"Remote PC Interface   : {remote_interface}")
+    print(f"Local PC Mgmt IP      : {local_pc_mgmt_ip}")
+    print(f"Remote PC Mgmt IP     : {remote_pc_mgmt_ip}")
 
     print("\n****************************************************")
 
@@ -74,6 +76,7 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
         vlan_id = random.randint(2, 4094)
         test_iteration_result["vlanID"] = vlan_id
 
+        print("Hi")
         vlan_operations.ifconfig(remote_pc_mgmt_ip, remote_interface, tagged_remote_IP)
         vlan_operations.configureVLAN(vlan_code, remote_ip, vlan_id)
         vlan_operations.createTaggedInterface(local_pc_mgmt_ip, local_interface, vlan_id, tagged_local_IP)
