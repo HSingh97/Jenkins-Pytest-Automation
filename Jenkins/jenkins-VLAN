@@ -61,7 +61,7 @@ pipeline {
 
                         echo "✅ Remote PC IP       : ${remotePCIP}"
                         echo "✅ Remote PC Interface: ${remotePCInterface}"
-                        echo "✅ Remote PC Mgmt Interface: ${remotePCmgmtIP}"
+                        echo "✅ Remote PC Mgmt IP  : ${remotePCmgmtIP}"
                     }
 
                     def localPC = params['TARGET_STAND']
@@ -90,7 +90,7 @@ pipeline {
 
                         echo "✅ Local PC IP       : ${localPCIP}"
                         echo "✅ Local PC Interface: ${localPCInterface}"
-                        echo "✅ Local PC Mgmt Interface: ${localPCmgmtIP}"
+                        echo "✅ Local PC Mgmt IP  : ${localPCmgmtIP}"
 
                     }
 
