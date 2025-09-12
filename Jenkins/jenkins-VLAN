@@ -266,7 +266,7 @@ pipeline {
 
                         htmlContent += """
                             <tr>
-                                <td>${vlanmode}</td>
+                                <td>${vlanMode}</td>
                                 <td>${vlanID}</td>
                                 <td>${status}</td>
                         """
