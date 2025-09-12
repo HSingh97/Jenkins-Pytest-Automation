@@ -1,7 +1,6 @@
 import argparse
 from netmiko import ConnectHandler
-from netmiko.ssh_exception import NetmikoAuthenticationException, NetmikoTimeoutException
-
+from netmiko import NetmikoAuthenticationException, NetmikoTimeoutException
 
 # --- PC Interface Configuration Functions ---
 
