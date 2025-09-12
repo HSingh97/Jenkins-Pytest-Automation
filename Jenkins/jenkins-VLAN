@@ -252,10 +252,17 @@ pipeline {
                             </tr>
                     """
 
-                    jsonReport.iterations.each { result ->
-                        def vlanID = result.vlanID ?: "-"
-                        def vlanmode = result.vlan ?: "-"
-                        def status = result.status == "PASS" ? "<span class='pass'>✅ PASS</span>" : "<span class='fail'>❌ FAIL</span>"
+                    def groupedResults = jsonReport.iterations.groupBy { it.vlan }
+
+                    groupedResults.each { vlanMode, resultsList ->
+
+                        def vlanIDs = resultsList.collect { result ->
+                            result.vlanID ?: "-"
+                        }.join('<br>')
+
+                        def statuses = resultsList.collect { result ->
+                            result.status == "PASS" ? "<span class='pass'>✅ PASS</span>" : "<span class='fail'>❌ FAIL</span>"
+                        }.join('<br>')
 
                         htmlContent += """
                             <tr>
