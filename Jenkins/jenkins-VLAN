@@ -267,8 +267,8 @@ pipeline {
                         htmlContent += """
                             <tr>
                                 <td>${vlanMode}</td>
-                                <td>${vlanID}</td>
-                                <td>${status}</td>
+                                <td>${vlanIDs}</td>
+                                <td>${statuses}</td>
                         """
 
                         htmlContent += "</tr>"
@@ -318,7 +318,7 @@ pipeline {
                     "jayanth": "jayanth.munnaluru@senao.com",
                     "srilatha": "srilatha.tadiboina@senao.com",
                     "phani": "phani.darla@senao.com",
-                    "dinesh": "dinesh.redddy@senao.com"
+                    "dinesh": "dinesh.reddy@senao.com"
                 ]
 
                 // Get email from predefined mapping, else use default
