@@ -80,7 +80,7 @@ def createDoubleTaggedInterface(access_IP, interface, svlan, cvlan, IP):
         connection = ConnectHandler(**pc_details)
         connection.send_command(f"sudo vconfig add {interface} {svlan}")
         connection.send_command(f"sudo vconfig add {interface}.{svlan} {cvlan}")
-        connection.send_command(f"sudo ifconfig {interface}.{svlan} up")
+        connection.send_command(f"sudo ip link set {interface}.{svlan} up")
         connection.send_command(f"sudo ifconfig {interface}.{svlan}.{cvlan} {IP} up")
         connection.disconnect()
         print(f"Successfully created QinQ interface {interface}.{svlan}.{cvlan} with IP {IP}.")
