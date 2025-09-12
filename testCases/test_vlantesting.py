@@ -100,10 +100,12 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
         vlan_code = 3
         svlan = vlan_id
         cvlan = random.randint(2, 4094)
-        if cvlan != svlan:
-            vlan_operations.configureVLAN(vlan_code, remote_ip, svlan, cvlan)
-            vlan_operations.createTaggedInterface(remote_pc_mgmt_ip, remote_interface, svlan, tagged_remote_IP)
-            vlan_operations.createDoubleTaggedInterface(local_pc_mgmt_ip, local_interface, svlan, cvlan, tagged_local_IP)
+        while cvlan == svlan:
+            cvlan = random.randint(2, 4094)
+
+        vlan_operations.configureVLAN(vlan_code, remote_ip, svlan, cvlan)
+        vlan_operations.createTaggedInterface(remote_pc_mgmt_ip, remote_interface, svlan, tagged_remote_IP)
+        vlan_operations.createDoubleTaggedInterface(local_pc_mgmt_ip, local_interface, svlan, cvlan, tagged_local_IP)
 
         tagged_ping_check(tagged_local_IP, tagged_remote_IP)
         test_iteration_result["vlan"] = "Q-in-Q"
