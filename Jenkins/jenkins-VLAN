@@ -127,12 +127,33 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
+                    sh "ssh-keygen -R ${localIP} || true"
+                    sh "ssh-keygen -R ${remoteIP} || true"
+
+                    def local_fw_version = "N/A"
+                    def remote_fw_version = "N/A"
+
+                    try {
+                        local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
+                    } catch (Exception e) {
+                        echo "⚠️ Failed to get local FW version from ${localIP}: ${e.message}"
+                    }
+
+                    try {
+                        remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
+                    } catch (Exception e) {
+                        echo "⚠️ Failed to get remote FW version from ${remoteIP}: ${e.message}"
+                    }
+
                     def jsonReport = readJSON file: 'iteration_results.json'
                     def buildParams = [
                         "Local IP Address": params['Local IP Address'],
                         "Remote IP Address": params['Remote IP Address'],
                         "Radio" : params['Radio'],
                         "VLAN" : params['VLAN']
+                        "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")

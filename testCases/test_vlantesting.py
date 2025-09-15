@@ -114,7 +114,7 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
 
             elif vlan == "Trunk":
                 vlan_code = 2
-                test_iteration_result["vlan"] = "Trunk - All"  # More specific name
+                test_iteration_result["vlan"] = "Trunk - All"
                 print(f"Configuring VLAN Trunk mode on {remote_ip} allowing VLAN ID {vlan_id}...")
                 vlan_operations.configureVLAN(vlan_code, remote_ip, vlan_id)
                 print(f"Creating tagged interfaces with VLAN ID {vlan_id}...")
@@ -130,7 +130,7 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
                 cvlan = random.choice([i for i in range(2, 4095) if i != svlan])
 
                 test_iteration_result["vlan"] = "Q-in-Q"
-                test_iteration_result["vlanID"] = f"S-VLAN: {svlan}, C-VLAN: {cvlan}"  # Log both IDs
+                test_iteration_result["vlanID"] = f"SVLAN: {svlan}, CVLAN: {cvlan}"
 
                 print(f"Configuring VLAN Q-in-Q mode on {remote_ip} with S-VLAN {svlan}...")
                 vlan_operations.configureVLAN(vlan_code, remote_ip, svlan)
@@ -142,8 +142,12 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
 
                 perform_ping_check(tagged_local_IP, tagged_remote_IP, test_iteration_result)
 
+                vlan_operations.removeTaggedInterface(remote_pc_mgmt_ip, remote_interface,
+                                                      cvlan)
+                vlan_operations.removeTaggedInterface(local_pc_mgmt_ip, local_interface, vlan_id)
+                vlan_operations.configureVLAN("0", remote_ip, "0")
+
         finally:
-            # --- This cleanup block will ALWAYS run ---
             print("--- Starting cleanup for this iteration ---")
             if vlan == "Transparent":
                 vlan_operations.removeTaggedInterface(remote_pc_mgmt_ip, remote_interface, vlan_id)
@@ -155,13 +159,6 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
             elif vlan == "Trunk":
                 vlan_operations.removeTaggedInterface(remote_pc_mgmt_ip, remote_interface, vlan_id)
                 vlan_operations.removeTaggedInterface(local_pc_mgmt_ip, local_interface, vlan_id)
-                vlan_operations.configureVLAN("0", remote_ip, "0")  # Reset DUT VLAN
-            elif vlan == "QinQ":
-                svlan = test_iteration_result["vlanID"].split(",")[0].split(":")[1].strip()
-                vlan_operations.removeTaggedInterface(remote_pc_mgmt_ip, remote_interface,
-                                                      vlan_id)  # Need to confirm this cleanup logic
-                # You might need a removeDoubleTaggedInterface function here
-                vlan_operations.removeTaggedInterface(local_pc_mgmt_ip, local_interface, int(svlan))
                 vlan_operations.configureVLAN("0", remote_ip, "0")  # Reset DUT VLAN
 
             print(f"=============== FINISHED ITERATION {i + 1}/3 ===============\n")
