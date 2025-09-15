@@ -152,7 +152,7 @@ pipeline {
                         "Local IP Address": params['Local IP Address'],
                         "Remote IP Address": params['Remote IP Address'],
                         "Radio" : params['Radio'],
-                        "VLAN" : params['VLAN']
+                        "VLAN" : params['VLAN'],
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
