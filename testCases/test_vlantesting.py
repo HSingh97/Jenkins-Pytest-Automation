@@ -60,7 +60,7 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
     print(f"Remote PC Mgmt IP     : {remote_pc_mgmt_ip}")
     print("****************************************************")
 
-    for i in range(1):
+    for i in range(3):
         print(f"\n=============== STARTING ITERATION {i + 1}/3 for VLAN Mode: {vlan} ===============")
 
         # --- Variables generated for each iteration ---
