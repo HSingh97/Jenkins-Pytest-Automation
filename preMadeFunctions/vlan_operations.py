@@ -79,6 +79,9 @@ def createDoubleTaggedInterface(access_IP, interface, svlan, cvlan, IP):
         "password": "senao1234#"
     }
     print(f"--- Creating double-tagged interface on {access_IP} ---")
+    print(f" -- Interface : {interface} -- ")
+    print(f" -- SVLAN : {svlan} -- ")
+    print(f" -- CVLAN : {cvlan} -- ")
     try:
         connection = ConnectHandler(**pc_details)
         connection.send_command(f"sudo vconfig add {interface} {svlan}")
