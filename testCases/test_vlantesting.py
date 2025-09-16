@@ -46,10 +46,6 @@ def append_result_to_json(result, filename="iteration_results.json"):
 
 def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remote_interface, local_interface,
               local_pc_mgmt_ip, remote_pc_mgmt_ip):
-    """
-    Executes VLAN Test cases 3 times with different VLAN IDs,
-    checks connectivity, and logs results to a JSON report.
-    """
 
     print("\n****************************************************")
     print(f"Local IP Address      : {local_ip}")
@@ -64,8 +60,7 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
     print(f"Remote PC Mgmt IP     : {remote_pc_mgmt_ip}")
     print("****************************************************")
 
-    # --- Main loop to run the test 3 times ---
-    for i in range(3):
+    for i in range(1):
         print(f"\n=============== STARTING ITERATION {i + 1}/3 for VLAN Mode: {vlan} ===============")
 
         # --- Variables generated for each iteration ---

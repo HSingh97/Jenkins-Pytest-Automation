@@ -5,7 +5,7 @@ from netmiko import NetmikoAuthenticationException, NetmikoTimeoutException
 # --- PC Interface Configuration Functions ---
 
 def ifconfig(access_IP, interface, IP):
-    """Configures a standard IP address on a remote PC's interface."""
+    """Configures a standard IP address on PC's interface."""
     pc_details = {
         "device_type": "generic",
         "host": access_IP,
@@ -15,7 +15,6 @@ def ifconfig(access_IP, interface, IP):
     print(f"--- Configuring PC interface {interface} on {access_IP} ---")
     try:
         connection = ConnectHandler(**pc_details)
-        # Using modern 'ip addr' is generally preferred over 'ifconfig'
         connection.send_command(f"sudo ip addr add {IP}/24 dev {interface}")
         connection.send_command(f"sudo ip link set {interface} up")
         connection.disconnect()
@@ -27,7 +26,7 @@ def ifconfig(access_IP, interface, IP):
 
 
 def createTaggedInterface(access_IP, interface, vlanID, IP):
-    """Creates a VLAN-tagged sub-interface on a remote PC."""
+    """Creates a VLAN-tagged sub-interface on PC."""
     pc_details = {
         "device_type": "generic",
         "host": access_IP,
@@ -48,7 +47,7 @@ def createTaggedInterface(access_IP, interface, vlanID, IP):
 
 
 def removeTaggedInterface(access_IP, interface, vlanID):
-    """Removes a VLAN-tagged sub-interface from a remote PC."""
+    """Removes a VLAN-tagged sub-interface from PC."""
     pc_details = {
         "device_type": "generic",
         "host": access_IP,
@@ -68,7 +67,7 @@ def removeTaggedInterface(access_IP, interface, vlanID):
 
 
 def createDoubleTaggedInterface(access_IP, interface, svlan, cvlan, IP):
-    """Creates a double-tagged (QinQ) sub-interface on a remote PC."""
+    """Creates a double-tagged (QinQ) sub-interface on PC."""
     pc_details = {
         "device_type": "generic",
         "host": access_IP,
@@ -138,7 +137,6 @@ def configureVLAN(vlan_mode, ip, vlanID, cvlan=None):
         print(f"An unexpected error occurred: {e}")
 
 
-# This block runs only when the script is executed directly for VLAN configuration
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Configure VLAN settings on a network device.")
     parser.add_argument("vlan_mode", type=int, choices=[1, 2, 3],
