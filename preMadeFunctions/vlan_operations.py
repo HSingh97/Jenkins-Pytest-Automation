@@ -77,11 +77,10 @@ def createDoubleTaggedInterface(access_IP, interface, svlan, cvlan, IP):
     print(f"--- Creating double-tagged interface on {access_IP} ---")
 
     command_chain = (
-        f"sudo ip link add link {interface} name {interface}.{svlan} type vlan id {svlan} && "
-        f"sudo ip link add link {interface}.{svlan} name {interface}.{svlan}.{cvlan} type vlan id {cvlan} && "
-        f"sudo ip link set {interface}.{svlan} up && "
-        f"sudo ip addr add {IP}/24 dev {interface}.{svlan}.{cvlan} && "
-        f"sudo ip link set {interface}.{svlan}.{cvlan} up"
+        f"sudo vconfig add {interface} {svlan} && "
+        f"sudo vconfig add {interface}.{svlan} {cvlan} && "
+        f"sudo ifconfig {interface}.{svlan} up && "
+        f"sudo ifconfig {interface}.{svlan}.{cvlan} {IP} up"
     )
 
     try:
