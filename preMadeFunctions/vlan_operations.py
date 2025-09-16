@@ -72,20 +72,27 @@ def createDoubleTaggedInterface(access_IP, interface, svlan, cvlan, IP):
         "device_type": "generic",
         "host": access_IP,
         "username": "root",
-        "password": "senao1234#"
+        "password": "senao124#"
     }
     print(f"--- Creating double-tagged interface on {access_IP} ---")
+
+    command_chain = (
+        f"sudo ip link add link {interface} name {interface}.{svlan} type vlan id {svlan} && "
+        f"sudo ip link add link {interface}.{svlan} name {interface}.{svlan}.{cvlan} type vlan id {cvlan} && "
+        f"sudo ip link set {interface}.{svlan} up && "
+        f"sudo ip addr add {IP}/24 dev {interface}.{svlan}.{cvlan} && "
+        f"sudo ip link set {interface}.{svlan}.{cvlan} up"
+    )
+
     try:
         connection = ConnectHandler(**pc_details)
-        connection.send_command(f"sudo ip link add link {interface} name {interface}.{svlan} type vlan id {svlan}")
-        connection.send_command(
-            f"sudo ip link add link {interface}.{svlan} name {interface}.{svlan}.{cvlan} type vlan id {cvlan}")
-        connection.send_command(f"sudo ip link set {interface}.{svlan} up")
-        connection.send_command(f"sudo ip addr add {IP}/24 dev {interface}.{svlan}.{cvlan}")
-        connection.send_command(f"sudo ip link set {interface}.{svlan}.{cvlan} up")
+        output = connection.send_command(command_chain)
 
         connection.disconnect()
-        print(f"Successfully created QinQ interface {interface}.{svlan}.{cvlan} with IP {IP}.")
+        print(f"Successfully sent QinQ configuration command for {interface}.{svlan}.{cvlan} with IP {IP}.")
+        if output:
+            print(f"Remote output: {output}")
+
     except (NetmikoAuthenticationException, NetmikoTimeoutException) as e:
         print(f"!!! FAILED to connect to {access_IP}: {e}")
     except Exception as e:
