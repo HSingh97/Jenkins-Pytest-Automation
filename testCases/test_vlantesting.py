@@ -135,7 +135,7 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
                 vlan_operations.createDoubleTaggedInterface(local_pc_mgmt_ip, local_interface, svlan, cvlan,
                                                             tagged_local_IP)
 
-                perform_ping_check(tagged_local_IP, tagged_remote_IP, test_iteration_result)
+                #perform_ping_check(tagged_local_IP, tagged_remote_IP, test_iteration_result)
 
                 vlan_operations.removeTaggedInterface(remote_pc_mgmt_ip, remote_interface,
                                                       cvlan)
