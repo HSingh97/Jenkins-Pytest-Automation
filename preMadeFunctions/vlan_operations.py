@@ -77,11 +77,13 @@ def createDoubleTaggedInterface(access_IP, interface, svlan, cvlan, IP):
     print(f"--- Creating double-tagged interface on {access_IP} ---")
     try:
         connection = ConnectHandler(**pc_details)
-        connection.send_command(f"sudo vconfig add {interface} {svlan}")
-        connection.send_command(f"sudo vconfig add {interface}.{svlan} {cvlan}")
+        connection.send_command(f"sudo ip link add link {interface} name {interface}.{svlan} type vlan id {svlan}")
+        connection.send_command(
+            f"sudo ip link add link {interface}.{svlan} name {interface}.{svlan}.{cvlan} type vlan id {cvlan}")
         connection.send_command(f"sudo ip link set {interface}.{svlan} up")
         connection.send_command(f"sudo ip addr add {IP}/24 dev {interface}.{svlan}.{cvlan}")
         connection.send_command(f"sudo ip link set {interface}.{svlan}.{cvlan} up")
+
         connection.disconnect()
         print(f"Successfully created QinQ interface {interface}.{svlan}.{cvlan} with IP {IP}.")
     except (NetmikoAuthenticationException, NetmikoTimeoutException) as e:
