@@ -1,6 +1,10 @@
 import argparse
 from netmiko import ConnectHandler
 from netmiko import NetmikoAuthenticationException, NetmikoTimeoutException
+import time
+
+from testCases.conftest import sleep
+
 
 # --- PC Interface Configuration Functions ---
 
@@ -72,26 +76,19 @@ def createDoubleTaggedInterface(access_IP, interface, svlan, cvlan, IP):
         "device_type": "generic",
         "host": access_IP,
         "username": "root",
-        "password": "senao124#"
+        "password": "senao1234#"
     }
     print(f"--- Creating double-tagged interface on {access_IP} ---")
-
-    command_chain = (
-        f"sudo vconfig add {interface} {svlan} && "
-        f"sudo vconfig add {interface}.{svlan} {cvlan} && "
-        f"sudo ifconfig {interface}.{svlan} up && "
-        f"sudo ifconfig {interface}.{svlan}.{cvlan} {IP} up"
-    )
-
     try:
         connection = ConnectHandler(**pc_details)
-        output = connection.send_command(command_chain)
-
+        connection.send_command(f"sudo vconfig add {interface} {svlan}")
+        time.sleep(1)
+        connection.send_command(f"sudo vconfig add {interface}.{svlan} {cvlan}")
+        time.sleep(1)
+        connection.send_command(f"sudo ip link set {interface}.{svlan} up")
+        connection.send_command(f"sudo ifconfig {interface}.{svlan}.{cvlan} {IP} up")
         connection.disconnect()
-        print(f"Successfully sent QinQ configuration command for {interface}.{svlan}.{cvlan} with IP {IP}.")
-        if output:
-            print(f"Remote output: {output}")
-
+        print(f"Successfully created QinQ interface {interface}.{svlan}.{cvlan} with IP {IP}.")
     except (NetmikoAuthenticationException, NetmikoTimeoutException) as e:
         print(f"!!! FAILED to connect to {access_IP}: {e}")
     except Exception as e:
