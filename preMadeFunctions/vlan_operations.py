@@ -82,6 +82,8 @@ def createDoubleTaggedInterface(access_IP, interface, svlan, cvlan, IP):
     print(f" -- Interface : {interface} -- ")
     print(f" -- SVLAN : {svlan} -- ")
     print(f" -- CVLAN : {cvlan} -- ")
+    svlan = int(svlan)
+    cvlan = int(cvlan)
     try:
         connection = ConnectHandler(**pc_details)
         connection.send_command(f"sudo vconfig add {interface} {svlan}")
