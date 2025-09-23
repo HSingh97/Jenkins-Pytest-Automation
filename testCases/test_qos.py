@@ -73,7 +73,7 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
                 qos_type='dscp',
                 dscp=dscp_number_1
             )
-            qos_dscp_1 = qos_operations.qos_config_generator('dscp_Test1', mock_args)
+            qos_dscp_1 = qos_operations.qos_config_generator('dscp_Test3', mock_args)
             print(qos_dscp_1)
 
             qos_operations.qos_config_apply(local_ip, qos_dscp_1)
@@ -83,7 +83,7 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
                 qos_type='dscp',
                 dscp=dscp_number_2
             )
-            qos_dscp_2 = qos_operations.qos_config_generator('dscp_Test2', mock_args)
+            qos_dscp_2 = qos_operations.qos_config_generator('dscp_Test4', mock_args)
             print(qos_dscp_2)
             qos_operations.qos_config_apply(local_ip, qos_dscp_2)
 
