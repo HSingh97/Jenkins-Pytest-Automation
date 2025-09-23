@@ -45,6 +45,10 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
         "qos": qosPIR,
     }
 
+    print("++++++++++++++++++++++++++++++++")
+    print("\tClearing Old Profiles")
+    print("++++++++++++++++++++++++++++++++")
+    qos_operations.qos_config_delete(local_ip)
     try:
         if qosPIR == "Protocol":
             pass

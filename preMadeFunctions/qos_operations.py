@@ -95,6 +95,23 @@ def qos_config_apply(ip, qos_list):
     print("QoS configuration successfully sent.")
 
 
+def qos_config_delete(ip):
+    # Device connection details
+    pc_details = {
+        "device_type": "generic",
+        "host": ip,
+        "username": "root",
+        "password": "admin"
+    }
+
+    connection = ConnectHandler(**pc_details)
+
+    for i in range(1, 7):
+        connection.send_command(f"ucidyn delete ath1qos.@pirlist {i} >&/dev/null", read_timeout=60)
+
+    print("QoS configuration deleted successfully.")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Configure QOS settings")
 
