@@ -26,7 +26,8 @@ def pytest_addoption(parser):
     parser.addoption("--check_rate", action="store", default="Null", help="Check Data Rate")
     parser.addoption("--traffic-type", action="store", default="Null", help="Traffic Type ( TCP/UDP )")
     parser.addoption("--traffic-dir", action="store", default="Null", help="Traffic Type ( Uplink/Downlink/Bi-Di )")
-    parser.addoption("--vlan", action="store", default="Transparent", help="Vlan ( Transparent/ Trunk/ Access/ QinQ")
+    parser.addoption("--vlan", action="store", default="Transparent", help="Vlan ( Transparent/ Trunk/ Access/ QinQ )")
+    parser.addoption("--qosPIR", action="store", default="None", help="QOS ( Protocol/ IP/ MAC/ PORT/ TOS Rule/ 802.1P/ DSCP )")
 
 
 @pytest.fixture
@@ -124,6 +125,10 @@ def traffic_dir(request):
 @pytest.fixture
 def vlan(request):
     return request.config.getoption("--vlan")
+
+@pytest.fixture
+def qosPIR(request):
+    return request.config.getoption("--qosPIR")
 
 @pytest.fixture
 def local_interface(request):
