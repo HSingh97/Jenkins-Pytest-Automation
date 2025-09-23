@@ -82,7 +82,7 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
             print(qos_dscp_1)
             print("++++++++++++++++++++++++++++++++")
 
-            qos_operations.qos_config_apply(local_ip, qos_dscp_1)
+            qos_operations.qos_config_commit(local_ip, qos_dscp_1)
 
             #Configuration for Second DSCP PIR Entry
             mock_args = argparse.Namespace(
@@ -92,8 +92,9 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
             pir_profile2_name = f"DSCP_Test_{dscp_number_2}"
             qos_dscp_2 = qos_operations.qos_config_generator(pir_profile2_name, mock_args)
             print(qos_dscp_2)
-            qos_operations.qos_config_apply(local_ip, qos_dscp_2)
+            qos_operations.qos_config_commit(local_ip, qos_dscp_2)
 
+            qos_operations.qos_apply(local_ip)
 
     finally:
         print("--- Starting cleanup for iteration ---")
