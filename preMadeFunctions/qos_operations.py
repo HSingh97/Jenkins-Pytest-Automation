@@ -77,7 +77,7 @@ def qos_config_generator(name, args):
 
     return qos_config_commands
 
-def qos_config_apply(ip, qos_list):
+def qos_config_commit(ip, qos_list):
     # Device connection details
     pc_details = {
         "device_type": "generic",
@@ -90,8 +90,20 @@ def qos_config_apply(ip, qos_list):
 
     for command in qos_list:
         print(f"Sending: {command}")
-        output = connection.send_command(command)
-    connection.send_command("ucidyn apply", read_timeout=60)
+        connection.send_command(command)
+
+def qos_apply(ip):
+    # Device connection details
+
+    pc_details = {
+        "device_type": "generic",
+        "host": ip,
+        "username": "root",
+        "password": "admin"
+    }
+
+    connection = ConnectHandler(**pc_details)
+    connection.send_command("ucidyn apply", read_timeout=100)
     print("QoS configuration successfully sent.")
 
 
