@@ -66,7 +66,32 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
             pass
 
         elif qosPIR == "802.1P":
-            pass
+            vlan_number_1 = random.randint(0, 7)
+            vlan_number_2 = random.choice([i for i in range(0, 7) if i != vlan_number_1])
+            print("++++ Testing VLAN Priority : 802.1P ++++")
+            # Configuration for First VLAN priority PIR Entry
+            mock_args = argparse.Namespace(
+                qos_type='802.1P',
+                vlanPriority=vlan_number_1
+            )
+            pir_profile1_name = f"Vlan_Test_{vlan_number_2}"
+            qos_vlan_1 = qos_operations.qos_config_generator(pir_profile1_name, mock_args)
+            print(qos_vlan_1)
+            print("++++++++++++++++++++++++++++++++")
+
+            qos_operations.qos_config_commit(local_ip, qos_vlan_1)
+
+            #Configuration for Second VLAN priority PIR Entry
+            mock_args = argparse.Namespace(
+                qos_type='802.1P',
+                vlanPriority=vlan_number_2
+            )
+            pir_profile2_name = f"Vlan_Test_{vlan_number_2}"
+            qos_vlan_2 = qos_operations.qos_config_generator(pir_profile2_name, mock_args)
+            print(qos_vlan_1)
+            qos_operations.qos_config_commit(local_ip, qos_vlan_2)
+
+            qos_operations.qos_apply(local_ip)
 
         elif qosPIR == "DSCP":
             dscp_number_1 = random.randint(1, 63)
