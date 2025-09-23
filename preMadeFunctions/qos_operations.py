@@ -3,6 +3,9 @@ from netmiko import ConnectHandler
 from netmiko import NetmikoAuthenticationException, NetmikoTimeoutException
 import time
 
+from testCases.conftest import sleep
+
+
 def qos_config_generator(name, args):
 
     qos_config_commands = [
@@ -122,6 +125,7 @@ def qos_config_delete(ip):
         connection.send_command(f"ucidyn delete ath1qos.@pirlist {i} >&/dev/null", read_timeout=60)
         print(f"------ Deleting : {i} ------")
 
+    qos_apply(ip)
     print("QoS configuration deleted successfully.")
 
 
