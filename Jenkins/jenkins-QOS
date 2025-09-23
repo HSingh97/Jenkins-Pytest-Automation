@@ -78,7 +78,14 @@ pipeline {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
                     def qosPirList = params['QOS PIR']
-                    qosPirList = params.qosPirList.split(',')
+                    if (qosPirList) {
+                        // The parameter has a value, so it's safe to split
+                        qosPirList = qosPirList.split(',')
+                    } else {
+                        // The parameter is null or empty, so set it to an empty list to prevent errors
+                        qosPirList = []
+                        echo "⚠️ Warning: 'QOS PIR' parameter was not provided. The QOS loop will be skipped."
+                    }
 
                     echo "✅ Cleared old workspace"
 
