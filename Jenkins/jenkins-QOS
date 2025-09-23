@@ -281,8 +281,8 @@ pipeline {
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
                 reportDir: '.',
-                reportFiles: 'report.html',
-                reportName: 'Test Report'
+                reportFiles: "${reportFilename}",
+                reportName: "QOS Report - Build ${env.BUILD_NUMBER}"
             ])
             echo "-----------------------------------------"
             echo 'Script Done!'
@@ -333,7 +333,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html'  // Only attach, do not embed
+                    attachmentsPattern: "${reportFilename}"
                 )
             }
         }

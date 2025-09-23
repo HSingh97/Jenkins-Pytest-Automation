@@ -6,7 +6,7 @@ import time
 def qos_config_generator(name, args):
 
     qos_config_commands = [
-        f"ucidyn add ath1qos pirlist"
+        f"ucidyn add ath1qos pirlist",
         f"ucidyn set ath1qos.@pirlist[-1].name {name}",
         f"ucidyn set ath1qos.@pirlist[-1].qostyp 0",
         f"ucidyn set ath1qos.@pirlist[-1].typ 3",
