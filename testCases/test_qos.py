@@ -74,7 +74,7 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
                 qos_type='802.1P',
                 vlanPriority=vlan_number_1
             )
-            pir_profile1_name = f"Vlan_Test_{vlan_number_2}"
+            pir_profile1_name = f"Vlan_Test_{vlan_number_1}"
             qos_vlan_1 = qos_operations.qos_config_generator(pir_profile1_name, mock_args)
             print(qos_vlan_1)
             print("++++++++++++++++++++++++++++++++")

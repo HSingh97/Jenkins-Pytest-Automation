@@ -120,6 +120,7 @@ def qos_config_delete(ip):
 
     for i in range(1, 7):
         connection.send_command(f"ucidyn delete ath1qos.@pirlist {i} >&/dev/null", read_timeout=60)
+        print(f"------ Deleting : {i} ------")
 
     print("QoS configuration deleted successfully.")
 
