@@ -6,6 +6,8 @@ def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
+def dateStamp = new Date().format("yyyyMMdd", TimeZone.getTimeZone("Asia/Kolkata"))
+def reportFilename = "QOS_report_${env.BUILD_NUMBER}_${dateStamp}.html"
 
 // Main Pipeline
 
@@ -137,7 +139,6 @@ pipeline {
                     def buildParams = [
                         "Local IP Address": params['Local IP Address'],
                         "Remote IP Address": params['Remote IP Address'],
-                        "Radio" : params['Radio'],
                         "QOS" : params['QOS PIR'],
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
@@ -265,7 +266,8 @@ pipeline {
                     </html>
                     """
 
-                    writeFile file: 'report.html', text: htmlContent
+                    writeFile file: reportFilename, text: htmlContent
+                    echo "✅ HTML report generated: ${reportFilename}"
                 }
             }
         }
