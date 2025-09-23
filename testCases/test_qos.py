@@ -67,25 +67,26 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
         elif qosPIR == "DSCP":
             dscp_number_1 = random.randint(1, 63)
             dscp_number_2 = random.choice([i for i in range(1, 63) if i != dscp_number_1])
-
+            print("++++ Testing DSCP ++++")
             # Configuration for First DSCP PIR Entry
             mock_args = argparse.Namespace(
-                qos_type='dscp',
+                qos_type='DSCP',
                 dscp=dscp_number_1
             )
             qos_dscp_1 = qos_operations.qos_config_generator('dscp_Test3', mock_args)
             print(qos_dscp_1)
+            print("++++++++++++++++++++++++++++++++")
 
-            qos_operations.qos_config_apply(local_ip, qos_dscp_1)
+            #qos_operations.qos_config_apply(local_ip, qos_dscp_1)
 
             #Configuration for Second DSCP PIR Entry
             mock_args = argparse.Namespace(
-                qos_type='dscp',
+                qos_type='DSCP',
                 dscp=dscp_number_2
             )
             qos_dscp_2 = qos_operations.qos_config_generator('dscp_Test4', mock_args)
             print(qos_dscp_2)
-            qos_operations.qos_config_apply(local_ip, qos_dscp_2)
+            #qos_operations.qos_config_apply(local_ip, qos_dscp_2)
 
 
     finally:

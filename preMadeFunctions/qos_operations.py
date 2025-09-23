@@ -26,27 +26,27 @@ def qos_config_generator(name, args):
         f'ucidyn set ath1qos.@pirlist[-1].dscp 0'
     ]
 
-    if args.qos_type == "protocol":
+    if args.qos_type == "Protocol":
         print("QOS : Protocol")
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].qostyp 1')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].pktsize {args.pktsize}')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].protocol {args.protocol}')
 
-    elif args.qos_type == "ip":
+    elif args.qos_type == "IP":
         print("QOS : IP")
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].qostyp 2')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].typ {args.type}')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].srcip {args.srcIP}')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].dstip {args.dstIP}')
 
-    elif args.qos_type == "mac":
+    elif args.qos_type == "MAC":
         print("QOS : MAC")
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].qostyp 3')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].typ {args.type}')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].srcmac {args.srcMAC}')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].dstmac {args.dstMAC}')
 
-    elif args.qos_type == "port":
+    elif args.qos_type == "Port":
         print("QOS : Port")
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].qostyp 4')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].porttyp {args.portType}')
@@ -54,19 +54,20 @@ def qos_config_generator(name, args):
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].startport {args.startPort}')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].endport {args.endPort}')
 
-    elif args.qos_type == "tos":
+    elif args.qos_type == "TOS Rule":
         print("QOS : TOS Rule")
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].qostyp 5')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].toslow {args.tosLow}')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].toshigh {args.tosHigh}')
 
-    elif args.qos_type == "vlan":
+    elif args.qos_type == "802.1P":
         print("QOS : 802.1P")
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].qostyp 6')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].vlanprio {args.vlanPriority}')
 
-    elif args.qos_type == "dscp":
+    elif args.qos_type == "DSCP":
         print("QOS : DSCP")
+        print(f"Current DSCP : {args.dscp}")
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].qostyp 7')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].dscp {args.dscp}')
 
