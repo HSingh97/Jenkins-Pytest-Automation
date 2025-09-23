@@ -103,7 +103,7 @@ pipeline {
                         sh """
                             python3.10 -m  pytest -v -s testCases/test_qos.py::test_qosTest \
                             --local-ip '${localIP}' --remote-ip '${remoteIP}' \
-                            --radio '${radio}' --qosPIR '${qos}'
+                            --qosPIR '${qos}'
                             --local-pc-mgmt-ip '${localPCmgmtIP}' --remote-pc-mgmt-ip '${remotePCmgmtIP}' 2>&1
                         """
                     }
