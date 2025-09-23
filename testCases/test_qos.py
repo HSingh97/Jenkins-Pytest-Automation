@@ -26,7 +26,7 @@ def append_result_to_json(result, filename="iteration_results.json"):
     print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}")
 
 
-def test_qosTest(local_ip, remote_ip, qosPIR, remote_pc_ip, local_pc_ip, remote_interface, local_interface,
+def test_qosTest(local_ip, remote_ip, qosPIR,
               local_pc_mgmt_ip, remote_pc_mgmt_ip):
 
     print("\n****************************************************")

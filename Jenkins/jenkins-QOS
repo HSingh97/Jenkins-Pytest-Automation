@@ -36,37 +36,18 @@ pipeline {
             steps {
                 script {
                     def remotePC = params['Remote PC']
-                    def remotePCIP = null
-                    def remotePCInterface = null
 
                     node(remotePC) {
-                        remotePCIP = sh(
-                            script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$4}' | cut -d'/' -f1 | head -n1",
-                            returnStdout: true
-                        ).trim()
-
-                        remotePCInterface = sh(
-                            script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$2}' | head -n1",
-                            returnStdout: true
-                        ).trim()
 
                         remotePCmgmtIP = sh(
                             script: "ip -4 -o addr show | awk '\$4 ~ /^10\\.0\\.150\\./ {print \$4}' | cut -d'/' -f1 | head -n1",
                             returnStdout: true
                         ).trim()
 
-                        if (!remotePCIP) {
-                            error("❌ Could not find 192.168.1.x IP on node '$remotePC' ")
-                        }
-
-                        echo "✅ Remote PC IP       : ${remotePCIP}"
-                        echo "✅ Remote PC Interface: ${remotePCInterface}"
                         echo "✅ Remote PC Mgmt IP  : ${remotePCmgmtIP}"
                     }
 
                     def localPC = params['TARGET_STAND']
-                    def localPCIP = null
-                    def localPCInterface = null
 
                     node(localPC) {
                         localPCIP = sh(
@@ -115,10 +96,8 @@ pipeline {
                         sh """
                             python3.10 -m  pytest -v -s testCases/test_qos.py::test_qosTest \
                             --local-ip '${localIP}' --remote-ip '${remoteIP}' \
-                            --radio '${radio}' --qosPIR '${qos}' \
-                            --local-interface '${localPCInterface}' --remote-interface '${remotePCInterface}' \
-                            --local-pc-ip '${localPCIP}' --remote-pc-ip '${remotePCIP}' \
-                             --local-pc-mgmt-ip '${localPCmgmtIP}' --remote-pc-mgmt-ip '${remotePCmgmtIP}' 2>&1
+                            --radio '${radio}' --qosPIR '${qos}'
+                            --local-pc-mgmt-ip '${localPCmgmtIP}' --remote-pc-mgmt-ip '${remotePCmgmtIP}' 2>&1
                         """
                     }
                 }
