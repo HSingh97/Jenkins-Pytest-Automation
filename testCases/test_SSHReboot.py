@@ -12,7 +12,7 @@ def test_reboot(local_ip, remote_ip):
     print(f"Local IP Address: {local_ip}")
     print(f"Remote IP Address: {remote_ip}")
 
-    execute_ssh_command.perform_operation(local_ip, USERNAME, PASSWORD, "reboot")
+    execute_ssh_command.perform_operation(local_ip, "root", "admin", "reboot")
 
     print("Waiting for device to reboot...")
     time.sleep(60)
