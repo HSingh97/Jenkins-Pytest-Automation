@@ -9,10 +9,8 @@ PASSWORD = "admin"
 
 
 def test_reboot(local_ip, remote_ip):
-
     print(f"Local IP Address: {local_ip}")
     print(f"Remote IP Address: {remote_ip}")
-
 
     execute_ssh_command.perform_operation(local_ip, USERNAME, PASSWORD, "reboot")
 
@@ -23,12 +21,11 @@ def test_reboot(local_ip, remote_ip):
     output = None
     while wait < 50:
         output = pingFunction.Ping(local_ip)
-
         if not output:
             wait += 3
             time.sleep(3)
         else:
-            print("Device is reachable again ✅")
+            print("Reachable")
             break
 
     assert output == 1, "Device did not come back online after reboot"
@@ -40,3 +37,5 @@ def warn(*args, **kwargs):
 
 
 warnings.warn = warn
+
+
