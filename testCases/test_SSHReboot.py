@@ -2,7 +2,7 @@ import time
 import warnings
 import pytest
 from testCases.conftest import local_ip
-from preMadeFunctions import pingFunction, execute_ssh_command
+from preMadeFunctions import pingFunction, ssh_netmiko
 
 USERNAME = "root"
 PASSWORD = "admin"
@@ -12,7 +12,7 @@ def test_reboot(local_ip, remote_ip):
     print(f"Local IP Address: {local_ip}")
     print(f"Remote IP Address: {remote_ip}")
 
-    execute_ssh_command.perform_operation(local_ip, "root", "admin", "reboot")
+    ssh_netmiko.runcommand(local_ip, "reboot")
 
     print("Waiting for device to reboot...")
     time.sleep(60)
