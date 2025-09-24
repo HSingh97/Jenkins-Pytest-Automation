@@ -31,27 +31,7 @@ pipeline {
                 }
             }
         }
-        stage('Pre-check SSH Connectivity') {
-            steps {
-                script {
-                    echo "----------------------------------------"
-                    echo "Checking SSH connectivity to Local IP: ${params['Local IP Address']}"
-                    echo "----------------------------------------"
-                    sh """
-                        ping -c 3 ${params['Local IP Address']} || {
-                            echo "ERROR: Cannot ping ${params['Local IP Address']}. Check network connectivity or device status."
-                            exit 1
-                        }
-                        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@${params['Local IP Address']} 'echo SSH connection successful' || {
-                            echo "ERROR: Cannot connect to ${params['Local IP Address']} on port 22. Check SSHD, firewall, or network."
-                            # Additional debug: Try to identify the issue
-                            nc -zv ${params['Local IP Address']} 22 2>&1 || echo "Network test confirms port 22 is unreachable."
-                            exit 1
-                        }
-                    """
-                }
-            }
-        }
+
         stage('Reboot') {
             steps {
                 script {
