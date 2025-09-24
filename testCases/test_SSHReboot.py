@@ -8,7 +8,6 @@ USERNAME = "root"
 PASSWORD = "admin"
 
 
-@pytest.mark.reboot
 def test_reboot(local_ip, remote_ip):
 
     print(f"Local IP Address: {local_ip}")
