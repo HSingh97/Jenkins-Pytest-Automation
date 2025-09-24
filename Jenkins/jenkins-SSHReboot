@@ -32,29 +32,6 @@ pipeline {
                 }
             }
         }
-        stage('Pre-check SSH Connectivity') {
-            steps {
-                script {
-                    echo "----------------------------------------"
-                    echo "Checking SSH connectivity to Local IP: ${params['Local IP Address']}"
-                    echo "----------------------------------------"
-                    // Test SSH connectivity to local_ip (192.168.1.56) before running tests
-                    sh """
-                        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@${params['Local IP Address']} 'echo SSH connection successful' || {
-                            echo "ERROR: Cannot connect to ${params['Local IP Address']} on port 22. Check SSHD, firewall, or network."
-                            exit 1
-                        }
-                    """
-                    // Optional: Test ping to local_ip to ensure network reachability
-                    sh """
-                        ping -c 3 ${params['Local IP Address']} || {
-                            echo "ERROR: Cannot ping ${params['Local IP Address']}. Check network connectivity."
-                            exit 1
-                        }
-                    """
-                }
-            }
-        }
         stage('Reboot') {
             steps {
                 script {
@@ -66,27 +43,10 @@ pipeline {
                     echo "Local IP Address: ${localIP}"
                     echo "Remote IP Address: ${remoteIP}"
 
-                    // Default REBOOT_COUNT to 1 if not set
-                    def rebootCount = params.REBOOT_COUNT ?: 1
-                    echo "Number of reboot iterations: ${rebootCount}"
-
-                    for (int i = 1; i <= rebootCount.toInteger(); i++) {
-                        echo "Running reboot test iteration ${i}"
-                        // Capture test output to a log file and continue even if it fails
-                        try {
-                            sh """
-                                pytest -v -s testCases/test_SSHReboot.py::test_reboot \
-                                --local-ip '${localIP}' --remote-ip '${remoteIP}' \
-                                2>&1 | tee artifacts/reboot_test_${i}.log
-                            """
-                        } catch (Exception e) {
-                            echo "Reboot test iteration ${i} failed: ${e.message}"
-                            // Continue to next iteration or post-actions
-                        }
+                    for (int i = 1; i <= REBOOT_COUNT.toInteger() ; i++) {
+                        sh "pytest -v -s testCases/test_SSHReboot.py::test_reboot --local-ip '$localIP' --remote-ip '$remoteIP' 2>&1"
+                        // sh "echo Iteration : ${i} 2>&1 | tee -a ${workspace}/SerialLogs_AP_${i}.log"
                     }
-
-                    // Archive test logs
-                    archiveArtifacts 'artifacts/*.log'
                 }
             }
         }
@@ -118,7 +78,7 @@ pipeline {
                 ]
 
                 // Get email from predefined mapping, else use default
-                def userEmail = userEmails.get(buildUserId, "puneet.sharmas@senao.com")
+                def userEmail = userEmails.get(buildUserId, "harmanjot.singh@senao.com")
 
                 echo "Sending email to: ${userEmail}"
 
