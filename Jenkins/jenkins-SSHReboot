@@ -80,7 +80,7 @@ pipeline {
 
                 // Define a mapping of user IDs to emails (update as needed)
                 def userEmails = [
-                    "puneet": "puneet.sharma@senao.com"
+                    "puneet": "puneet.sharma@senao.com",
                     "harman": "harmanjot.singh@senao.com",
                     "mahesh": "mahesh.battala@senao.com",
                     "sandeep": "sandeep.manchikanti@senao.com",
