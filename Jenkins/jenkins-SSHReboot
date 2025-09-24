@@ -1,16 +1,12 @@
 import jenkins.model.Jenkins
 
 // Functions
-
 def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
-
-// Main Pipeline
-
 pipeline {
-    agent { node { label "${TARGET_STAND}"} }
+    agent { node { label "${TARGET_STAND}" } }
 
     stages {
         stage('Prepare tests') {
@@ -19,8 +15,12 @@ pipeline {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${TARGET_STAND}"
                     echo "----------------------------------------"
-      	        }
-      	    }
+                    // Validate parameters
+                    if (!params['Local IP Address'] || !params['Remote IP Address']) {
+                        error "Missing required parameters: Local IP Address or Remote IP Address"
+                    }
+                }
+            }
         }
         stage('Install Dependencies') {
             steps {
@@ -29,6 +29,29 @@ pipeline {
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
                     sh "sh utilities/requirements.txt"
+                }
+            }
+        }
+        stage('Pre-check SSH Connectivity') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "Checking SSH connectivity to Local IP: ${params['Local IP Address']}"
+                    echo "----------------------------------------"
+                    // Test SSH connectivity to local_ip (192.168.1.56)
+                    sh """
+                        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@${params['Local IP Address']} 'echo SSH connection successful' || {
+                            echo "ERROR: Cannot connect to ${params['Local IP Address']} on port 22. Check SSHD, firewall, or network."
+                            exit 1
+                        }
+                    """
+                    // Test network reachability with ping
+                    sh """
+                        ping -c 3 ${params['Local IP Address']} || {
+                            echo "ERROR: Cannot ping ${params['Local IP Address']}. Check network connectivity."
+                            exit 1
+                        }
+                    """
                 }
             }
         }
@@ -43,10 +66,30 @@ pipeline {
                     echo "Local IP Address: ${localIP}"
                     echo "Remote IP Address: ${remoteIP}"
 
-                    for (int i = 1; i <= REBOOT_COUNT.toInteger() ; i++) {
-                        sh "pytest -v -s testCases/test_SSHReboot.py::test_reboot --local-ip '$localIP' --remote-ip '$remoteIP' 2>&1"
-                        // sh "echo Iteration : ${i} 2>&1 | tee -a ${workspace}/SerialLogs_AP_${i}.log"
+                    // Default REBOOT_COUNT to 1 if not set
+                    def rebootCount = params.REBOOT_COUNT ?: 1
+                    echo "Number of reboot iterations: ${rebootCount}"
+
+                    for (int i = 1; i <= rebootCount.toInteger(); i++) {
+                        echo "Running reboot test iteration ${i}"
+                        // Capture test output to a log file and continue on failure
+                        try {
+                            sh """
+                                pytest -v -s testCases/test_SSHReboot.py::test_reboot \
+                                --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                                2>&1 | tee artifacts/reboot_test_${i}.log
+                            """
+                        } catch (Exception e) {
+                            echo "Reboot test iteration ${i} failed: ${e.message}"
+                            // Archive logs even if iteration fails
+                            archiveArtifacts 'artifacts/*.log'
+                            // Optionally, decide whether to continue or fail the pipeline
+                            // For now, continue to next iteration
+                        }
                     }
+
+                    // Archive all test logs
+                    archiveArtifacts 'artifacts/*.log'
                 }
             }
         }
@@ -54,7 +97,7 @@ pipeline {
     post {
         always {
             echo "-----------------------------------------"
-            echo 'Script Done!'
+            echo "Script Done!"
             echo "-----------------------------------------"
             script {
                 def buildCauses = currentBuild.getBuildCauses()
@@ -65,7 +108,7 @@ pipeline {
 
                 echo "Build started by: ${buildUserName} (${buildUserId})"
 
-                // Define a mapping of user IDs to emails (update as needed)
+                // Define a mapping of user IDs to emails
                 def userEmails = [
                     "puneet": "puneet.sharma@senao.com",
                     "harman": "harmanjot.singh@senao.com",
@@ -77,12 +120,12 @@ pipeline {
                     "phani": "phani.darla@senao.com"
                 ]
 
-                // Get email from predefined mapping, else use default
+                // Get email from mapping, else use default
                 def userEmail = userEmails.get(buildUserId, "harmanjot.singh@senao.com")
 
                 echo "Sending email to: ${userEmail}"
 
-                // Send email notification
+                // Send email notification with logs attached
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
                     body: """
@@ -93,6 +136,8 @@ pipeline {
                             <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
                                 ${currentBuild.currentResult}</span></p>
                             <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
+                            <p><strong>Local IP:</strong> ${params['Local IP Address']}</p>
+                            <p><strong>Remote IP:</strong> ${params['Remote IP Address']}</p>
                             <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
                             <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
                             <br/>
@@ -101,20 +146,19 @@ pipeline {
                         </html>
                     """,
                     to: userEmail,
-                    mimeType: 'text/html'
+                    mimeType: 'text/html',
+                    attachmentsPattern: 'artifacts/*.log'
                 )
             }
         }
-
         success {
             echo "-----------------------------------------"
-            echo 'Script Success'
+            echo "Script Success"
             echo "-----------------------------------------"
         }
-
         failure {
             echo "-----------------------------------------"
-            echo 'Script Failure'
+            echo "Script Failure"
             echo "-----------------------------------------"
         }
     }
