@@ -74,15 +74,16 @@ pipeline {
                     }
 
                     def jsonReport = readJSON file: 'iteration_results.json'
+                    echo "JSON Report: ${jsonReport}" // Debugging output
                     def buildParams = [
                         "Local IP Address": params['Local IP Address'],
                         "Remote IP Address": params['Remote IP Address'],
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
-                    // Set current date and time to 06:03 PM IST, September 25, 2025
+                    // Use current date and time (06:14 PM IST, September 25, 2025)
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
-                    def istDate = new Date("2025-09-25 18:03:00").toTimestamp()
+                    def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
 
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
