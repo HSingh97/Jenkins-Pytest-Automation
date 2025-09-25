@@ -51,66 +51,7 @@ pipeline {
                 }
             }
         }
-        stage('Generate Report') {
-            steps {
-                script {
-                    def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
-                    sh "ssh-keygen -R ${localIP} || true"
-                    sh "ssh-keygen -R ${remoteIP} || true"
 
-                    def local_fw_version = "N/A"
-                    def remote_fw_version = "N/A"
-
-                    try {
-                        local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (Exception e) {
-                        echo "⚠️ Failed to get local FW version from ${localIP}: ${e.message}"
-                    }
-
-                    try {
-                        remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (Exception e) {
-                        echo "⚠️ Failed to get remote FW version from ${remoteIP}: ${e.message}"
-                    }
-
-                    def jsonReport = readJSON file: 'iteration_results.json'
-                    def buildParams = [
-                        "Local IP Address": params['Local IP Address'],
-                        "Remote IP Address": params['Remote IP Address'],
-                        "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
-                    ]
-
-                    def istZone = TimeZone.getTimeZone("Asia/Kolkata")
-                    def istDate = Calendar.getInstance(istZone).getTime()
-                    def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
-
-                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
-                    def pipelineName = env.JOB_NAME
-
-                    def htmlContent = """
-                        <img src="${companyLogoUrl}" alt="Company Logo">
-                        <h1>Automated Test Report</h1>
-                        <h2>Pipeline: ${pipelineName}</h2>
-                        <p>Date & Time: ${currentDateTime}</p>
-                        <h3>Build Parameters</h3>
-                        <pre>
-                            ${buildParams.collect { "    ${it.key}    ${it.value}" }.join('\n')}
-                        </pre>
-                        <h3>Test Results</h3>
-                        <pre>
-                            Test    Local Ping    Remote Ping    Status
-                            ${jsonReport.iterations.collect { result ->
-                                "    ${result.test}    ${result.Ping_Results.Local ? '✅ PASS' : '❌ FAIL'}    ${result.Ping_Results.Remote ? '✅ PASS' : '❌ FAIL'}    ${result.status == 'PASS' ? '✅ PASS' : result.status == 'PARTIAL' ? '⚠️ PARTIAL' : '❌ FAIL'}"
-                            }.join('\n')}
-                        </pre>
-                    """
-
-                    writeFile file: 'report.html', text: htmlContent
-                }
-            }
-        }
-    }
     post {
         always {
             publishHTML (target: [
