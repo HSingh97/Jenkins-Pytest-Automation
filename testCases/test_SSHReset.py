@@ -10,12 +10,11 @@ PASSWORD = "admin"
 
 
 def perform_ping_check(local_ip, remote_ip, result_dict):
-
     print(f"--- Pinging local IP: {local_ip}")
     if pingFunction.check_access(local_ip):
         result_dict["Ping Results"]["Local"] = True
-
         print(f"\n* Local Device is up after soft reset *")
+
         print(f"\n--- Pinging remote IP: {remote_ip}")
         if pingFunction.check_access(remote_ip):
             result_dict["Ping Results"]["Remote"] = True
@@ -28,9 +27,7 @@ def perform_ping_check(local_ip, remote_ip, result_dict):
 
 
 def append_result_to_json(result, filename="iteration_results.json"):
-    """
-    Reads a JSON file, appends a new result, and writes it back.
-    """
+    """Reads a JSON file, appends a new result, and writes it back."""
     try:
         with open(filename, "r") as f:
             json_data = json.load(f)
@@ -60,15 +57,15 @@ def wait_for_ping(ip, timeout=15, interval=3):
     return False
 
 
-def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None, iterations=3):
+def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None):
+    total_iterations = 3  # Fixed 3 iterations
     print("\n****************************************************")
     print(f"\nLocal IP Address: {local_ip}")
     print(f"Remote IP Address: {remote_ip}")
     print("****************************************************")
 
-    for i in range(iterations):
-
-        print(f"\n=============== STARTING ITERATION {i + 1}/{iterations} SSH Soft Reset ===============")
+    for i in range(total_iterations):
+        print(f"\n=============== STARTING ITERATION {i + 1}/{total_iterations} SSH Soft Reset ===============")
         test_iteration_result = {
             "test": "test_vlan",
             "status": "FAIL",
@@ -91,24 +88,14 @@ def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None, iter
         wait_for_ping(local_ip, timeout=15)
 
         # Compose test result summary
-        print(f"=============== FINISHED ITERATION {i + 1}/{iterations} ===============\n")
+        print(f"=============== FINISHED ITERATION {i + 1}/{total_iterations} ===============\n")
         print(test_iteration_result)
 
         perform_ping_check(local_ip, remote_ip, test_iteration_result)
         append_result_to_json(test_iteration_result)
 
 
-# ---------------- Pytest CLI Options ----------------
-def pytest_addoption(parser):
-    parser.addoption("--iterations", action="store", default=3, help="Number of iterations for soft reset test")
-
-
-
-@pytest.fixture
-def iterations(request):
-    return int(request.config.getoption("--iterations"))
-
-
+# ---------------- Pytest Fixtures ----------------
 def warn(*args, **kwargs):
     pass
 
