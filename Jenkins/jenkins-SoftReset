@@ -237,7 +237,6 @@ pipeline {
 
                 // Define a mapping of user IDs to emails (update as needed)
                 def userEmails = [
-                    "puneet": "puneet.sharma@senao.com"
                     "harman": "harmanjot.singh@senao.com",
                     "mahesh": "mahesh.battala@senao.com",
                     "sandeep": "sandeep.manchikanti@senao.com",
@@ -249,7 +248,7 @@ pipeline {
                 ]
 
                 // Get email from predefined mapping, else use default
-                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+                def userEmail = userEmails.get(buildUserId, "harmanjot.singh@senao.com")
 
                 echo "Sending email to: ${userEmail}"
 
