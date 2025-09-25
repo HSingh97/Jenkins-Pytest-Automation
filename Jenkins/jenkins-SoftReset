@@ -45,6 +45,7 @@ pipeline {
 
                     sh "echo [] > iteration_results.json"
 
+
                     sh """
                         python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
                         --local-ip '${localIP}' --remote-ip '${remoteIP}' --iterations '${iterations}'
