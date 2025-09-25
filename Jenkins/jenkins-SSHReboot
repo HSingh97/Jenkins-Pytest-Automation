@@ -213,9 +213,6 @@ pipeline {
                     </html>
                     """
 
-
-
-
                     writeFile file: 'report.html', text: htmlContent
                 }
             }
