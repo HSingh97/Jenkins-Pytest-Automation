@@ -81,7 +81,7 @@ pipeline {
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
-                    // Use current date and time (06:14 PM IST, September 25, 2025)
+                    // Use current date and time (06:23 PM IST, September 25, 2025)
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
