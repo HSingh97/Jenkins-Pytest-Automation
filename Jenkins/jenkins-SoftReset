@@ -9,6 +9,12 @@ def archiveArtifacts(pattern) {
 pipeline {
     agent { node { label "${TARGET_STAND}"} }
 
+    parameters {
+        string(name: 'Local IP Address', defaultValue: '192.168.1.56')
+        string(name: 'Remote IP Address', defaultValue: '192.168.1.15')
+        string(name: 'Iterations', defaultValue: '1')
+    }
+
     stages {
         stage('Prepare tests') {
             steps {
@@ -25,14 +31,9 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
-                    sh "sh utilities/requirements.txt"
+
                 }
             }
-        }
-        parameters {
-            string(name: 'Local IP Address', defaultValue: '192.168.1.56')
-            string(name: 'Remote IP Address', defaultValue: '192.168.1.15')
-            string(name: 'Iterations', defaultValue: '1')
         }
 
         stage('Soft Reset Testing') {
@@ -52,7 +53,7 @@ pipeline {
             }
         }
 
-            stage('Generate Report') {
+        stage('Generate Report') {
             steps {
                 script {
                     def localIP = params['Local IP Address']
@@ -198,6 +199,12 @@ pipeline {
                             </tr>
                     """
 
+                    def rows = jsonReport.iterations.collectWithIndex { iter, idx ->
+                        def statusClass = iter.status == 'PASS' ? 'pass' : 'fail'
+                        return "<tr><td>${idx+1}</td><td class='${statusClass}'>${iter.status}</td></tr>"
+                    }.join('\n')
+
+                    htmlContent += rows
                     htmlContent += """
                         </table>
                     </body>
@@ -208,8 +215,6 @@ pipeline {
                 }
             }
         }
-
-
     }
     post {
         always {

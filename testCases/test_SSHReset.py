@@ -102,6 +102,7 @@ def pytest_addoption(parser):
     parser.addoption("--iterations", action="store", default=3, help="Number of iterations for soft reset test")
 
 
+
 @pytest.fixture
 def iterations(request):
     return int(request.config.getoption("--iterations"))
