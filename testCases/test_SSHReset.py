@@ -60,7 +60,7 @@ def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None):
         print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}")
 
     # Compose test result summary
-    test_iteration_result = {
+    iteration_result = {
         "test": "test_vlan",
         "status": "FAIL",
         "Local IP": local_ip,
@@ -72,11 +72,11 @@ def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None):
     }
 
     print("Test Result to append to JSON:")
-    print(test_iteration_result)
+    print(iteration_result)
 
-    perform_ping_check(local_ip, remote_ip, test_iteration_result)
+    perform_ping_check(local_ip, remote_ip, iteration_result)
 
-    append_result_to_json(test_iteration_result)
+    append_result_to_json(iteration_result)
 
 
 def warn(*args, **kwargs):
