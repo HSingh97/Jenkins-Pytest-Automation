@@ -84,6 +84,7 @@ def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None):
         except Exception as e:
             print(f"SSH connection broke as expected: {e}")
 
+
         print("Waiting for network services to reload (up to 15s)...")
         wait_for_ping(local_ip, timeout=15)
 
