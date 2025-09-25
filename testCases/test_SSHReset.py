@@ -17,6 +17,7 @@ def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None):
         print("Network reload started in background")
         time.sleep(2)
     except Exception as e:
+
         print(f"SSH connection broke as expected: {e}")
 
     print("Waiting for network services to reload...")
