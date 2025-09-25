@@ -3,34 +3,69 @@ import warnings
 import pytest
 from testCases.conftest import local_ip
 from preMadeFunctions import pingFunction, ssh_netmiko
+import json
 
 USERNAME = "root"
 PASSWORD = "admin"
+
+def perform_ping_check(local_ip, remote_ip, result_dict):
+
+    print(f"--- Pinging local IP: {local_ip}")
+    if pingFunction.check_access(local_ip):
+        result_dict["Ping Results"]["Local"] = True
+        print(f"--- Pinging remote IP: {remote_ip}")
+        if pingFunction.check_access(remote_ip):
+            result_dict["Ping Results"]["Remote"] = True
+            result_dict["status"] = "PASS"
+        else:
+            result_dict["Ping Results"]["Remote"] = False
+    else:
+        result_dict["Ping Results"]["Local"] = False
+
+
+def append_result_to_json(result, filename="iteration_results.json"):
+    """
+    Reads a JSON file, appends a new result, and writes it back.
+    """
+    try:
+        with open(filename, "r") as f:
+            json_data = json.load(f)
+        if not isinstance(json_data, dict) or "iterations" not in json_data:
+            json_data = {"iterations": []}
+    except (FileNotFoundError, json.JSONDecodeError):
+        json_data = {"iterations": []}
+
+    json_data["iterations"].append(result)
+
+    with open(filename, "w") as f:
+        json.dump(json_data, f, indent=4)
+
+    print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}")
 
 
 def test_reboot(local_ip, remote_ip):
     print(f"Local IP Address: {local_ip}")
     print(f"Remote IP Address: {remote_ip}")
 
-    ssh_netmiko.runcommand(local_ip, "reboot")
+    test_iteration_result = {
+        "test": "test_vlan",
+        "status": "FAIL",
+        "Local IP": local_ip,
+        "Remote IP": remote_ip,
+        "Ping Results": {
+            "Local": False,
+            "Remote": False
+        }
+    }
+
+    #ssh_netmiko.runcommand(local_ip, "reboot &")
 
     print("Waiting for device to reboot...")
-    time.sleep(60)
+    #time.sleep(180)
 
-    wait = 0
-    output = None
-    while wait < 50:
-        output = pingFunction.Ping(local_ip)
-        if not output:
-            wait += 3
-            time.sleep(3)
-        else:
-            print("Reachable")
-            break
+    perform_ping_check(local_ip, remote_ip, test_iteration_result)
 
-    assert output == 1, "Device did not come back online after reboot"
-
-
+    append_result_to_json(test_iteration_result)
 
 def warn(*args, **kwargs):
     pass

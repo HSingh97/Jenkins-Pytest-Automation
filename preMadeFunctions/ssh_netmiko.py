@@ -13,7 +13,7 @@ def runcommand(access_IP, command):
     print(f"--- Executing : {command}  on {access_IP} ---")
     try:
         connection = ConnectHandler(**pc_details)
-        connection.send_command(command)
+        connection.send_command(command, read_timeout=60)
     except (NetmikoAuthenticationException, NetmikoTimeoutException) as e:
         print(f"!!! FAILED to connect to {access_IP}: {e}")
     except Exception as e:
