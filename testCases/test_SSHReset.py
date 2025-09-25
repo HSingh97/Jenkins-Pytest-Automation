@@ -8,78 +8,85 @@ from preMadeFunctions import pingFunction, ssh_netmiko
 USERNAME = "root"
 PASSWORD = "admin"
 
-def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None):
-    print(f"\nLocal IP Address: {local_ip}")
-    print(f"Remote IP Address: {remote_ip}")
 
-    try:
-        ssh_netmiko.runcommand(local_ip, "/etc/init.d/network reload &")
-        print("Network reload started in background")
-        time.sleep(2)
-    except Exception as e:
+def perform_ping_check(local_ip, remote_ip, result_dict):
 
-        print(f"SSH connection broke as expected: {e}")
+    print(f"--- Pinging local IP: {local_ip}")
+    if pingFunction.check_access(local_ip):
+        result_dict["Ping Results"]["Local"] = True
 
-    print("Waiting for network services to reload...")
-    time.sleep(15)  # Initial wait for network reload
-
-    def perform_ping_check(local_ip, remote_ip, result_dict):
-
-        print(f"--- Pinging local IP: {local_ip}")
-        if pingFunction.check_access(local_ip):
-            result_dict["Ping Results"]["Local"] = True
-
-            print(f"\n* Local Device is up after soft reset *")
-            print(f"\n--- Pinging remote IP: {remote_ip}")
-            if pingFunction.check_access(remote_ip):
-                result_dict["Ping Results"]["Remote"] = True
-                print(f"\n* Remote Device is up after soft reset *")
-                result_dict["status"] = "PASS"
-            else:
-                result_dict["Ping Results"]["Remote"] = False
+        print(f"\n* Local Device is up after soft reset *")
+        print(f"\n--- Pinging remote IP: {remote_ip}")
+        if pingFunction.check_access(remote_ip):
+            result_dict["Ping Results"]["Remote"] = True
+            print(f"\n* Remote Device is up after soft reset *")
+            result_dict["status"] = "PASS"
         else:
-            result_dict["Ping Results"]["Local"] = False
+            result_dict["Ping Results"]["Remote"] = False
+    else:
+        result_dict["Ping Results"]["Local"] = False
 
-    def append_result_to_json(result, filename="iteration_results.json"):
-        """
-        Reads a JSON file, appends a new result, and writes it back.
-        """
-        try:
-            with open(filename, "r") as f:
-                json_data = json.load(f)
-            if not isinstance(json_data, dict) or "iterations" not in json_data:
-                json_data = {"iterations": []}
-        except (FileNotFoundError, json.JSONDecodeError):
+
+def append_result_to_json(result, filename="iteration_results.json"):
+    """
+    Reads a JSON file, appends a new result, and writes it back.
+    """
+    try:
+        with open(filename, "r") as f:
+            json_data = json.load(f)
+        if not isinstance(json_data, dict) or "iterations" not in json_data:
             json_data = {"iterations": []}
+    except (FileNotFoundError, json.JSONDecodeError):
+        json_data = {"iterations": []}
 
-        json_data["iterations"].append(result)
+    json_data["iterations"].append(result)
 
-        with open(filename, "w") as f:
-            json.dump(json_data, f, indent=4)
+    with open(filename, "w") as f:
+        json.dump(json_data, f, indent=4)
 
-        print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}")
+    print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}")
 
-    # Compose test result summary
-    iteration_result = {
-        "test": "test_vlan",
-        "status": "FAIL",
-        "Local IP": local_ip,
-        "Remote IP": remote_ip,
-        "Ping Results": {
-            "Local": False,
-            "Remote": False
+
+def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None):
+    print("\n****************************************************")
+    print(f"Local IP Address: {local_ip}")
+    print(f"Remote IP Address: {remote_ip}")
+    print("****************************************************")
+    for i in range(3):
+
+        print(f"\n=============== STARTING ITERATION {i + 1}/3 SSH SOft Reset ===============")
+        test_iteration_result = {
+            "test": "test_vlan",
+            "status": "FAIL",
+            "Local IP": local_ip,
+            "Remote IP": remote_ip,
+            "Ping Results": {
+                "Local": False,
+                "Remote": False
+            }
         }
-    }
+        try:
+            ssh_netmiko.runcommand(local_ip, "/etc/init.d/network reload &")
+            print("Network reload started in background")
+            time.sleep(2)
+        except Exception as e:
 
-    print("Test Result to append to JSON:")
-    print(iteration_result)
+            print(f"SSH connection broke as expected: {e}")
 
-    perform_ping_check(local_ip, remote_ip, iteration_result)
+        print("Waiting for network services to reload...")
+        time.sleep(15)  # Initial wait for network reload
 
-    append_result_to_json(iteration_result)
+        # Compose test result summary
+        print(f"=============== FINISHED ITERATION {i + 1}/3 ===============\n")
+        print(test_iteration_result)
+
+        perform_ping_check(local_ip, remote_ip, test_iteration_result)
+
+        append_result_to_json(test_iteration_result)
 
 
 def warn(*args, **kwargs):
     pass
+
 
 warnings.warn = warn
