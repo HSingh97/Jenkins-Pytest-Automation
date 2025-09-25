@@ -193,8 +193,8 @@ pipeline {
                         <h2>Test Results</h2>
                         <table>
                             <tr>
-                                <th>Iteration</th>
-                                <th>Status</th>
+                                <th>${Iteration}</th>
+                                <th>${Status}</th>
                             </tr>
                     """
 
