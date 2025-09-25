@@ -67,7 +67,7 @@ def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None):
         "Ping Results": {
             "Local": False,
             "Remote": False
-        }\
+        }
     }
     
 
