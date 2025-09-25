@@ -79,7 +79,6 @@ pipeline {
                     def buildParams = [
                         "Local IP Address": params['Local IP Address'],
                         "Remote IP Address": params['Remote IP Address'],
-                        "Radio" : params['Radio'],
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
@@ -194,8 +193,7 @@ pipeline {
                         <h2>Test Results</h2>
                         <table>
                             <tr>
-                                <th>VLAN</th>
-                                <th>VLAN ID</th>
+                                <th>Iteration</th>
                                 <th>Status</th>
                             </tr>
                     """
