@@ -9,12 +9,6 @@ def archiveArtifacts(pattern) {
 pipeline {
     agent { node { label "${TARGET_STAND}"} }
 
-    parameters {
-        string(name: 'Local IP Address', defaultValue: '192.168.1.56')
-        string(name: 'Remote IP Address', defaultValue: '192.168.1.15')
-        string(name: 'Iterations', defaultValue: '1')
-    }
-
     stages {
         stage('Prepare tests') {
             steps {
@@ -35,25 +29,30 @@ pipeline {
                 }
             }
         }
-
         stage('Soft Reset Testing') {
             steps {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
-                    def iterations = params['Iterations']
 
-                    sh "echo [] > iteration_results.json"
+
+                    echo "✅ Cleared old workspace"
+
+                    echo "----------------------------------------"
+                    echo "Testing Soft Reset"
+                    echo "----------------------------------------"
+
+                    sh "echo [] > iteration_results.json"  // Initialize JSON array
 
                     sh """
                         python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
-                        --local-ip '${localIP}' --remote-ip '${remoteIP}' --iterations '${iterations}'
+                        --local-ip '${localIP}' --remote-ip '${remoteIP}'
                     """
                 }
             }
         }
 
-        stage('Generate Report') {
+            stage('Generate Report') {
             steps {
                 script {
                     def localIP = params['Local IP Address']
@@ -199,12 +198,6 @@ pipeline {
                             </tr>
                     """
 
-                    def rows = jsonReport.iterations.collectWithIndex { iter, idx ->
-                        def statusClass = iter.status == 'PASS' ? 'pass' : 'fail'
-                        return "<tr><td>${idx+1}</td><td class='${statusClass}'>${iter.status}</td></tr>"
-                    }.join('\n')
-
-                    htmlContent += rows
                     htmlContent += """
                         </table>
                     </body>
@@ -215,6 +208,8 @@ pipeline {
                 }
             }
         }
+
+
     }
     post {
         always {
@@ -255,7 +250,6 @@ pipeline {
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
 
                 echo "Sending email to: ${userEmail}"
-
 
                 // Send email notification
                 emailext(
