@@ -79,6 +79,7 @@ def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None, iter
                 "Remote": False
             }
         }
+
         try:
             ssh_netmiko.runcommand(local_ip, "/etc/init.d/network reload &")
             print("Network reload started in background")
