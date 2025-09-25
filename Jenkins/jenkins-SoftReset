@@ -31,7 +31,7 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
-                    sh "pip3 install -r utilities/requirements.txt"
+
                 }
             }
         }
