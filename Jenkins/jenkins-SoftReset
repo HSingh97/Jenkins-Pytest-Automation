@@ -191,6 +191,7 @@ pipeline {
                                 <td class="${statusClass}">${iteration.status}</td>
                             </tr>
                         """
+
                     }
 
                     htmlContent += """

@@ -95,7 +95,6 @@ def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None):
         perform_ping_check(local_ip, remote_ip, test_iteration_result)
         append_result_to_json(test_iteration_result)
 
-
 # ---------------- Pytest Fixtures ----------------
 def warn(*args, **kwargs):
     pass
