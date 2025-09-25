@@ -25,7 +25,7 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
-                    sh "pip install -r utilities/requirements.txt"
+                    sh "sh utilities/requirements.txt"
                 }
             }
         }
