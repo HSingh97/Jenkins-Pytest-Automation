@@ -69,7 +69,6 @@ def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None):
             "Remote": False
         }
     }
-    
 
     print("Test Result to append to JSON:")
     print(test_iteration_result)
