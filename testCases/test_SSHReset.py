@@ -47,14 +47,28 @@ def append_result_to_json(result, filename="iteration_results.json"):
     print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}")
 
 
-def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None):
+def wait_for_ping(ip, timeout=15, interval=3):
+    """Retry ping until success or timeout (instead of fixed sleep)."""
+    start = time.time()
+    while time.time() - start < timeout:
+        if pingFunction.check_access(ip):
+            print(f"✅ {ip} is reachable")
+            return True
+        print(f"⏳ Waiting for {ip} to respond...")
+        time.sleep(interval)
+    print(f"❌ Timeout: {ip} not reachable after {timeout}s")
+    return False
+
+
+def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None, iterations=3):
     print("\n****************************************************")
-    print(f"Local IP Address: {local_ip}")
+    print(f"\nLocal IP Address: {local_ip}")
     print(f"Remote IP Address: {remote_ip}")
     print("****************************************************")
-    for i in range(3):
 
-        print(f"\n=============== STARTING ITERATION {i + 1}/3 SSH SOft Reset ===============")
+    for i in range(iterations):
+
+        print(f"\n=============== STARTING ITERATION {i + 1}/{iterations} SSH Soft Reset ===============")
         test_iteration_result = {
             "test": "test_vlan",
             "status": "FAIL",
@@ -70,19 +84,27 @@ def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None):
             print("Network reload started in background")
             time.sleep(2)
         except Exception as e:
-
             print(f"SSH connection broke as expected: {e}")
 
-        print("Waiting for network services to reload...")
-        time.sleep(15)  # Initial wait for network reload
+        print("Waiting for network services to reload (up to 15s)...")
+        wait_for_ping(local_ip, timeout=15)
 
         # Compose test result summary
-        print(f"=============== FINISHED ITERATION {i + 1}/3 ===============\n")
+        print(f"=============== FINISHED ITERATION {i + 1}/{iterations} ===============\n")
         print(test_iteration_result)
 
         perform_ping_check(local_ip, remote_ip, test_iteration_result)
-
         append_result_to_json(test_iteration_result)
+
+
+# ---------------- Pytest CLI Options ----------------
+def pytest_addoption(parser):
+    parser.addoption("--iterations", action="store", default=3, help="Number of iterations for soft reset test")
+
+
+@pytest.fixture
+def iterations(request):
+    return int(request.config.getoption("--iterations"))
 
 
 def warn(*args, **kwargs):

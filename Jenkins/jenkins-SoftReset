@@ -29,24 +29,24 @@ pipeline {
                 }
             }
         }
+        parameters {
+            string(name: 'Local IP Address', defaultValue: '192.168.1.56')
+            string(name: 'Remote IP Address', defaultValue: '192.168.1.15')
+            string(name: 'Iterations', defaultValue: '1')
+        }
+
         stage('Soft Reset Testing') {
             steps {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
+                    def iterations = params['Iterations']
 
-
-                    echo "✅ Cleared old workspace"
-
-                    echo "----------------------------------------"
-                    echo "Testing Soft Reset"
-                    echo "----------------------------------------"
-
-                    sh "echo [] > iteration_results.json"  // Initialize JSON array
+                    sh "echo [] > iteration_results.json"
 
                     sh """
                         python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
-                        --local-ip '${localIP}' --remote-ip '${remoteIP}'
+                        --local-ip '${localIP}' --remote-ip '${remoteIP}' --iterations '${iterations}'
                     """
                 }
             }
