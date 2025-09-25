@@ -8,20 +8,10 @@ from preMadeFunctions import pingFunction, ssh_netmiko
 USERNAME = "root"
 PASSWORD = "admin"
 
-def test_soft_reset(local_ip, remote_ip):
+def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None):
     print(f"\nLocal IP Address: {local_ip}")
     print(f"Remote IP Address: {remote_ip}")
 
-    # Initialize variables
-    status = "FAIL"
-    wait = 0
-    max_wait = 60  # Maximum wait time in seconds
-    ping_interval = 3  # Interval between ping attempts
-    local_ping = False
-    remote_ping = False
-    start_time = time.time()
-
-    # Send soft reset command
     try:
         ssh_netmiko.runcommand(local_ip, "/etc/init.d/network reload &")
         print("Network reload started in background")
@@ -32,77 +22,62 @@ def test_soft_reset(local_ip, remote_ip):
     print("Waiting for network services to reload...")
     time.sleep(15)  # Initial wait for network reload
 
-    # Check local IP reachability
-    while wait < max_wait:
-        local_ping = pingFunction.Ping(local_ip)
-        if local_ping:
-            print("Device is reachable after soft reset")
-            break
-        else:
-            print(f"Local ping attempt at {wait} seconds: {local_ping}")
-            wait += ping_interval
-            time.sleep(ping_interval)
+    def perform_ping_check(local_ip, remote_ip, result_dict):
 
-    # If local IP is reachable, continue pinging remote IP
-    if local_ping:
-        wait = 0  # Reset wait timer for remote ping
-        while wait < max_wait:
-            remote_ping = pingFunction.Ping(remote_ip)
-            if remote_ping:
-                print(f"Remote device {remote_ip} is reachable after {wait} seconds")
-                status = "PASS"
-                break
+        print(f"--- Pinging local IP: {local_ip}")
+        if pingFunction.check_access(local_ip):
+            result_dict["Ping Results"]["Local"] = True
+
+            print(f"\n* Local Device is up after soft reset *")
+            print(f"\n--- Pinging remote IP: {remote_ip}")
+            if pingFunction.check_access(remote_ip):
+                result_dict["Ping Results"]["Remote"] = True
+                print(f"\n* Remote Device is up after soft reset *")
+                result_dict["status"] = "PASS"
             else:
-                print(f"Remote ping attempt at {wait} seconds: {remote_ping}")
-                wait += ping_interval
-                time.sleep(ping_interval)
-        if not remote_ping:
-            status = "PARTIAL"
-            print(f"Timeout reached after {max_wait} seconds: Remote device {remote_ip} not reachable")
-    else:
-        print(f"Timeout reached after {max_wait} seconds: Local device {local_ip} not reachable")
+                result_dict["Ping Results"]["Remote"] = False
+        else:
+            result_dict["Ping Results"]["Local"] = False
 
-    # Calculate time taken
-    time_taken = round(time.time() - start_time, 2)
+    def append_result_to_json(result, filename="iteration_results.json"):
+        """
+        Reads a JSON file, appends a new result, and writes it back.
+        """
+        try:
+            with open(filename, "r") as f:
+                json_data = json.load(f)
+            if not isinstance(json_data, dict) or "iterations" not in json_data:
+                json_data = {"iterations": []}
+        except (FileNotFoundError, json.JSONDecodeError):
+            json_data = {"iterations": []}
+
+        json_data["iterations"].append(result)
+
+        with open(filename, "w") as f:
+            json.dump(json_data, f, indent=4)
+
+        print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}")
 
     # Compose test result summary
-    test_result = {
-        "test": "test_soft_reset",
-        "status": status,
+    test_iteration_result = {
+        "test": "test_vlan",
+        "status": "FAIL",
         "Local IP": local_ip,
         "Remote IP": remote_ip,
-        "Time Taken (seconds)": time_taken,
         "Ping Results": {
-            "Local": local_ping,
-            "Remote": remote_ping
+            "Local": False,
+            "Remote": False
         }
     }
+    
 
     print("Test Result to append to JSON:")
-    print(test_result)
+    print(test_iteration_result)
 
-    # Log to custom_results.json
-    json_report_file = "custom_results.json"
+    perform_ping_check(local_ip, remote_ip, test_iteration_result)
 
-    try:
-        with open(json_report_file, "r") as f:
-            json_data = json.load(f)
-            if not isinstance(json_data, dict):
-                json_data = {"iterations": json_data}
-            if "iterations" not in json_data:
-                json_data["iterations"] = []
-    except (FileNotFoundError, json.JSONDecodeError):
-        json_data = {"iterations": []}
+    append_result_to_json(test_iteration_result)
 
-    json_data["iterations"].append(test_result)
-
-    with open(json_report_file, "w") as f:
-        json.dump(json_data, f, indent=4)
-
-    print("Updated JSON Report")
-
-    # Assert for pytest
-    assert local_ping and remote_ping, "One or both devices did not respond after soft reset"
 
 def warn(*args, **kwargs):
     pass

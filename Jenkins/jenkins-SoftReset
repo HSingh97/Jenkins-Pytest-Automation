@@ -1,0 +1,188 @@
+import jenkins.model.Jenkins
+
+// Functions
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
+// Main Pipeline
+pipeline {
+    agent { node { label "${TARGET_STAND}"} }
+
+    stages {
+        stage('Prepare tests') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "--- TARGET STAND: ${TARGET_STAND}"
+                    echo "----------------------------------------"
+                }
+            }
+        }
+        stage('Install Python Dependencies') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "Installing Dependencies"
+                    echo "----------------------------------------"
+                    sh "pip install -r utilities/requirements.txt"
+                }
+            }
+        }
+        stage('Soft Reset Testing') {
+            steps {
+                script {
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
+
+
+                    echo "✅ Cleared old workspace"
+
+                    echo "----------------------------------------"
+                    echo "Testing Soft Reset"
+                    echo "----------------------------------------"
+
+                    sh "echo [] > iteration_results.json"  // Initialize JSON array
+
+                    sh """
+                        python3.10 -m pytest -v -s testCases/test_soft_reset.py::test_soft_reset \
+                        --local-ip '${localIP}' --remote-ip '${remoteIP}'
+                    """
+                }
+            }
+        }
+        stage('Generate Report') {
+            steps {
+                script {
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
+                    sh "ssh-keygen -R ${localIP} || true"
+                    sh "ssh-keygen -R ${remoteIP} || true"
+
+                    def local_fw_version = "N/A"
+                    def remote_fw_version = "N/A"
+
+                    try {
+                        local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
+                    } catch (Exception e) {
+                        echo "⚠️ Failed to get local FW version from ${localIP}: ${e.message}"
+                    }
+
+                    try {
+                        remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
+                    } catch (Exception e) {
+                        echo "⚠️ Failed to get remote FW version from ${remoteIP}: ${e.message}"
+                    }
+
+                    def jsonReport = readJSON file: 'iteration_results.json'
+                    def buildParams = [
+                        "Local IP Address": params['Local IP Address'],
+                        "Remote IP Address": params['Remote IP Address'],
+                        "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
+                    ]
+
+                    def istZone = TimeZone.getTimeZone("Asia/Kolkata")
+                    def istDate = Calendar.getInstance(istZone).getTime()
+                    def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
+
+                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+                    def pipelineName = env.JOB_NAME
+
+                    def htmlContent = """
+                        <img src="${companyLogoUrl}" alt="Company Logo">
+                        <h1>Automated Test Report</h1>
+                        <h2>Pipeline: ${pipelineName}</h2>
+                        <p>Date & Time: ${currentDateTime}</p>
+                        <h3>Build Parameters</h3>
+                        <pre>
+                            ${buildParams.collect { "    ${it.key}    ${it.value}" }.join('\n')}
+                        </pre>
+                        <h3>Test Results</h3>
+                        <pre>
+                            Test    Local Ping    Remote Ping    Status
+                            ${jsonReport.iterations.collect { result ->
+                                "    ${result.test}    ${result.Ping_Results.Local ? '✅ PASS' : '❌ FAIL'}    ${result.Ping_Results.Remote ? '✅ PASS' : '❌ FAIL'}    ${result.status == 'PASS' ? '✅ PASS' : result.status == 'PARTIAL' ? '⚠️ PARTIAL' : '❌ FAIL'}"
+                            }.join('\n')}
+                        </pre>
+                    """
+
+                    writeFile file: 'report.html', text: htmlContent
+                }
+            }
+        }
+    }
+    post {
+        always {
+            publishHTML (target: [
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: '.',
+                reportFiles: 'report.html',
+                reportName: 'Test Report'
+            ])
+            archiveArtifacts 'iteration_results.json,report.html'
+            echo "-----------------------------------------"
+            echo 'Script Done!'
+            echo "-----------------------------------------"
+            script {
+                def buildCauses = currentBuild.getBuildCauses()
+                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+
+                def buildUserName = userCause?.userName ?: "Unknown User"
+                def buildUserId = userCause?.userId ?: "unknown"
+
+                echo "Build started by: ${buildUserName} (${buildUserId})"
+
+                // Define a mapping of user IDs to emails
+                def userEmails = [
+                    "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@senao.com",
+                    "sandeep": "sandeep.manchikanti@senao.com",
+                    "sampath": "sampath.marella@senao.com",
+                    "jayanth": "jayanth.munnaluru@senao.com",
+                    "srilatha": "srilatha.tadiboina@senao.com",
+                    "phani": "phani.darla@senao.com",
+                    "dinesh": "dinesh.reddy@senao.com"
+                ]
+
+                // Get email from predefined mapping, else use default
+                def userEmail = userEmails.get(buildUserId, "harmanjot.singh@senao.com")
+
+                echo "Sending email to: ${userEmail}"
+
+                // Send email notification
+                emailext(
+                    subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    body: """
+                        <html>
+                            <body>
+                                <h2>Jenkins Build Notification</h2>
+                                <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
+                                <p><strong>Status:</strong> ${currentBuild.currentResult}</p>
+                                <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
+                                <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                                <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                                <hr>
+                                <p>Jenkins Automated Notification</p>
+                            </body>
+                        </html>
+                    """,
+                    to: userEmail,
+                    mimeType: 'text/html',
+                    attachmentsPattern: 'report.html'  // Only attach, do not embed
+                )
+            }
+        }
+        success {
+            echo "-----------------------------------------"
+            echo 'Script Success'
+            echo "-----------------------------------------"
+        }
+        failure {
+            echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
+        }
+    }
+}
