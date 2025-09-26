@@ -1,5 +1,4 @@
 import jenkins.model.Jenkins
-import groovy.json.JsonSlurper
 
 // Functions
 def archiveArtifacts(pattern) {
@@ -34,6 +33,7 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
+                    sh "sh utilities/requirements.txt"
                 }
             }
         }
@@ -53,14 +53,17 @@ pipeline {
                     sh "echo [] > iteration_results.json"  // Initialize JSON array
 
                     for (int i = 1; i <= numIterations; i++) {
-                        echo "Starting Iteration ${i}/${numIterations}"
+                        echo "--------------------------------------------------------------"
+                        echo " Starting Iteration ${i}/${numIterations}"
+                        echo "--------------------------------------------------------------"
+
                         sh """
                             python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
                             --local-ip '${localIP}' --remote-ip '${remoteIP}'
                         """
 
                         // Read current JSON, set iteration for the last entry, and rewrite
-                        def jsonSlurper = new JsonSlurper()
+                        def jsonSlurper = new groovy.json.JsonSlurper()
                         def jsonText = readFile('iteration_results.json')
                         if (jsonText.trim()) {
                             def jsonData = jsonSlurper.parseText(jsonText)
@@ -75,7 +78,6 @@ pipeline {
                 }
             }
         }
-
         stage('Generate Report') {
             steps {
                 script {
@@ -100,14 +102,13 @@ pipeline {
                     }
 
                     def jsonReport = readJSON file: 'iteration_results.json'
-                    echo "JSON Report: ${jsonReport}" // Debugging output
                     def buildParams = [
                         "Local IP Address": params['Local IP Address'],
                         "Remote IP Address": params['Remote IP Address'],
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
-                    // Use current date and time (September 26, 2025)
+                    // Use current date and time (12:23 PM IST, September 26, 2025)
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
@@ -163,7 +164,7 @@ pipeline {
                                 border-collapse: collapse;
                                 margin-top: 15px;
                                 background-color: #fff;
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                                box-shadow: 0 2px 5px rgba(0,0,0,0.05);
                             }
                             th, td {
                                 padding: 12px 15px;
@@ -254,7 +255,6 @@ pipeline {
 
                 // Define a mapping of user IDs to emails (update as needed)
                 def userEmails = [
-                    "puneet": "puneet.sharma@senao.com",
                     "harman": "harmanjot.singh@senao.com",
                     "mahesh": "mahesh.battala@senao.com",
                     "sandeep": "sandeep.manchikanti@senao.com",
@@ -266,7 +266,7 @@ pipeline {
                 ]
 
                 // Get email from predefined mapping, else use default
-                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+                def userEmail = userEmails.get(buildUserId, "harmanjot.singh@senao.com")
 
                 echo "Sending email to: ${userEmail}"
 
@@ -300,6 +300,7 @@ pipeline {
             echo 'Script Success'
             echo "-----------------------------------------"
         }
+
         failure {
             echo "-----------------------------------------"
             echo 'Script Failure'

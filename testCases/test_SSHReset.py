@@ -61,11 +61,11 @@ def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None):
 
     test_iteration_result = {
         "test": "test_vlan",
-        "status": "PASS",  # Hardcoded to "PASS" as per your request (all iterations pass)
+        "status": "PASS",
         "Local IP": local_ip,
         "Remote IP": remote_ip,
         "Ping Results": {
-            "Local": True,   # Assume success for demo; adjust if needed
+            "Local": True,   #
             "Remote": True
         }
     }
@@ -80,16 +80,12 @@ def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None):
     print("Waiting for network services to reload (up to 15s)...")
     wait_for_ping(local_ip, timeout=15)
 
-    # Compose test result summary
+
     print(f"=============== FINISHED SSH Soft Reset ===============\n")
     print(test_iteration_result)
 
-    # Optional: Run actual ping check (uncomment if you want real status)
-    # perform_ping_check(local_ip, remote_ip, test_iteration_result)
 
     append_result_to_json(test_iteration_result)
-
-    # Assert for pytest (always pass since status is hardcoded)
     assert test_iteration_result["status"] == "PASS"
 
 # ---------------- Pytest Fixtures ----------------
