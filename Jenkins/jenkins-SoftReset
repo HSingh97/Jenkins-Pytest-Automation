@@ -7,6 +7,14 @@ def archiveArtifacts(pattern) {
 
 // Main Pipeline
 pipeline {
+    // Define parameters
+    parameters {
+        string(name: 'Local IP Address', defaultValue: '192.168.1.56', description: 'Local IP Address')
+        string(name: 'Remote IP Address', defaultValue: '192.168.1.15', description: 'Remote IP Address')
+        string(name: 'NUM_ITERATIONS', defaultValue: '3', description: 'Number of iterations to run')
+        string(name: 'TARGET_STAND', defaultValue: 'default-stand', description: 'Target stand label')
+    }
+
     agent { node { label "${TARGET_STAND}" } }
 
     stages {
@@ -33,6 +41,7 @@ pipeline {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
+                    def numIterations = params['NUM_ITERATIONS'].toInteger()
 
                     echo "✅ Cleared old workspace"
 
@@ -42,10 +51,13 @@ pipeline {
 
                     sh "echo [] > iteration_results.json"  // Initialize JSON array
 
-                    sh """
-                        python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
-                        --local-ip '${localIP}' --remote-ip '${remoteIP}'
-                    """
+                    for (int i = 1; i <= numIterations; i++) {
+                        echo "Starting Iteration ${i}/${numIterations}"
+                        sh """
+                            python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
+                            --local-ip '${localIP}' --remote-ip '${remoteIP}' --iteration=${i}
+                        """
+                    }
                 }
             }
         }
@@ -81,7 +93,7 @@ pipeline {
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
-                    // Use current date and time (06:23 PM IST, September 25, 2025)
+                    // Use current date and time (11:47 AM IST, September 26, 2025)
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
