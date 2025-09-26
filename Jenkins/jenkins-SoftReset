@@ -57,22 +57,33 @@ pipeline {
                         echo " Starting Iteration ${i}/${numIterations}"
                         echo "--------------------------------------------------------------"
 
-                        sh """
-                            python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
-                            --local-ip '${localIP}' --remote-ip '${remoteIP}'
-                        """
+                        try {
+                            sh """
+                                python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
+                                --local-ip '${localIP}' --remote-ip '${remoteIP}'
+                            """
+                        } catch (Exception e) {
+                            echo "⚠️ Iteration ${i} failed: ${e.message}"
+                            // Continue to next iteration despite failure
+                        }
 
                         // Read current JSON, set iteration for the last entry, and rewrite
                         def jsonSlurper = new groovy.json.JsonSlurper()
                         def jsonText = readFile('iteration_results.json')
                         if (jsonText.trim()) {
-                            def jsonData = jsonSlurper.parseText(jsonText)
-                            if (jsonData.iterations && jsonData.iterations.size() > 0) {
-                                def lastIteration = jsonData.iterations.last()
-                                lastIteration.iteration = i
-                                writeFile file: 'iteration_results.json', text: groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(jsonData))
-                                echo "Updated last iteration to ${i} in JSON"
+                            try {
+                                def jsonData = jsonSlurper.parseText(jsonText)
+                                if (jsonData.iterations && jsonData.iterations.size() > 0) {
+                                    def lastIteration = jsonData.iterations.last()
+                                    lastIteration.iteration = i
+                                    writeFile file: 'iteration_results.json', text: groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(jsonData))
+                                    echo "Updated last iteration to ${i} in JSON"
+                                }
+                            } catch (Exception e) {
+                                echo "⚠️ Failed to update iteration ${i} in JSON: ${e.message}"
                             }
+                        } else {
+                            echo "⚠️ iteration_results.json is empty after iteration ${i}"
                         }
                     }
                 }
@@ -108,7 +119,7 @@ pipeline {
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
-                    // Use current date and time (12:23 PM IST, September 26, 2025)
+                    // Use current date and time (12:30 PM IST, September 26, 2025)
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
