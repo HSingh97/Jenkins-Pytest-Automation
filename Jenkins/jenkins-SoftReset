@@ -33,97 +33,6 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
-
-                }
-            }
-        }
-        stage('Soft Reset Testing') {
-            steps {
-                script {
-                    def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
-                    def numIterations = params['NUM_ITERATIONS'].toInteger()
-
-                    echo "✅ Cleared old workspace"
-
-                    echo "----------------------------------------"
-                    echo "Testing Soft Reset"
-                    echo "----------------------------------------"
-
-                    sh "echo [] > iteration_results.json"  // Initialize JSON array
-
-                    for (int i = 1; i <= numIterations; i++) {
-                        echo "--------------------------------------------------------------"
-                        echo " Starting Iteration ${i}/${numIterations}"
-                        echo "--------------------------------------------------------------"
-
-                        try {
-                            sh """
-                                python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
-                                --local-ip '${localIP}' --remote-ip '${remoteIP}'
-                            """
-                        } catch (Exception e) {
-                            echo "⚠️ Iteration ${i} failed: ${e.message}"
-                            // Continue to next iteration despite failure
-                        }
-
-                        // Read current JSON, set iteration for the last entry, and rewrite
-                        def jsonSlurper = new groovy.json.JsonSlurper()
-                        def jsonText = readFile('iteration_results.json')
-                        if (jsonText.trim()) {
-                            try {
-                                def jsonData = jsonSlurper.parseText(jsonText)
-                                if (jsonData.iterations && jsonData.iterations.size() > 0) {
-                                    def lastIteration = jsonData.iterations.last()
-                                    lastIteration.iteration = i
-                                    writeFile file: 'iteration_results.json', text: groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(jsonData))
-                                    echo "Updated last iteration to ${i} in JSON"
-                                }
-                            } catch (Exception e) {
-                                echo "⚠️ Failed to update iteration ${i} in JSON: ${e.message}"
-                            }
-                        } else {
-                            echo "⚠️ iteration_results.json is empty after iteration ${i}"
-                        }
-                    }
-                }
-            }
-        }
-        import jenkins.model.Jenkins
-
-// Functions
-def archiveArtifacts(pattern) {
-    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
-}
-
-// Main Pipeline
-pipeline {
-    // Define parameters
-    parameters {
-        string(name: 'Local IP Address', defaultValue: '192.168.1.56', description: 'Local IP Address')
-        string(name: 'Remote IP Address', defaultValue: '192.168.1.15', description: 'Remote IP Address')
-        string(name: 'NUM_ITERATIONS', defaultValue: '3', description: 'Number of iterations to run')
-        string(name: 'TARGET_STAND', defaultValue: 'default-stand', description: 'Target stand label')
-    }
-
-    agent { node { label "${TARGET_STAND}" } }
-
-    stages {
-        stage('Prepare tests') {
-            steps {
-                script {
-                    echo "----------------------------------------"
-                    echo "--- TARGET STAND: ${TARGET_STAND}"
-                    echo "----------------------------------------"
-                }
-            }
-        }
-        stage('Install Python Dependencies') {
-            steps {
-                script {
-                    echo "----------------------------------------"
-                    echo "Installing Dependencies"
-                    echo "----------------------------------------"
                 }
             }
         }
@@ -143,8 +52,15 @@ pipeline {
                     sh 'echo \'{"iterations": []}\' > iteration_results.json'  // Initialize JSON object properly
 
                     for (int i = 1; i <= numIterations; i++) {
-                        echo "Running iteration ${i}"
-                        sh "pytest -s test_SSHReset.py --local_ip ${localIP} --remote_ip ${remoteIP} --iteration ${i}"
+                        echo "--------------------------------------------------------------"
+                        echo " Starting Iteration ${i}/${numIterations}"
+                        echo "--------------------------------------------------------------"
+                        try {
+                            sh "python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset --local-ip ${localIP} --remote-ip ${remoteIP} --iteration ${i}"
+                        } catch (Exception e) {
+                            echo "⚠️ Iteration ${i} failed: ${e.message}"
+                            // Continue to next iteration despite failure
+                        }
                     }
                 }
             }
@@ -179,7 +95,7 @@ pipeline {
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
-                    // Use current date and time (12:30 PM IST, September 26, 2025)
+                    // Use current date and time
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
@@ -187,115 +103,50 @@ pipeline {
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
 
+                    // Original htmlContent definition restored exactly as provided
                     def htmlContent = """
-                    <html>
-                    <head>
-                        <title>Test Report</title>
-                        <style>
-                            body {
-                                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                                margin: 0;
-                                padding: 20px;
-                                background-color: #f9f9f9;
-                                color: #2c3e50;
-                            }
-                            .header {
-                                display: flex;
-                                justify-content: space-between;
-                                align-items: center;
-                                background-color: #fff;
-                                padding: 20px;
-                                border-bottom: 2px solid #e0e0e0;
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                            }
-                            .header img {
-                                height: 60px;
-                            }
-                            .header-info {
-                                text-align: right;
-                            }
-                            .header-info h1 {
-                                margin: 0;
-                                font-size: 24px;
-                            }
-                            .header-info p {
-                                margin: 5px 0;
-                                font-size: 14px;
-                                color: #555;
-                            }
-                            h2 {
-                                margin-top: 40px;
-                                font-size: 20px;
-                                color: #333;
-                                border-bottom: 2px solid #ddd;
-                                padding-bottom: 5px;
-                            }
-                            table {
-                                width: 100%;
-                                border-collapse: collapse;
-                                margin-top: 15px;
-                                background-color: #fff;
-                                box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-                            }
-                            th, td {
 
-                                padding: 12px 15px;
-                                border: 1px solid #ddd;
-                                text-align: left;
-                            }
-                            th {
-                                background-color: #2c3e50;
-                                color: white;
-                            }
-                            tr:nth-child(even) {
-                                background-color: #f4f4f4;
-                            }
-                            .pass {
-                                color: green;
-                                font-weight: bold;
-                            }
-                            .fail {
-                                color: red;
-                                font-weight: bold;
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="header">
-                            <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
-                            <div class="header-info">
-                                <h1>Automated Test Report</h1>
-                                <p><strong>Pipeline:</strong> ${pipelineName}</p>
-                                <p><strong>Date & Time:</strong> ${currentDateTime}</p>
-                            </div>
-                        </div>
-                        <h2>Build Parameters</h2>
-                        <table>
-                            ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
-                        </table>
-                        <h2>Test Results</h2>
-                        <table>
-                            <tr>
-                                <th>Iteration</th>
-                                <th>Status</th>
-                            </tr>
+
+
+
+                                Automated Test Report
+
+                                Pipeline: ${pipelineName}
+
+                                Date & Time: ${currentDateTime}
+
+
+
+
+
+                        Build Parameters
+
+
+
+                            ${buildParams.collect { "	${it.key}	${it.value}
+
+" }.join('\n')}
+
+                        Test Results
+
+                        	Iteration	Status
+
+
                     """
 
                     // Populate table with iteration data
                     jsonReport.iterations.each { iteration ->
                         def statusClass = iteration.status == "PASS" ? "pass" : "fail"
                         htmlContent += """
-                            <tr>
-                                <td>${iteration.iteration}</td>
-                                <td class="${statusClass}">${iteration.status}</td>
-                            </tr>
+                            	${iteration.iteration}	${iteration.status}
+
+
                         """
                     }
 
                     htmlContent += """
-                        </table>
-                    </body>
-                    </html>
+
+
                     """
 
                     writeFile file: 'report.html', text: htmlContent
@@ -346,19 +197,26 @@ pipeline {
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
                     body: """
-                        <html>
-                        <body>
-                            <h2 style="color:blue;">Jenkins Build Notification</h2>
-                            <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
-                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
-                                ${currentBuild.currentResult}</span></p>
-                            <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
-                            <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
-                            <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
-                            <br/>
-                            <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
-                        </body>
-                        </html>
+
+                            Jenkins Build Notification
+
+                            Build Name: ${currentBuild.fullDisplayName}
+
+                            Status:
+                                ${currentBuild.currentResult}
+
+                            Started By: ${buildUserName} (${buildUserId})
+
+                            Build URL: ${env.BUILD_URL}
+
+                            Console Output: ${env.BUILD_URL}console
+
+
+
+                            --
+Jenkins Automated Notification
+
+
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
@@ -375,9 +233,3 @@ pipeline {
 
         failure {
             echo "-----------------------------------------"
-            echo 'Script Failure'
-            echo "-----------------------------------------"
-        }
-    }
-}
-
