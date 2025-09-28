@@ -8,6 +8,10 @@ from preMadeFunctions import pingFunction, ssh_netmiko
 USERNAME = "root"
 PASSWORD = "admin"
 
+@pytest.fixture
+def iteration(request):
+    return request.config.getoption("--iteration")
+
 def perform_ping_check(local_ip, remote_ip, result_dict):
     print(f"--- Pinging local IP: {local_ip}")
     if pingFunction.check_access(local_ip):
@@ -53,21 +57,23 @@ def wait_for_ping(ip, timeout=15, interval=3):
     print(f"❌ Timeout: {ip} not reachable after {timeout}s")
     return False
 
-def test_soft_reset(local_ip, remote_ip):
+def test_soft_reset(local_ip, remote_ip, iteration, to=None):
     print("\n****************************************************")
     print(f"\nLocal IP Address: {local_ip}")
     print(f"Remote IP Address: {remote_ip}")
+    print(f"Iteration: {iteration}")
     print("****************************************************")
 
     test_iteration_result = {
-        "test": "test_vlan",
-        "status": "PASS",  # Hardcoded to "PASS" as per your request
+        "test": "soft_reset",
+        "status": "FAIL",
         "Local IP": local_ip,
         "Remote IP": remote_ip,
         "Ping Results": {
             "Local": False,
             "Remote": False
-        }
+        },
+        "iteration": int(iteration)  #Convert to integer for JSON serialization
     }
 
     try:
@@ -77,22 +83,19 @@ def test_soft_reset(local_ip, remote_ip):
     except Exception as e:
         print(f"SSH connection failed: {e}")
         test_iteration_result["SSH Error"] = str(e)
+        test_iteration_result["status"] = "FAIL"
 
     print("Waiting for network services to reload (up to 15s)...")
     wait_for_ping(local_ip, timeout=15)
 
-    # Always run ping check to update status (optional override of "PASS")
     perform_ping_check(local_ip, remote_ip, test_iteration_result)
 
-    # Ensure result is appended even if there's an error
     print(f"=============== FINISHED SSH Soft Reset ===============\n")
     print(test_iteration_result)
     append_result_to_json(test_iteration_result)
 
-    # Assert for pytest (always pass since status is set)
     assert test_iteration_result["status"] == "PASS" or "SSH Error" in test_iteration_result
 
-# ---------------- Pytest Fixtures ----------------
 def warn(*args, **kwargs):
     pass
 

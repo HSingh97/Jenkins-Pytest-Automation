@@ -33,7 +33,7 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
-                    sh "sh utilities/requirements.txt"
+
                 }
             }
         }
@@ -85,6 +85,66 @@ pipeline {
                         } else {
                             echo "⚠️ iteration_results.json is empty after iteration ${i}"
                         }
+                    }
+                }
+            }
+        }
+        import jenkins.model.Jenkins
+
+// Functions
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
+// Main Pipeline
+pipeline {
+    // Define parameters
+    parameters {
+        string(name: 'Local IP Address', defaultValue: '192.168.1.56', description: 'Local IP Address')
+        string(name: 'Remote IP Address', defaultValue: '192.168.1.15', description: 'Remote IP Address')
+        string(name: 'NUM_ITERATIONS', defaultValue: '3', description: 'Number of iterations to run')
+        string(name: 'TARGET_STAND', defaultValue: 'default-stand', description: 'Target stand label')
+    }
+
+    agent { node { label "${TARGET_STAND}" } }
+
+    stages {
+        stage('Prepare tests') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "--- TARGET STAND: ${TARGET_STAND}"
+                    echo "----------------------------------------"
+                }
+            }
+        }
+        stage('Install Python Dependencies') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "Installing Dependencies"
+                    echo "----------------------------------------"
+                }
+            }
+        }
+        stage('Soft Reset Testing') {
+            steps {
+                script {
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
+                    def numIterations = params['NUM_ITERATIONS'].toInteger()
+
+                    echo "✅ Cleared old workspace"
+
+                    echo "----------------------------------------"
+                    echo "Testing Soft Reset"
+                    echo "----------------------------------------"
+
+                    sh 'echo \'{"iterations": []}\' > iteration_results.json'  // Initialize JSON object properly
+
+                    for (int i = 1; i <= numIterations; i++) {
+                        echo "Running iteration ${i}"
+                        sh "pytest -s test_SSHReset.py --local_ip ${localIP} --remote_ip ${remoteIP} --iteration ${i}"
                     }
                 }
             }
@@ -319,3 +379,4 @@ pipeline {
         }
     }
 }
+
