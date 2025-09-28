@@ -123,9 +123,7 @@ pipeline {
 
 
 
-                            ${buildParams.collect { "	${it.key}	${it.value}
-
-" }.join('\n')}
+                            ${buildParams.collect { "\t${it.key}\t${it.value}\n" }.join('')}
 
                         Test Results
 
@@ -233,3 +231,8 @@ Jenkins Automated Notification
 
         failure {
             echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
+        }
+    }
+}
