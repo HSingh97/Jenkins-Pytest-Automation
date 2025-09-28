@@ -5,16 +5,7 @@ def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
-// Main Pipeline
 pipeline {
-    // Define parameters
-    parameters {
-        string(name: 'Local IP Address', defaultValue: '192.168.1.56', description: 'Local IP Address')
-        string(name: 'Remote IP Address', defaultValue: '192.168.1.15', description: 'Remote IP Address')
-        string(name: 'NUM_ITERATIONS', defaultValue: '3', description: 'Number of iterations to run')
-        string(name: 'TARGET_STAND', defaultValue: 'default-stand', description: 'Target stand label')
-    }
-
     agent { node { label "${TARGET_STAND}" } }
 
     stages {
@@ -24,6 +15,9 @@ pipeline {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${TARGET_STAND}"
                     echo "----------------------------------------"
+                    if (!params['Local IP Address'] || !params['Remote IP Address']) {
+                        error "Missing required parameters: Local IP Address or Remote IP Address"
+                    }
                 }
             }
         }
