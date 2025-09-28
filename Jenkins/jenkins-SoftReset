@@ -28,6 +28,7 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
+
                 }
             }
         }
@@ -44,17 +45,40 @@ pipeline {
                     echo "Testing Soft Reset"
                     echo "----------------------------------------"
 
-                    sh 'echo \'{"iterations": []}\' > iteration_results.json'  // Initialize JSON object properly
+                    sh "echo [] > iteration_results.json"  // Initialize JSON array
 
                     for (int i = 1; i <= numIterations; i++) {
                         echo "--------------------------------------------------------------"
                         echo " Starting Iteration ${i}/${numIterations}"
                         echo "--------------------------------------------------------------"
+
                         try {
-                            sh "python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset --local-ip ${localIP} --remote-ip ${remoteIP} --iteration ${i}"
+                            sh """
+                                python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
+                                --local-ip '${localIP}' --remote-ip '${remoteIP}'
+                            """
                         } catch (Exception e) {
                             echo "⚠️ Iteration ${i} failed: ${e.message}"
                             // Continue to next iteration despite failure
+                        }
+
+                        // Read current JSON, set iteration for the last entry, and rewrite
+                        def jsonSlurper = new groovy.json.JsonSlurper()
+                        def jsonText = readFile('iteration_results.json')
+                        if (jsonText.trim()) {
+                            try {
+                                def jsonData = jsonSlurper.parseText(jsonText)
+                                if (jsonData.iterations && jsonData.iterations.size() > 0) {
+                                    def lastIteration = jsonData.iterations.last()
+                                    lastIteration.iteration = i
+                                    writeFile file: 'iteration_results.json', text: groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(jsonData))
+                                    echo "Updated last iteration to ${i} in JSON"
+                                }
+                            } catch (Exception e) {
+                                echo "⚠️ Failed to update iteration ${i} in JSON: ${e.message}"
+                            }
+                        } else {
+                            echo "⚠️ iteration_results.json is empty after iteration ${i}"
                         }
                     }
                 }
@@ -256,26 +280,19 @@ pipeline {
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
                     body: """
-
-                            Jenkins Build Notification
-
-                            Build Name: ${currentBuild.fullDisplayName}
-
-                            Status:
-                                ${currentBuild.currentResult}
-
-                            Started By: ${buildUserName} (${buildUserId})
-
-                            Build URL: ${env.BUILD_URL}
-
-                            Console Output: ${env.BUILD_URL}console
-
-
-
-                            --
-Jenkins Automated Notification
-
-
+                        <html>
+                        <body>
+                            <h2 style="color:blue;">Jenkins Build Notification</h2>
+                            <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
+                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
+                                ${currentBuild.currentResult}</span></p>
+                            <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
+                            <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                            <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                            <br/>
+                            <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
+                        </body>
+                        </html>
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
