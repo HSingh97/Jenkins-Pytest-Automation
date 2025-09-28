@@ -36,7 +36,7 @@ pipeline {
                     def remoteIP = params['Remote IP Address']
 
                     def ResetCount = params.RESET_COUNT ?: 1
-                    echo "Number of reboot iterations: ${resetCount}"
+                    echo "Number of reboot iterations: ${ResetCount}"
 
 
                     echo "✅ Cleared old workspace"
