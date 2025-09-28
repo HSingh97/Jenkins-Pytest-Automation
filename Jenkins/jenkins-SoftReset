@@ -37,17 +37,20 @@ pipeline {
 
                     sh 'echo \'{"iterations": []}\' > iteration_results.json'  // Initialize JSON object properly
 
-                    for (int i = 1; i <= numIterations; i++) {
-                        echo "--------------------------------------------------------------"
-                        echo " Starting Iteration ${i}/${numIterations}"
-                        echo "--------------------------------------------------------------"
+                    for (int i = 1; i <= numIterations.toInteger(); i++) {
+                        echo "Running soft reset test iteration ${i}"
                         try {
-                            sh "python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset --local-ip ${localIP} --remote-ip ${remoteIP} --iteration ${i}"
+                            sh """
+                                pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
+                                --local-ip '${localIP}' --remote-ip '${remoteIP}' --iteration '${i}' \
+                                2>&1 | tee artifacts/soft_reset_test_${i}.log
+                            """
                         } catch (Exception e) {
-                            echo "⚠️ Iteration ${i} failed: ${e.message}"
-                            // Continue to next iteration despite failure
+                            echo "Soft reset test iteration ${i} failed: ${e.message}"
                         }
                     }
+
+                    archiveArtifacts 'artifacts/*.log'
                 }
             }
         }
