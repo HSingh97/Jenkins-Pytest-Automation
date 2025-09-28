@@ -197,7 +197,7 @@ pipeline {
 
                     jsonReport.iterations.each { result ->
                         def iteration = result.iteration ?: "-"
-                        def status = result.status == "PASS" ? "<span class='pass'>✅ PASS</span>" : "<span class='fail'>❌ FAIL</span>"
+                        def status = result.status == "PASS" ? "<span class='pass'>PASS</span>" : "<span class='fail'>FAIL</span>"
 
                         htmlContent += """
                             <tr>
@@ -232,7 +232,7 @@ pipeline {
             echo "-----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
-                      script {
+            script {
                 def buildCauses = currentBuild.getBuildCauses()
                 def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
 
