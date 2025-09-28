@@ -1,12 +1,7 @@
-import jenkins.model.Jenkins
-
-// Functions
-def archiveArtifacts(pattern) {
-    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
-}
+// Main Pipeline
 
 pipeline {
-    agent { node { label "${TARGET_STAND}" } }
+    agent { node { label "${TARGET_STAND}"} }
 
     stages {
         stage('Prepare tests') {
@@ -15,11 +10,8 @@ pipeline {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${TARGET_STAND}"
                     echo "----------------------------------------"
-                    if (!params['Local IP Address'] || !params['Remote IP Address']) {
-                        error "Missing required parameters: Local IP Address or Remote IP Address"
-                    }
-                }
-            }
+      	        }
+      	    }
         }
         stage('Install Python Dependencies') {
             steps {
