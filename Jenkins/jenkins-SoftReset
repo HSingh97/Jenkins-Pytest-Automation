@@ -60,8 +60,6 @@ pipeline {
                             echo "Reset test iteration ${i} failed: ${e.message}"
                         }
                     }
-
-                    archiveArtifacts 'artifacts/*.log'
                 }
             }
         }

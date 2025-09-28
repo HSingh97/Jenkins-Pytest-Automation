@@ -28,7 +28,7 @@ def perform_ping_check(local_ip, remote_ip, result_dict):
 
 
 def append_result_to_json(result, filename="iteration_results.json"):
-    """Reads a JSON file, appends a new result, and writes it back."""
+
     try:
         with open(filename, "r") as f:
             json_data = json.load(f)
@@ -52,9 +52,9 @@ def wait_for_ping(ip, timeout=15, interval=3):
         if pingFunction.check_access(ip):
             print(f"✅ {ip} is reachable")
             return True
-        print(f"⏳ Waiting for {ip} to respond...")
+        print(f"Waiting for {ip} to respond...")
         time.sleep(interval)
-    print(f"❌ Timeout: {ip} not reachable after {timeout}s")
+    print(f"Timeout: {ip} not reachable after {timeout}s")
     return False
 
 
