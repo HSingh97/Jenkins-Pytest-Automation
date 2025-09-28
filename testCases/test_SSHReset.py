@@ -58,17 +58,17 @@ def wait_for_ping(ip, timeout=15, interval=3):
     return False
 
 
-def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None):
-    iteration = int(os.getenv("ITERATION", 1))  # Jenkins sets this
+def test_soft_reset(local_ip, remote_ip, iter, local_ping=None, remote_ping=None):
+    #iteration = int(os.getenv("ITERATION", 1))  # Jenkins sets this
     print("\n****************************************************")
     print(f"\nLocal IP Address: {local_ip}")
     print(f"Remote IP Address: {remote_ip}")
-    print(f"Running Iteration: {iteration}")
+    print(f"Running Iteration: {iter}")
     print("****************************************************")
 
     test_iteration_result = {
-        "iteration": iteration,
-        "test": "test_vlan",
+        "iteration": iter,
+        "test": "test_reset",
         "status": "FAIL",
         "Local IP": local_ip,
         "Remote IP": remote_ip,

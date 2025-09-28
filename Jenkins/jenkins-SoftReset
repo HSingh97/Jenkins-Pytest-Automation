@@ -54,7 +54,7 @@ pipeline {
                             sh """
                                 pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
                                 --local-ip '${localIP}' --remote-ip '${remoteIP}' \
-                                2>&1 | tee artifacts/reset_test_${i}.log
+                                --iter ${i}
                             """
                         } catch (Exception e) {
                             echo "Reset test iteration ${i} failed: ${e.message}"
@@ -197,15 +197,17 @@ pipeline {
                             </tr>
                     """
 
-                    // Populate table with iteration data
-                    jsonReport.iterations.each { iteration ->
-                        def statusClass = iteration.status == "PASS" ? "pass" : "fail"
+                    jsonReport.iterations.each { result ->
+                        def iteration = result.iteration ?: "-"
+                        def status = result.status == "PASS" ? "<span class='pass'>✅ PASS</span>" : "<span class='fail'>❌ FAIL</span>"
+
                         htmlContent += """
                             <tr>
-                                <td>${iteration.iteration}</td>
-                                <td class="${statusClass}">${iteration.status}</td>
-                            </tr>
+                                <td>${iteration}</td>
+                                <td>${status}</td>
                         """
+
+                        htmlContent += "</tr>"
                     }
 
                     htmlContent += """
