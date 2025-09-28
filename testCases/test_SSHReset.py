@@ -8,7 +8,6 @@ from preMadeFunctions import pingFunction, ssh_netmiko
 USERNAME = "root"
 PASSWORD = "admin"
 
-@pytest.fixture
 def iteration(request):
     return request.config.getoption("--iteration")
 
