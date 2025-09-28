@@ -8,7 +8,6 @@ def archiveArtifacts(pattern) {
 // Main Pipeline
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
-
     stages {
         stage('Prepare tests') {
             steps {
@@ -19,6 +18,7 @@ pipeline {
                 }
             }
         }
+
         stage('Install Python Dependencies') {
             steps {
                 script {
@@ -28,11 +28,13 @@ pipeline {
                 }
             }
         }
+
         stage('Soft Reset Testing') {
             steps {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
+                    int total = params.NUM_ITERATION.toInteger()   // 🔹 Taken from parameter
 
                     echo "✅ Cleared old workspace"
 
@@ -40,12 +42,18 @@ pipeline {
                     echo "Testing Soft Reset"
                     echo "----------------------------------------"
 
-                    sh "echo [] > iteration_results.json"  // Initialize JSON array
+                    // Initialize results file
+                    sh "echo '{\"iterations\": []}' > iteration_results.json"
 
-                    sh """
-                        python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
-                        --local-ip '${localIP}' --remote-ip '${remoteIP}'
-                    """
+                    // Run tests in loop
+                    for (int i = 1; i <= total; i++) {
+                        echo ">>> Starting Iteration ${i} of ${total}"
+                        sh """
+                            export ITERATION=${i}
+                            python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
+                            --local-ip '${localIP}' --remote-ip '${remoteIP}'
+                        """
+                    }
                 }
             }
         }
@@ -81,8 +89,6 @@ pipeline {
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
-                    // Use current date and time (06:14 PM IST, September 25, 2025)
-                    // Use current date and time (06:23 PM IST, September 25, 2025)
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
@@ -218,58 +224,7 @@ pipeline {
             echo "-----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
-            script {
-                def buildCauses = currentBuild.getBuildCauses()
-                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
-
-                def buildUserName = userCause?.userName ?: "Unknown User"
-                def buildUserId = userCause?.userId ?: "unknown"
-
-                echo "Build started by: ${buildUserName} (${buildUserId})"
-
-                // Define a mapping of user IDs to emails (update as needed)
-                def userEmails = [
-                    "puneet": "puneet.sharma@senao.com",
-                    "harman": "harmanjot.singh@senao.com",
-                    "mahesh": "mahesh.battala@senao.com",
-                    "sandeep": "sandeep.manchikanti@senao.com",
-                    "sampath": "sampath.marella@senao.com",
-                    "jayanth": "jayanth.munnaluru@senao.com",
-                    "srilatha": "srilatha.tadiboina@senao.com",
-                    "phani": "phani.darla@senao.com",
-                    "dinesh": "dinesh.reddy@senao.com"
-                ]
-
-                // Get email from predefined mapping, else use default
-                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
-
-                echo "Sending email to: ${userEmail}"
-
-                // Send email notification
-                emailext(
-                    subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
-                    body: """
-                        <html>
-                        <body>
-                            <h2 style="color:blue;">Jenkins Build Notification</h2>
-                            <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
-                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
-                                ${currentBuild.currentResult}</span></p>
-                            <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
-                            <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
-                            <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
-                            <br/>
-                            <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
-                        </body>
-                        </html>
-                    """,
-                    to: userEmail,
-                    mimeType: 'text/html',
-                    attachmentsPattern: 'report.html'  // Only attach, do not embed
-                )
-            }
         }
-
         success {
             echo "-----------------------------------------"
             echo 'Script Success'

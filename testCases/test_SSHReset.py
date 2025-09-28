@@ -2,6 +2,7 @@ import time
 import warnings
 import pytest
 import json
+import os
 from testCases.conftest import local_ip
 from preMadeFunctions import pingFunction, ssh_netmiko
 
@@ -58,42 +59,37 @@ def wait_for_ping(ip, timeout=15, interval=3):
 
 
 def test_soft_reset(local_ip, remote_ip, local_ping=None, remote_ping=None):
-    total_iterations = 3  # Fixed 3 iterations
+    iteration = int(os.getenv("ITERATION", 1))  # Jenkins sets this
     print("\n****************************************************")
     print(f"\nLocal IP Address: {local_ip}")
     print(f"Remote IP Address: {remote_ip}")
+    print(f"Running Iteration: {iteration}")
     print("****************************************************")
 
-    for i in range(total_iterations):
-        print(f"\n=============== STARTING ITERATION {i + 1}/{total_iterations} SSH Soft Reset ===============")
-        test_iteration_result = {
-            "test": "test_vlan",
-            "status": "FAIL",
-            "Local IP": local_ip,
-            "Remote IP": remote_ip,
-            "Ping Results": {
-                "Local": False,
-                "Remote": False
-            }
+    test_iteration_result = {
+        "iteration": iteration,
+        "test": "test_vlan",
+        "status": "FAIL",
+        "Local IP": local_ip,
+        "Remote IP": remote_ip,
+        "Ping Results": {
+            "Local": False,
+            "Remote": False
         }
+    }
 
-        try:
-            ssh_netmiko.runcommand(local_ip, "/etc/init.d/network reload &")
-            print("Network reload started in background")
-            time.sleep(2)
-        except Exception as e:
-            print(f"SSH connection broke as expected: {e}")
+    try:
+        ssh_netmiko.runcommand(local_ip, "/etc/init.d/network reload &")
+        print("Network reload started in background")
+        time.sleep(2)
+    except Exception as e:
+        print(f"SSH connection broke as expected: {e}")
 
+    print("Waiting for network services to reload (up to 15s)...")
+    wait_for_ping(local_ip, timeout=15)
 
-        print("Waiting for network services to reload (up to 15s)...")
-        wait_for_ping(local_ip, timeout=15)
-
-        # Compose test result summary
-        print(f"=============== FINISHED ITERATION {i + 1}/{total_iterations} ===============\n")
-        print(test_iteration_result)
-
-        perform_ping_check(local_ip, remote_ip, test_iteration_result)
-        append_result_to_json(test_iteration_result)
+    perform_ping_check(local_ip, remote_ip, test_iteration_result)
+    append_result_to_json(test_iteration_result)
 
 
 # ---------------- Pytest Fixtures ----------------
