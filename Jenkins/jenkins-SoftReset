@@ -1,16 +1,13 @@
 import jenkins.model.Jenkins
 
 // Functions
-
 def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
-
 // Main Pipeline
-
 pipeline {
-    agent { node { label "${TARGET_STAND}"} }
+    agent { node { label "${TARGET_STAND}" } }
 
     stages {
         stage('Prepare tests') {
@@ -19,8 +16,8 @@ pipeline {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${TARGET_STAND}"
                     echo "----------------------------------------"
-      	        }
-      	    }
+                }
+            }
         }
         stage('Install Python Dependencies') {
             steps {
@@ -28,7 +25,6 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
-
                 }
             }
         }
@@ -37,7 +33,6 @@ pipeline {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
-                    def numIterations = params['NUM_ITERATIONS'].toInteger()
 
                     echo "✅ Cleared old workspace"
 
@@ -46,18 +41,15 @@ pipeline {
                     echo "----------------------------------------"
 
                     sh "echo [] > iteration_results.json"  // Initialize JSON array
-                    for (softreset in SoftReset) {
-                        echo "--------------------------------------------------------------"
-                        echo " Testing VLAN : ${softreset}"
-                        echo "--------------------------------------------------------------"
 
-                        sh """
-                                python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
-                                --local-ip '${localIP}' --remote-ip '${remoteIP}'
-                        """
-                    }
+                    sh """
+                        python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
+                        --local-ip '${localIP}' --remote-ip '${remoteIP}'
+                    """
                 }
             }
+        }
+
         stage('Generate Report') {
             steps {
                 script {
@@ -82,13 +74,15 @@ pipeline {
                     }
 
                     def jsonReport = readJSON file: 'iteration_results.json'
+                    echo "JSON Report: ${jsonReport}" // Debugging output
                     def buildParams = [
                         "Local IP Address": params['Local IP Address'],
                         "Remote IP Address": params['Remote IP Address'],
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
-                    // Use current date and time (12:30 PM IST, September 26, 2025)
+                    // Use current date and time (06:14 PM IST, September 25, 2025)
+                    // Use current date and time (06:23 PM IST, September 25, 2025)
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
@@ -144,7 +138,7 @@ pipeline {
                                 border-collapse: collapse;
                                 margin-top: 15px;
                                 background-color: #fff;
-                                box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
                             }
                             th, td {
                                 padding: 12px 15px;
@@ -235,6 +229,7 @@ pipeline {
 
                 // Define a mapping of user IDs to emails (update as needed)
                 def userEmails = [
+                    "puneet": "puneet.sharma@senao.com",
                     "harman": "harmanjot.singh@senao.com",
                     "mahesh": "mahesh.battala@senao.com",
                     "sandeep": "sandeep.manchikanti@senao.com",
@@ -246,7 +241,7 @@ pipeline {
                 ]
 
                 // Get email from predefined mapping, else use default
-                def userEmail = userEmails.get(buildUserId, "harmanjot.singh@senao.com")
+                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
 
                 echo "Sending email to: ${userEmail}"
 
@@ -280,11 +275,9 @@ pipeline {
             echo 'Script Success'
             echo "-----------------------------------------"
         }
-
         failure {
             echo "-----------------------------------------"
             echo 'Script Failure'
             echo "-----------------------------------------"
         }
     }
-}
