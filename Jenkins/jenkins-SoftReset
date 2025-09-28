@@ -238,6 +238,7 @@ pipeline {
                                 box-shadow: 0 2px 5px rgba(0,0,0,0.05);
                             }
                             th, td {
+
                                 padding: 12px 15px;
                                 border: 1px solid #ddd;
                                 text-align: left;
