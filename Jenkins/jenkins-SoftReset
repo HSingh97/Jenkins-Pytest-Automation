@@ -1,7 +1,12 @@
-// Main Pipeline
+import jenkins.model.Jenkins
+
+// Functions
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
 
 pipeline {
-    agent { node { label "${TARGET_STAND}"} }
+    agent { node { label "${TARGET_STAND}" } }
 
     stages {
         stage('Prepare tests') {
@@ -10,8 +15,11 @@ pipeline {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${TARGET_STAND}"
                     echo "----------------------------------------"
-      	        }
-      	    }
+                    if (!params['Local IP Address'] || !params['Remote IP Address']) {
+                        error "Missing required parameters: Local IP Address or Remote IP Address"
+                    }
+                }
+            }
         }
         stage('Install Python Dependencies') {
             steps {
@@ -37,20 +45,17 @@ pipeline {
 
                     sh 'echo \'{"iterations": []}\' > iteration_results.json'  // Initialize JSON object properly
 
-                    for (int i = 1; i <= numIterations.toInteger(); i++) {
-                        echo "Running soft reset test iteration ${i}"
+                    for (int i = 1; i <= numIterations; i++) {
+                        echo "--------------------------------------------------------------"
+                        echo " Starting Iteration ${i}/${numIterations}"
+                        echo "--------------------------------------------------------------"
                         try {
-                            sh """
-                                pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
-                                --local-ip '${localIP}' --remote-ip '${remoteIP}' --iteration '${i}' \
-                                2>&1 | tee artifacts/soft_reset_test_${i}.log
-                            """
+                            sh "python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset --local-ip ${localIP} --remote-ip ${remoteIP} --iteration ${i}"
                         } catch (Exception e) {
-                            echo "Soft reset test iteration ${i} failed: ${e.message}"
+                            echo "⚠️ Iteration ${i} failed: ${e.message}"
+                            // Continue to next iteration despite failure
                         }
                     }
-
-                    archiveArtifacts 'artifacts/*.log'
                 }
             }
         }
