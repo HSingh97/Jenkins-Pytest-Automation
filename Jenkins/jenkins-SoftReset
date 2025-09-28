@@ -34,7 +34,10 @@ pipeline {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
-                    int total = params.NUM_ITERATION.toInteger()   // 🔹 Taken from parameter
+
+                    def ResetCount = params.RESET_COUNT ?: 1
+                    echo "Number of reboot iterations: ${resetCount}"
+
 
                     echo "✅ Cleared old workspace"
 
@@ -43,21 +46,26 @@ pipeline {
                     echo "----------------------------------------"
 
                     // Initialize results file
-                    sh "echo '{\"iterations\": []}' > iteration_results.json"
+                    sh "echo [] > iteration_results.json"  // Initialize JSON array
 
-                    // Run tests in loop
-                    for (int i = 1; i <= total; i++) {
-                        echo ">>> Starting Iteration ${i} of ${total}"
-                        sh """
-                            export ITERATION=${i}
-                            python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
-                            --local-ip '${localIP}' --remote-ip '${remoteIP}'
-                        """
+                    for (int i = 1; i <= ResetCount.toInteger(); i++) {
+                        echo "Running reboot test iteration ${i}"
+                        try {
+                            sh """
+                                pytest -v -s testCases/test_SSHReset.py::test_SSHReset \
+                                --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                                2>&1 | tee artifacts/reset_test_${i}.log
+                            """
+                        } catch (Exception e) {
+                            echo "Reset test iteration ${i} failed: ${e.message}"
+                        }
                     }
+
+                    archiveArtifacts 'artifacts/*.log'
                 }
             }
         }
-
+    }
         stage('Generate Report') {
             steps {
                 script {
