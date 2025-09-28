@@ -46,44 +46,18 @@ pipeline {
                     echo "----------------------------------------"
 
                     sh "echo [] > iteration_results.json"  // Initialize JSON array
-
-                    for (int i = 1; i <= numIterations; i++) {
+                    for (softreset in SoftReset) {
                         echo "--------------------------------------------------------------"
-                        echo " Starting Iteration ${i}/${numIterations}"
+                        echo " Testing VLAN : ${softreset}"
                         echo "--------------------------------------------------------------"
 
-                        try {
-                            sh """
+                        sh """
                                 python3.10 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
                                 --local-ip '${localIP}' --remote-ip '${remoteIP}'
-                            """
-                        } catch (Exception e) {
-                            echo "⚠️ Iteration ${i} failed: ${e.message}"
-                            // Continue to next iteration despite failure
-                        }
-
-                        // Read current JSON, set iteration for the last entry, and rewrite
-                        def jsonSlurper = new groovy.json.JsonSlurper()
-                        def jsonText = readFile('iteration_results.json')
-                        if (jsonText.trim()) {
-                            try {
-                                def jsonData = jsonSlurper.parseText(jsonText)
-                                if (jsonData.iterations && jsonData.iterations.size() > 0) {
-                                    def lastIteration = jsonData.iterations.last()
-                                    lastIteration.iteration = i
-                                    writeFile file: 'iteration_results.json', text: groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(jsonData))
-                                    echo "Updated last iteration to ${i} in JSON"
-                                }
-                            } catch (Exception e) {
-                                echo "⚠️ Failed to update iteration ${i} in JSON: ${e.message}"
-                            }
-                        } else {
-                            echo "⚠️ iteration_results.json is empty after iteration ${i}"
-                        }
+                        """
                     }
                 }
             }
-        }
         stage('Generate Report') {
             steps {
                 script {
