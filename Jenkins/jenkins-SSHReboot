@@ -260,6 +260,7 @@ pipeline {
                 echo "Sending email to: ${userEmail}"
 
                 // Send email notification
+
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
                     body: """
