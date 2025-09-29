@@ -109,6 +109,32 @@ def qos_apply(ip):
     connection.send_command("ucidyn apply", read_timeout=100)
     print("QoS configuration successfully sent.")
 
+def qos_sfc_clear(ip):
+    command_list = [
+        "ucidyn set ath1qos.@sfclist[8].pirindex 1",
+        "ucidyn set ath1qos.@sfclist[9].pirindex 0",
+        "ucidyn set ath1qos.@sfclist[10].pirindex 0",
+        "ucidyn set ath1qos.@sfclist[11].pirindex 0",
+        "ucidyn set ath1qos.@sfclist[12].pirindex 1",
+        "ucidyn set ath1qos.@sfclist[13].pirindex 0",
+        "ucidyn set ath1qos.@sfclist[14].pirindex 0",
+        "ucidyn set ath1qos.@sfclist[15].pirindex 0"
+    ]
+
+    pc_details = {
+        "device_type": "generic",
+        "host": ip,
+        "username": "root",
+        "password": "admin"
+    }
+
+    connection = ConnectHandler(**pc_details)
+
+    for command in command_list:
+        print(f"Sending: {command}")
+        connection.send_command(command)
+
+    qos_apply(ip)
 
 def qos_config_delete(ip):
     # Device connection details

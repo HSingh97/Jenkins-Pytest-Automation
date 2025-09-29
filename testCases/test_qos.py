@@ -46,6 +46,11 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
     }
 
     print("++++++++++++++++++++++++++++++++")
+    print("\tResetting Old SFC List")
+    print("++++++++++++++++++++++++++++++++")
+    qos_operations.qos_sfc_clear(local_ip)
+
+    print("++++++++++++++++++++++++++++++++")
     print("\tClearing Old Profiles")
     print("++++++++++++++++++++++++++++++++")
     qos_operations.qos_config_delete(local_ip)
