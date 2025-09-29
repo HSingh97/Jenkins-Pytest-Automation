@@ -56,7 +56,7 @@ pipeline {
                             sh """
                                 pytest -v -s testCases/test_SSHReboot.py::test_reboot \
                                 --local-ip '${localIP}' --remote-ip '${remoteIP}' \
-                                --iter ${1}
+                                --iter ${i}
                             """
                         } catch (Exception e) {
                             echo "Reboot test iteration ${i} failed: ${e.message}"
@@ -65,7 +65,6 @@ pipeline {
                 }
             }
         }
-    }
         stage('Generate Report') {
             steps {
                 script {
@@ -205,9 +204,8 @@ pipeline {
                             <tr>
                                 <td>${iteration}</td>
                                 <td>${status}</td>
+                            </tr>
                         """
-
-                        htmlContent += "</tr>"
                     }
 
                     htmlContent += """
@@ -223,7 +221,7 @@ pipeline {
     }
     post {
         always {
-            publishHTML (target: [
+            publishHTML(target: [
                 allowMissing: false,
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
@@ -281,7 +279,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html' , 'iteration_results.json' // Only attach, do not embed
+                    attachmentsPattern: 'report.html,iteration_results.json' // Fixed comma placement
                 )
             }
         }
@@ -296,3 +294,4 @@ pipeline {
             echo "-----------------------------------------"
         }
     }
+}
