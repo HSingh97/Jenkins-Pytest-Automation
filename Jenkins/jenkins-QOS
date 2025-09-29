@@ -96,6 +96,8 @@ pipeline {
                     echo "----------------------------------------"
 
                     sh "echo [] > iteration_results.json"  // Initialize JSON array
+                    sh "ssh-keygen -R ${localIP} || true"
+                    sh "ssh-keygen -R ${remoteIP} || true"
 
                     for (qos in qosPirList) {
                         echo "--------------------------------------------------------------"
