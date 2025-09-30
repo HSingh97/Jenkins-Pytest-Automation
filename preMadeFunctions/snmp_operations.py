@@ -62,8 +62,13 @@ def change_ddrs_rate(host, radio_ind, mcs_rate):
 
     if mcs_rate == 24:
         print("[DEBUG] Configuring DDRS Status : Enable")
-        os.system(f"snmpset -v 2c -c private {host} {ddrs_status_oid} i 0")
+        os.system(f"snmpset -v 2c -c private {host} {ddrs_status_oid} i 1")
         time.sleep(1)
+
+        if current_ddrs_status != 1 :
+            print("[DEBUG] Applying Configuration")
+            os.system(f"snmpset -v 2c -c private {host} {apply_config_oid} i 1")
+            time.sleep(30)
     else:
         mcs_rate = int(mcs_rate)
         spatial_stream = 2 if mcs_rate > 11 else 1
