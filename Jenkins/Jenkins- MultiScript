@@ -9,9 +9,6 @@ pipeline {
     agent { node { label "${TARGET_STAND}" } }
     parameters {
         choice(name: 'TEST_TYPE', choices: ['SSH Reboot', 'Soft Reset'], description: 'Select the test to run')
-        string(name: 'Local IP Address', description: 'Local IP Address for the test')
-        string(name: 'Remote IP Address', description: 'Remote IP Address for the test')
-        string(name: 'ITERATION_COUNT', defaultValue: '1', description: 'Number of test iterations')
     }
     stages {
         stage('Prepare tests') {
