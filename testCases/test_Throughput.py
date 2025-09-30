@@ -246,7 +246,7 @@ def test_changemcs(local_ip, remote_ip, radio, mcs_rate):
     else:
         print("!!!! Device : {} Not Reachable !!!!".format(local_ip))
 
-def test_changelinktype(local_ip, remote_ip, radio, linktype):
+def test_changelinktype(local_ip, remote_ip, radio, link_type):
 
     if pingFunction.check_access(local_ip):
         if pingFunction.check_access(remote_ip):
