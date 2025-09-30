@@ -73,7 +73,8 @@ pipeline {
                         def traffic_types = params.'Traffic Type'.split(',')
                         def directions = params.Direction.split(',')
                         def bandwidths = params.Bandwidth.split(',')
-                        def link_types = params.'Link Type'.split(',')                         def modulationrates = params.MCS.split(',')
+                        def link_types = params.'Link Type'.split(',')
+                        def modulationrates = params.MCS.split(',')
                         def test_time = params['Throughput Test Time']
 
                         sh 'rm -f *_HT*.json iteration_results.json'
