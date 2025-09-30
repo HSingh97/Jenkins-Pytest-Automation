@@ -45,132 +45,6 @@ pipeline {
                 }
             }
         }
-        stage('Throughput Testing') {
-            steps {
-                script {
-                    try {
-                        def remotePC = params['Remote PC']
-                        def remotePCIP = null
-
-                        node(remotePC) {
-                            remotePCIP = sh(
-                                script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$4}' | cut -d'/' -f1 | head -n1",
-                                returnStdout: true
-                            ).trim()
-
-                            if (!remotePCIP) {
-                                error("❌ Could not find 192.168.1.x IP on node '$remotePC' ")
-                            }
-
-                            echo "✅ Remote PC IP: ${remotePCIP}"
-                        }
-
-
-                        def localIP = params['Local IP Address']
-                        def remoteIP = params['Remote IP Address']
-                        def selectedRadio = params['Radio']
-                        // def selectedTrafficGenerator = params['Traffic Generator']
-                        def traffic_types = params.'Traffic Type'.split(',')
-                        def directions = params.Direction.split(',')
-                        def bandwidths = params.Bandwidth.split(',')
-                        def link_types = params.'Link Type'.split(',')
-                        def modulationrates = params.MCS.split(',')
-                        def test_time = params['Throughput Test Time']
-
-                        sh 'rm -f *_HT*.json iteration_results.json'
-                        sh 'rm -f throughput_report_*.html'
-                        echo "✅ Cleared old workspace"
-                        sh "echo {\\\"iterations\\\": []} > iteration_results.json"
-
-                        def iteration = 1
-
-                        for (link_type in link_types) {
-                            echo "=============================================================="
-                            echo "         Testing Link Type : ${link_type}"
-                            echo "=============================================================="
-
-                            sh """
-                                python3.10 -m pytest -v -s testCases/test_Throughput.py::test_changelinktype \
-                                --local-ip '${localIP}' --remote-ip '${remoteIP}' \
-                                --radio '${selectedRadio}' --link-type '${link_type}' 2>&1
-                            """
-
-                            for (bandwidth in bandwidths) {
-                                echo "--------------------------------------------------------------"
-                                echo " Configuring Bandwidth : ${bandwidth}"
-                                echo "--------------------------------------------------------------"
-
-                                sh """
-                                    python3.10 -m  pytest -v -s testCases/test_Throughput.py::test_changebandwidth \
-                                    --local-ip '${localIP}' --remote-ip '${remoteIP}' \
-                                    --radio '${selectedRadio}' --bandwidth '${bandwidth}' 2>&1
-                                """
-
-                                for (mcsrate in modulationrates) {
-                                    echo "--------------------------------------------------------------"
-                                    echo " Configuring MCS : ${mcsrate}"
-                                    echo "--------------------------------------------------------------"
-
-                                    sh """
-                                        python3.10 -m pytest -v -s testCases/test_Throughput.py::test_changemcs \
-                                        --local-ip '${localIP}' --remote-ip '${remoteIP}' \
-                                        --radio '${selectedRadio}' --mcs-rate '${mcsrate}' 2>&1
-                                    """
-
-                                    for (traffic_type in traffic_types) {
-
-                                        echo "--------------------------------------------------------------"
-                                        echo " Testing: Bandwidth=${bandwidth} | MCS=${mcsrate} | Type=${traffic_type} "
-                                        echo "--------------------------------------------------------------"
-
-                                        sh "echo '{\"iterations\": []}' > custom_results.json"
-
-                                        def pytest_output = sh(script: """
-                                            python3.10 -m pytest -v -s testCases/test_Throughput.py::test_throughputtest \
-                                            --local-ip '${localIP}' \
-                                            --remote-ip '${remoteIP}' \
-                                            --radio '${selectedRadio}' \
-                                            --mcs-rate '${mcsrate}' \
-                                            --traffic-type '${traffic_type}' \
-                                            --traffic-dir '${directions.join(",")}' \
-                                            --remote-pc-ip '${remotePCIP}' \
-                                            --bandwidth '${bandwidth}' \
-                                            --sleep '${test_time}' \
-                                            2>&1
-                                        """, returnStdout: true).trim()
-
-                                        echo "Pytest Output:\n${pytest_output}"
-
-                                        def iterationResults = readJSON file: 'custom_results.json'
-                                        def normalizedBandwidth = bandwidth == "HT40" ? "HT40+" : bandwidth
-
-                                        def newTests = iterationResults.iterations
-
-                                        newTests.each { test ->
-                                            test.iteration = iteration++
-                                            test.logs = pytest_output
-                                        }
-
-                                        def filename = "Throughput_${bandwidth.trim()}_${mcsrate.trim()}.json"
-                                        writeJSON file: filename, json: [iterations: newTests]
-
-                                        newTests.each { test ->
-                                            echo "Iteration ${test.iteration} - ${test.test} => ${test.status}"
-                                            test.results_direction.eachWithIndex { result, idx ->
-                                                echo "  ↪ Run ${idx + 1} => Dir: ${result.Direction}, Type: ${result.traffic_type}"
-                                                echo "     Bandwidth: ${result.bandwidth}, MCS: ${result.data_rate}, Throughput: ${result.throughput} Mbps"
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        echo "⚠️ Exception occurred during Throughput Testing: ${e.message}"
-                    }
-                }
-            }
-        }
         stage('Generate Report') {
             steps {
                 script {
@@ -214,8 +88,8 @@ pipeline {
                         def buildParams = [
                             "Local IP Address": localIP,
                             "Remote IP Address": remoteIP,
-                            "Link Types": params['Link Type'],
                             "Radio": params['Radio'],
+                            "Link Types": params['Link Type'],
                             "Bandwidths": params['Bandwidth'],
                             "MCS Rates": params['MCS'],
                             "Traffic Types": params['Traffic Type'],
@@ -238,8 +112,7 @@ pipeline {
                         def mcsOrder = (0..23).collect { "MCS$it".toUpperCase() }
                         def bandwidthOrder = ["HT20", "HT40", "HT80", "HT160"]
 
-                        // Group results by the Link Type first from the filename: Throughput_{LinkType}_{Bandwidth}_{MCS}.json
-                        def groupedByLinkType = allResults.groupBy { it.filename.split('_')[1].trim().toUpperCase() }
+                        def groupedByBandwidth = allResults.groupBy { it.filename.split('_')[1].trim().toUpperCase() }
 
                         def getThroughputCell = { val, tx, key, data ->
                             def cell = "-"
@@ -274,7 +147,6 @@ pipeline {
                                 .header { display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 20px; border-bottom: 2px solid #ddd; }
                                 .header img { height: 60px; }
                                 .header-info { text-align: right; }
-                                h1 { font-size: 28px; margin-top:50px; background-color:#1a2530; color:white; padding:15px; border-radius: 5px; }
                                 h2 { margin-top: 40px; font-size: 22px; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
                                 table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
                                 th, td { padding: 10px 12px; border: 1px solid #ccc; text-align: center; }
@@ -297,72 +169,63 @@ pipeline {
                             </table>
                         """
 
-                        groupedByLinkType.each { linkType, filesForThisLinkType ->
+                        bandwidthOrder.each { bandwidth ->
+                            if (!groupedByBandwidth.containsKey(bandwidth)) return
 
-                            htmlContent += "<h1>Results for Link Type: ${linkType}</h1>"
+                            def entries = groupedByBandwidth[bandwidth]
+                            def mcsMap = [:]
 
-                            // Now group the files for this link type by bandwidth (2nd element in filename)
-                            def groupedByBandwidth = filesForThisLinkType.groupBy { it.filename.split('_')[2].trim().toUpperCase() }
+                            entries.each { entry ->
+                                def mcs = entry.filename.split('_')[2].replace(".json", "").trim().toUpperCase()
+                                if (!mcsMap[mcs]) mcsMap[mcs] = [:]
 
-                            bandwidthOrder.each { bandwidth ->
-                                if (!groupedByBandwidth.containsKey(bandwidth)) return
-
-                                def entries = groupedByBandwidth[bandwidth]
-                                def mcsMap = [:]
-
-                                entries.each { entry ->
-                                    // The MCS is now the 4th element (index 3) in the filename
-                                    def mcs = entry.filename.split('_')[3].replace(".json", "").trim().toUpperCase()
-                                    if (!mcsMap[mcs]) mcsMap[mcs] = [:]
-
-                                    entry.content.each { iteration ->
-                                        iteration.results_direction.each { result ->
-                                            def key = "${result.traffic_type}_${result.Direction}".toLowerCase()
-                                            mcsMap[mcs][key] = result.throughput
-                                            if (result.Direction.toLowerCase() == "bi-di") {
-                                                mcsMap[mcs]["${key}_tx"] = result.tx_value ?: 0.0
-                                                mcsMap[mcs]["${key}_rx"] = result.rx_value ?: 0.0
-                                            }
-                                            if (!mcsMap[mcs].link_stats) {
-                                                mcsMap[mcs].link_stats = result.link_stats
-                                            }
+                                entry.content.each { iteration ->
+                                    iteration.results_direction.each { result ->
+                                        def key = "${result.traffic_type}_${result.Direction}".toLowerCase()
+                                        mcsMap[mcs][key] = result.throughput
+                                        if (result.Direction.toLowerCase() == "bi-di") {
+                                            mcsMap[mcs]["${key}_tx"] = result.tx_value ?: 0.0
+                                            mcsMap[mcs]["${key}_rx"] = result.rx_value ?: 0.0
+                                        }
+                                        if (!mcsMap[mcs].link_stats) {
+                                            mcsMap[mcs].link_stats = result.link_stats
                                         }
                                     }
                                 }
-
-                                htmlContent += "<h2>Bandwidth: ${bandwidth}</h2><table><tr><th rowspan='2'>MCS</th><th rowspan='2'>Modulation</th><th colspan='2'>Rate (Mbps)</th>"
-                                trafficTypes.each { htmlContent += "<th colspan='${directions.size()}'>Throughput (${it}) (Mbps)</th>" }
-                                htmlContent += "<th colspan='2'>Local SNR (dB)</th><th colspan='2'>Remote SNR (dB)</th><th colspan='2'>Noise (dBm)</th></tr><tr><th>Tx</th><th>Rx</th>"
-                                trafficTypes.each { directions.each { htmlContent += "<th>${it}</th>" } }
-                                htmlContent += "<th>A1</th><th>A2</th><th>A1</th><th>A2</th><th>Local</th><th>Remote</th></tr>"
-
-                                mcsOrder.each { mcs ->
-                                    def data = mcsMap[mcs]
-                                    if (!data) return
-                                    def stats = data.link_stats ?: [:]
-                                    def tx = ((stats.tx_rate ?: "0") as double)
-                                    def rx = ((stats.rx_rate ?: "0") as double)
-                                    def modulation = modulationTable[mcs] ?: "-"
-                                    def rateTxStyle = tx != rx ? "style='color:red; font-weight:bold;'" : ""
-                                    def rateRxStyle = tx != rx ? "style='color:red; font-weight:bold;'" : ""
-
-                                    htmlContent += "<tr><td>${mcs}</td><td>${modulation}</td><td ${rateTxStyle}>${tx.intValue()}</td><td ${rateRxStyle}>${rx.intValue()}</td>"
-
-                                    trafficTypes.each { t ->
-                                        directions.each { d ->
-                                            def key = "${t.toLowerCase()}_${d.toLowerCase()}"
-                                            def val = data[key] ?: "-"
-                                            htmlContent += "<td>${getThroughputCell(val, tx, key, data)}</td>"
-                                        }
-                                    }
-
-                                    htmlContent += "<td>${stats.local_SNR_A1 ?: '-'}</td><td>${stats.local_SNR_A2 ?: '-'}</td>"
-                                    htmlContent += "<td>${stats.remote_SNR_A1 ?: '-'}</td><td>${stats.remote_SNR_A2 ?: '-'}</td>"
-                                    htmlContent += "<td>${stats.local_noise ?: '-'}</td><td>${stats.remote_noise ?: '-'}</td></tr>"
-                                }
-
-                                htmlContent += "</table>"
                             }
+
+                            htmlContent += "<h2>Bandwidth: ${bandwidth}</h2><table><tr><th rowspan='2'>MCS</th><th rowspan='2'>Modulation</th><th colspan='2'>Rate (Mbps)</th>"
+                            trafficTypes.each { htmlContent += "<th colspan='${directions.size()}'>Throughput (${it}) (Mbps)</th>" }
+                            htmlContent += "<th colspan='2'>Local SNR (dB)</th><th colspan='2'>Remote SNR (dB)</th><th colspan='2'>Noise (dBm)</th></tr><tr><th>Tx</th><th>Rx</th>"
+                            trafficTypes.each { directions.each { htmlContent += "<th>${it}</th>" } }
+                            htmlContent += "<th>A1</th><th>A2</th><th>A1</th><th>A2</th><th>Local</th><th>Remote</th></tr>"
+
+                            mcsOrder.each { mcs ->
+                                def data = mcsMap[mcs]
+                                if (!data) return
+                                def stats = data.link_stats ?: [:]
+                                def tx = ((stats.tx_rate ?: "0") as double)
+                                def rx = ((stats.rx_rate ?: "0") as double)
+                                def modulation = modulationTable[mcs] ?: "-"
+                                def rateTxStyle = tx != rx ? "style='color:red; font-weight:bold;'" : ""
+                                def rateRxStyle = tx != rx ? "style='color:red; font-weight:bold;'" : ""
+
+                                htmlContent += "<tr><td>${mcs}</td><td>${modulation}</td><td ${rateTxStyle}>${tx.intValue()}</td><td ${rateRxStyle}>${rx.intValue()}</td>"
+
+                                trafficTypes.each { t ->
+                                    directions.each { d ->
+                                        def key = "${t.toLowerCase()}_${d.toLowerCase()}"
+                                        def val = data[key] ?: "-"
+                                        htmlContent += "<td>${getThroughputCell(val, tx, key, data)}</td>"
+                                    }
+                                }
+
+                                htmlContent += "<td>${stats.local_SNR_A1 ?: '-'}</td><td>${stats.local_SNR_A2 ?: '-'}</td>"
+                                htmlContent += "<td>${stats.remote_SNR_A1 ?: '-'}</td><td>${stats.remote_SNR_A2 ?: '-'}</td>"
+                                htmlContent += "<td>${stats.local_noise ?: '-'}</td><td>${stats.remote_noise ?: '-'}</td></tr>"
+                            }
+
+                            htmlContent += "</table>"
                         }
 
                         htmlContent += "<p style='margin-top: 20px; font-size: 13px; color: #555;'>Note: Throughput percentage is calculated relative to Tx rate. Mismatched Tx/Rx are shown in <b style='color:red;'>red</b>.</p></body></html>"
