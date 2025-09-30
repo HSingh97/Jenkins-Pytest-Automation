@@ -123,11 +123,13 @@ def change_linktype(host, radio_ind, linktype):
     else:
         linktype_int = 1
 
+    linktype_str = str(linktype_int)
+
     cmd_bandwidth = [
         "snmpset", "-v", "2c", "-c", "private",
         host,
         f".1.3.6.1.4.1.52619.1.1.1.1.1.35.{radio_ind}",
-        "i", linktype_int
+        "i", linktype_str
     ]
     subprocess.run(cmd_bandwidth, check=False)
     time.sleep(2)
