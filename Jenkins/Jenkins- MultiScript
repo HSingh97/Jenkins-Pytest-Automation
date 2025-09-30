@@ -7,7 +7,6 @@ def archiveArtifacts(pattern) {
 
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
-
     stages {
         stage('Prepare tests') {
             steps {
@@ -46,13 +45,17 @@ pipeline {
                     echo "----------------------------------------"
                     sh 'echo "{\"iterations\": []}" > iteration_results.json'
 
-                    // Split TEST_TYPES into a list, trimming whitespace
-                    def testTypes = params.TEST_TYPES.split(',').collect { it.trim() }
+                    // TEST_TYPES is a list from checkboxes (e.g., ["SSH Reboot", "SSH Reset"])
+                    def testTypes = params.TEST_TYPES
+
+                    if (testTypes.isEmpty()) {
+                        error "No test types selected in TEST_TYPES"
+                    }
+
+                    // Define parallel execution blocks
+                    def parallelSteps = [:]
 
                     testTypes.each { testType ->
-                        echo "Testing ${testType}"
-                        echo "----------------------------------------"
-
                         def testScript
                         def testFunction
                         if (testType == 'SSH Reboot') {
@@ -61,14 +64,21 @@ pipeline {
                         } else if (testType == 'SSH Reset') {
                             testScript = 'testCases/test_SSHReset.py'
                             testFunction = 'test_soft_reset'
+                        } else if (testType == 'New Test 1') { // Add for more scripts
+                            testScript = 'testCases/new_test1.py'
+                            testFunction = 'test_function1'
                         } else {
                             error "Unknown test type: ${testType}"
                         }
 
-                        for (int i = 1; i <= iterationCount; i++) {
-                            sh """
-                                pytest -v -s ${testScript}::${testFunction} --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${i}
-                            """
+                        parallelSteps["${testType}"] = {
+                            echo "Running ${testType} in parallel"
+                            echo "----------------------------------------"
+                            for (int i = 1; i <= iterationCount; i++) {
+                                sh """
+                                    pytest -v -s ${testScript}::${testFunction} --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${i}
+                                """
+                            }
                         }
                     }
                 }
