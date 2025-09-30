@@ -46,7 +46,7 @@ pipeline {
                     sh 'echo "{\"iterations\": []}" > iteration_results.json'
 
                     // TEST_TYPES is a list from checkboxes (e.g., ["SSH Reboot", "SSH Reset"])
-                    def testTypes = params.TEST_TYPES
+                    def testTypes = params.TEST_TYPES?.split(',').collect { it.trim() } ?: []
 
                     if (testTypes.isEmpty()) {
                         error "No test types selected in TEST_TYPES"
