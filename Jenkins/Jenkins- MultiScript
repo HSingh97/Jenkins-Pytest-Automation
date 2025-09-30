@@ -7,9 +7,6 @@ def archiveArtifacts(pattern) {
 
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
-    parameters {
-        choice(name: 'TEST_TYPE', choices: ['SSH Reboot', 'SSH Reset'], description: 'Select the test to run')
-    }
     stages {
         stage('Prepare tests') {
             steps {
