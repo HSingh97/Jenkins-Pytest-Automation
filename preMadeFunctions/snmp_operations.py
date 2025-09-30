@@ -115,7 +115,7 @@ def change_channel(host, radio_ind, channel):
 
 
 def change_linktype(host, radio_ind, linktype):
-    # Change Bandwidth
+    # Change Link Type
     if linktype == "PTP":
         linktype_int = 1
     elif linktype == "PTMP":
@@ -127,7 +127,7 @@ def change_linktype(host, radio_ind, linktype):
         "snmpset", "-v", "2c", "-c", "private",
         host,
         f".1.3.6.1.4.1.52619.1.1.1.1.1.35.{radio_ind}",
-        "i", int(linktype_int)
+        "i", linktype_int
     ]
     subprocess.run(cmd_bandwidth, check=False)
     time.sleep(2)
