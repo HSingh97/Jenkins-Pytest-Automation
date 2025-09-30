@@ -248,13 +248,15 @@ def test_changemcs(local_ip, remote_ip, radio, mcs_rate):
 
 def test_changelinktype(local_ip, remote_ip, radio, link_type):
 
+    link_type = str(link_type)
+    print(link_type)
     if pingFunction.check_access(local_ip):
         if pingFunction.check_access(remote_ip):
             print("\nConfiguring Link Type : {} for {} ".format(link_type, remote_ip))
             snmp_operations.change_linktype(remote_ip, get_radio_index(radio)["radio_ind"], link_type)
 
             print("\nConfiguring Link Type : {} for {} ".format(link_type, local_ip))
-            snmp_operations.change_ddrs_rate(local_ip, get_radio_index(radio)["radio_ind"], link_type)
+            snmp_operations.change_linktype(local_ip, get_radio_index(radio)["radio_ind"], link_type)
         else:
             print("!!!! Device : {} Not Reachable !!!!".format(remote_ip))
     else:
