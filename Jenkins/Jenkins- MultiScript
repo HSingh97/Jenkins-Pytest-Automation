@@ -7,13 +7,14 @@ def archiveArtifacts(pattern) {
 
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
+
     stages {
         stage('Prepare tests') {
             steps {
                 script {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${TARGET_STAND}"
-                    echo "--- Selected Test: ${params.TEST_TYPE}"
+                    echo "--- Selected Tests: ${params.TEST_TYPES}"
                     echo "----------------------------------------"
                     if (!params['Local IP Address'] || !params['Remote IP Address']) {
                         error "Missing required parameters: Local IP Address or Remote IP Address"
@@ -27,10 +28,12 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
+                    sh 'pip install pytest netmiko'
+                    sh 'sudo apt-get install -y sshpass'
                 }
             }
         }
-        stage('Run Selected Test') {
+        stage('Run Selected Tests') {
             steps {
                 script {
                     def localIP = params['Local IP Address']
@@ -41,27 +44,32 @@ pipeline {
                     echo "✅ Cleared old workspace"
 
                     echo "----------------------------------------"
-                    echo "Testing ${params.TEST_TYPE}"
-                    echo "----------------------------------------"
+                    sh 'echo "{\"iterations\": []}" > iteration_results.json'
 
-                    sh "echo {\"iterations\": []} > iteration_results.json"
+                    // Split TEST_TYPES into a list, trimming whitespace
+                    def testTypes = params.TEST_TYPES.split(',').collect { it.trim() }
 
-                    for (int i = 1; i <= iterationCount; i++) {
+                    testTypes.each { testType ->
+                        echo "Testing ${testType}"
+                        echo "----------------------------------------"
+
                         def testScript
                         def testFunction
-                        if (params.TEST_TYPE == 'SSH Reboot') {
+                        if (testType == 'SSH Reboot') {
                             testScript = 'testCases/test_SSHReboot.py'
                             testFunction = 'test_reboot'
-                        } else if (params.TEST_TYPE == 'Soft Reset') {
+                        } else if (testType == 'SSH Reset') {
                             testScript = 'testCases/test_SSHReset.py'
                             testFunction = 'test_soft_reset'
                         } else {
-                            error "Unknown test type: ${params.TEST_TYPE}"
+                            error "Unknown test type: ${testType}"
                         }
 
-                        sh """
-                            pytest -v -s ${testScript}::${testFunction} --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${i}
-                        """
+                        for (int i = 1; i <= iterationCount; i++) {
+                            sh """
+                                pytest -v -s ${testScript}::${testFunction} --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${i}
+                            """
+                        }
                     }
                 }
             }
