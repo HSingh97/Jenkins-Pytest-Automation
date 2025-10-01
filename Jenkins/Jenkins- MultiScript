@@ -210,31 +210,43 @@ pipeline {
                         <table>
                             ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
                         </table>
-                        <h2>Test Results</h2>
-                        <table>
-                            <tr>
-                                <th>Iteration</th>
-                                <th>Test</th>
-                                <th>Status</th>
-                            </tr>
                     """
 
-                    jsonReport.iterations.each { result ->
-                        def iteration = result.iteration ?: "-"
-                        def test = result.test ?: "Unknown"
-                        def status = result.status == "PASS" ? "<span class='pass'>PASS</span>" : "<span class='fail'>FAIL</span>"
+                    // Derive test types dynamically from params.TEST_TYPES
+                    def testTypes = params.TEST_TYPES instanceof String ?
+                        params.TEST_TYPES.split(',').collect { it.trim() } :
+                        (params.TEST_TYPES ?: [])
 
-                        htmlContent += """
-                            <tr>
-                                <td>${iteration}</td>
-                                <td>${test}</td>
-                                <td>${status}</td>
-                            </tr>
-                        """
+                    testTypes.each { testType ->
+                        def testName = testType == 'SSH Reboot' ? 'Reboot' : testType == 'SSH Reset' ? 'Reset' : 'Test 3'
+                        def testResults = jsonReport.iterations.findAll { it.test == (testType == 'SSH Reboot' ? 'Test_Reboot' : testType == 'SSH Reset' ? 'test_reset' : 'test_function1') }
+                        if (!testResults.isEmpty()) {
+                            htmlContent += """
+                                <h2>${testName}</h2>
+                                <table>
+                                    <tr>
+                                        <th>itr</th>
+                                        <th>status</th>
+                                    </tr>
+                            """
+                            testResults.each { result ->
+                                def iteration = result.iteration ?: "-"
+                                def status = result.status == "PASS" ? "<span class='pass'>PASS</span>" : "<span class='fail'>FAIL</span>"
+
+                                htmlContent += """
+                                    <tr>
+                                        <td>${iteration}</td>
+                                        <td>${status}</td>
+                                    </tr>
+                                """
+                            }
+                            htmlContent += """
+                                </table>
+                            """
+                        }
                     }
 
                     htmlContent += """
-                        </table>
                     </body>
                     </html>
                     """
