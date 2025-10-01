@@ -35,8 +35,10 @@ pipeline {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
-                    def iterationCount = params.ITERATION_COUNT.toInteger() ?: 1
-                    echo "Number of iterations: ${iterationCount}"
+                    def iterationCounts = params.ITERATION_COUNTS ? params.ITERATION_COUNTS.split(',').collect { it.trim().toInteger() } : []
+                    def defaultIterationCount = 1
+
+                    echo "Number of iterations: ${iterationCounts ? iterationCounts : defaultIterationCount}"
 
                     echo "✅ Cleared old workspace"
 
@@ -57,7 +59,7 @@ pipeline {
                     }
 
                     // Run tests sequentially with 40-second delay between each
-                    testTypes.each { testType ->
+                    testTypes.eachWithIndex { testType, index ->
                         echo "DEBUG: Processing test type: ${testType}"
                         def testScript
                         def testFunction
@@ -74,7 +76,8 @@ pipeline {
                             error "Unknown test type: ${testType}"
                         }
 
-                        echo "Running ${testType} sequentially"
+                        def iterationCount = iterationCounts.size() > index ? iterationCounts[index] : defaultIterationCount
+                        echo "Running ${testType} sequentially with ${iterationCount} iterations"
                         echo "----------------------------------------"
                         for (int i = 1; i <= iterationCount; i++) {
                             sh """
@@ -218,11 +221,11 @@ pipeline {
                         (params.TEST_TYPES ?: [])
 
                     testTypes.each { testType ->
-                        def testName = testType == 'SSH Reboot' ? 'Reboot' : testType == 'SSH Reset' ? 'Reset' : 'Test 3'
-                        def testResults = jsonReport.iterations.findAll { it.test == (testType == 'SSH Reboot' ? 'Test_Reboot' : testType == 'SSH Reset' ? 'test_reset' : 'test_function1') }
+                        // Use testType as display name directly
+                        def testResults = jsonReport.iterations.findAll { it.test == testType.replaceAll(' ', '_').toLowerCase() }
                         if (!testResults.isEmpty()) {
                             htmlContent += """
-                                <h2>${testName}</h2>
+                                <h2>${testType}</h2>
                                 <table>
                                     <tr>
                                         <th>itr</th>
@@ -266,7 +269,7 @@ pipeline {
                 reportFiles: 'report.html',
                 reportName: 'Test Report'
             ])
-            echo "-----------------------------------------"
+            echo "----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
             script {
