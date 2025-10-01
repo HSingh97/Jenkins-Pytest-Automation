@@ -21,7 +21,6 @@ pipeline {
                 }
             }
         }
-
         stage('Install Python Dependencies') {
             steps {
                 script {
@@ -57,9 +56,7 @@ pipeline {
                         error "No test types selected in TEST_TYPES"
                     }
 
-                    // Define parallel execution blocks
-                    def parallelSteps = [:]
-
+                    // Run tests sequentially with 30-second delay between each
                     testTypes.each { testType ->
                         echo "DEBUG: Processing test type: ${testType}"
                         def testScript
@@ -77,19 +74,16 @@ pipeline {
                             error "Unknown test type: ${testType}"
                         }
 
-                        parallelSteps["${testType}"] = {
-                            echo "Running ${testType} in parallel"
-                            echo "----------------------------------------"
-                            for (int i = 1; i <= iterationCount; i++) {
-                                sh """
-                                    pytest -v -s ${testScript}::${testFunction} --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${i}
-                                """
-                            }
+                        echo "Running ${testType} sequentially"
+                        echo "----------------------------------------"
+                        for (int i = 1; i <= iterationCount; i++) {
+                            sh """
+                                pytest -v -s ${testScript}::${testFunction} --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${i}
+                            """
                         }
+                        // Add 30-second delay before next test
+                        sh 'sleep 30'
                     }
-
-                    // Execute tests in parallel
-                    parallel parallelSteps
                 }
             }
         }
