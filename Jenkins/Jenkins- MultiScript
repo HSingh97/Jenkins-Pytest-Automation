@@ -27,8 +27,6 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
-                    sh 'pip install pytest netmiko'
-                    sh 'sudo apt-get install -y sshpass'
                 }
             }
         }
@@ -302,7 +300,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html,iteration_results.json' // Fixed comma placement
+                    attachmentsPattern: 'report.html,iteration_results.json' // Fixed comma placeme
                 )
             }
         }
