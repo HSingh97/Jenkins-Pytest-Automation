@@ -82,7 +82,7 @@ pipeline {
                             """
                         }
                         // Add 30-second delay before next test
-                        sh 'sleep 30'
+                        sh 'sleep 40'
                     }
                 }
             }
@@ -214,6 +214,7 @@ pipeline {
                         <table>
                             <tr>
                                 <th>Iteration</th>
+                                <th>test</th>
                                 <th>Status</th>
                             </tr>
                     """
@@ -225,6 +226,7 @@ pipeline {
                         htmlContent += """
                             <tr>
                                 <td>${iteration}</td>
+                                <td>${test}</td>
                                 <td>${status}</td>
                             </tr>
                         """
