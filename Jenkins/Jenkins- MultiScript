@@ -43,8 +43,14 @@ pipeline {
                     echo "----------------------------------------"
                     sh 'echo "{\"iterations\": []}" > iteration_results.json'
 
-                    // TEST_TYPES is a list from checkboxes (e.g., ["SSH Reboot", "SSH Reset"])
-                    def testTypes = params.TEST_TYPES
+                    // Debug: Check the type and value of TEST_TYPES
+                    echo "DEBUG: params.TEST_TYPES = ${params.TEST_TYPES}"
+                    echo "DEBUG: Type of params.TEST_TYPES = ${params.TEST_TYPES?.getClass()}"
+
+                    // Handle TEST_TYPES as a list; convert string to list if needed
+                    def testTypes = params.TEST_TYPES instanceof String ?
+                        params.TEST_TYPES.split(',').collect { it.trim() } :
+                        (params.TEST_TYPES ?: [])
 
                     if (testTypes.isEmpty()) {
                         error "No test types selected in TEST_TYPES"
@@ -54,6 +60,7 @@ pipeline {
                     def parallelSteps = [:]
 
                     testTypes.each { testType ->
+                        echo "DEBUG: Processing test type: ${testType}"
                         def testScript
                         def testFunction
                         if (testType == 'SSH Reboot') {
@@ -62,7 +69,7 @@ pipeline {
                         } else if (testType == 'SSH Reset') {
                             testScript = 'testCases/test_SSHReset.py'
                             testFunction = 'test_soft_reset'
-                        } else if (testType == 'New Test 1') { // Add for more scripts
+                        } else if (testType == 'New Test 1') {
                             testScript = 'testCases/new_test1.py'
                             testFunction = 'test_function1'
                         } else {
@@ -280,7 +287,6 @@ pipeline {
                 echo "Sending email to: ${userEmail}"
 
                 // Send email notification
-
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
                     body: """
@@ -300,7 +306,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html,iteration_results.json' // Fixed comma placeme
+                    attachmentsPattern: 'report.html, iteration_results.json'
                 )
             }
         }
