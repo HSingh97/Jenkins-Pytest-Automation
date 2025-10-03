@@ -249,22 +249,21 @@ pipeline {
                         params.TEST_TYPES.split(',').collect { it.trim() } :
                         (params.TEST_TYPES ?: [])
 
+                    // Generate table for each test type
                     testTypes.each { testType ->
-                        // Use testType as display name directly
                         def testResults = jsonReport.iterations.findAll { it.test == testType.replaceAll(' ', '_').toLowerCase() }
-                        if (!testResults.isEmpty()) {
-                            htmlContent += """
-                                <h2>${testType}</h2>
-                                <table>
-                                    <tr>
-                                        <th>itr</th>
-                                        <th>status</th>
-                                    </tr>
-                            """
+                        htmlContent += """
+                            <h2>${testType}</h2>
+                            <table>
+                                <tr>
+                                    <th>itr</th>
+                                    <th>Status</th>
+                                </tr>
+                        """
+                        if (testResults) {
                             testResults.each { result ->
                                 def iteration = result.iteration ?: "-"
-                                def status = result.status == "PASS" ? "<span class='pass'>PASS</span>" : "<span class='fail'>FAIL</span>"
-
+                                def status = result.status == "PASS" ? "<span class='pass'>PASS</span>" : result.status == "FAIL" ? "<span class='fail'>FAIL</span>" : result.status ?: "-"
                                 htmlContent += """
                                     <tr>
                                         <td>${iteration}</td>
@@ -272,10 +271,17 @@ pipeline {
                                     </tr>
                                 """
                             }
+                        } else {
                             htmlContent += """
-                                </table>
+                                <tr>
+                                    <td colspan="2">No results available</td>
+                                </tr>
                             """
                         }
+                        htmlContent += """
+                            </table>
+                            <hr/>
+                        """
                     }
 
                     htmlContent += """
