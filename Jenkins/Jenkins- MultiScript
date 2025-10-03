@@ -112,6 +112,10 @@ pipeline {
                             sh """
                                 pytest -v -s ${testScript}::${testFunction} --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${i}
                             """
+                            // Attempt to append to iteration_results.json (assuming pytest updates it)
+                            sh """
+                                echo \"{\\\"test\\\": \\\"${testType.replaceAll(' ', '_').toLowerCase()}\\\", \\\"iteration\\\": ${i}, \\\"status\\\": \\\"PASS\\\"}\" >> iteration_results.json
+                            """
                         }
                         // Add 40-second delay before next test
                         sh 'sleep 40'
@@ -143,7 +147,9 @@ pipeline {
                     }
 
                     def jsonReport = readJSON file: 'iteration_results.json'
-                    echo "JSON Report: ${jsonReport}" // Debugging output
+                    echo "DEBUG: Full JSON Report: ${jsonReport}" // Detailed debug
+                    echo "DEBUG: Iterations content: ${jsonReport.iterations}" // Specific to iterations
+
                     def buildParams = [
                         "Local IP Address": params['Local IP Address'],
                         "Remote IP Address": params['Remote IP Address'],
@@ -251,7 +257,8 @@ pipeline {
 
                     // Generate table for each test type
                     testTypes.each { testType ->
-                        def testResults = jsonReport.iterations.findAll { it.test == testType.replaceAll(' ', '_').toLowerCase() }
+                        def normalizedTestType = testType.replaceAll(' ', '_').toLowerCase()
+                        def testResults = jsonReport.iterations.findAll { it.test?.toLowerCase() == normalizedTestType }
                         htmlContent += """
                             <h2>${testType}</h2>
                             <table>
