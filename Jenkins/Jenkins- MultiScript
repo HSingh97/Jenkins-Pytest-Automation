@@ -37,6 +37,7 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
+                    sh 'pip install pytest pytest-json-report'
                 }
             }
         }
@@ -111,12 +112,7 @@ pipeline {
                         echo "----------------------------------------"
                         for (int i = 1; i <= iterationCount; i++) {
                             sh """
-                                pytest -v -s ${testScript}::${testFunction} --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${i}
-                            """
-                            // Simulate appending to JSON (replace with actual test output)
-                            def status = (i % 2 == 1) ? "PASS" : "FAIL" // Mock status for testing
-                            sh """
-                                jq -c '.iterations += [{"test": "${testType.replaceAll(' ', '_').toLowerCase()}", "iteration": ${i}, "status": "${status}"}]' iteration_results.json > tmp.json && mv tmp.json iteration_results.json
+                                pytest -v -s ${testScript}::${testFunction} --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${i} --json-report --json-report-file=iteration_results.json
                             """
                         }
                         // Add 40-second delay before next test
@@ -260,7 +256,7 @@ pipeline {
                     // Generate table for each test type
                     testTypes.each { testType ->
                         def normalizedTestType = testType.replaceAll(' ', '_').toLowerCase()
-                        def testResults = jsonReport.iterations.findAll { it.test?.toLowerCase() == normalizedTestType }
+                        def testResults = jsonReport.iterations.findAll { it.nodeid?.toLowerCase()?.contains(normalizedTestType) }
                         htmlContent += """
                             <h2>${testType}</h2>
                             <table>
@@ -271,8 +267,8 @@ pipeline {
                         """
                         if (testResults) {
                             testResults.each { result ->
-                                def iteration = result.iteration ?: "-"
-                                def status = result.status == "PASS" ? "<span class='pass'>PASS</span>" : result.status == "FAIL" ? "<span class='fail'>FAIL</span>" : result.status ?: "-"
+                                def iteration = result.iteration ?: result.when?.split('/')[1]?.toInteger() ?: "-"
+                                def status = result.outcome == "passed" ? "<span class='pass'>PASS</span>" : result.outcome == "failed" ? "<span class='fail'>FAIL</span>" : result.outcome ?: "-"
                                 htmlContent += """
                                     <tr>
                                         <td>${iteration}</td>
