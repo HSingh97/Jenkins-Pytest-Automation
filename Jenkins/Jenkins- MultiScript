@@ -37,7 +37,7 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
-                    sh 'pip install pytest pytest-json-report'
+                    sh 'pip install pytest'
                 }
             }
         }
@@ -115,9 +115,7 @@ pipeline {
                                 pytest -v -s ${testScript}::${testFunction} --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${i} | tee output.log
                             """, returnStatus: true)
                             def status = (result == 0) ? "PASS" : "FAIL"
-                            sh """
-                                jq -c '.iterations += [{"test": "${testType.replaceAll(' ', '_').toLowerCase()}", "iteration": ${i}, "status": "${status}"}]' iteration_results.json > tmp.json && mv tmp.json iteration_results.json
-                            """ // Fallback if jq fails
+                            echo "DEBUG: Test ${testType} Iteration ${i} Result: ${status}"
                             sh """
                                 python3 -c "import json; data = json.load(open('iteration_results.json')); data['iterations'].append({'test': '${testType.replaceAll(' ', '_').toLowerCase()}', 'iteration': ${i}, 'status': '${status}'}); json.dump(data, open('iteration_results.json', 'w'))" || true
                             """
