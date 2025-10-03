@@ -18,6 +18,16 @@ pipeline {
                     if (!params['Local IP Address'] || !params['Remote IP Address']) {
                         error "Missing required parameters: Local IP Address or Remote IP Address"
                     }
+                    def testTypes = params.TEST_TYPES?.split(',')?.collect { it.trim() } ?: []
+                    if (testTypes.isEmpty()) {
+                        error "No test types selected in TEST_TYPES"
+                    }
+                    if (params.ITERATION_COUNTS?.trim()) {
+                        def iterationCounts = params.ITERATION_COUNTS.split(',').collect { it.trim() }
+                        if (iterationCounts.size() != testTypes.size() && iterationCounts[0] != "1") {
+                            error "Number of iteration counts (${iterationCounts.size()}) must match number of test types (${testTypes.size}). Use '1' for uniform iteration or match counts (e.g., 2,1,3)."
+                        }
+                    }
                 }
             }
         }
@@ -35,10 +45,34 @@ pipeline {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
-                    def iterationCounts = params.ITERATION_COUNTS ? params.ITERATION_COUNTS.split(',').collect { it.trim().toInteger() } : []
-                    def defaultIterationCount = 1
+                    def testTypes = params.TEST_TYPES.split(',').collect { it.trim() }
+                    def iterationCounts
 
-                    echo "Number of iterations: ${iterationCounts ? iterationCounts : defaultIterationCount}"
+                    // Parse ITERATION_COUNTS as a String parameter
+                    if (params.ITERATION_COUNTS?.trim()) {
+                        if (params.ITERATION_COUNTS ==~ /\d+(,\d+)*/) {
+                            iterationCounts = params.ITERATION_COUNTS.split(',').collect { it.trim().toInteger() }
+                            if (iterationCounts.size() > testTypes.size()) {
+                                iterationCounts = iterationCounts.subList(0, testTypes.size())
+                                echo "Warning: Extra iteration counts ignored. Using ${iterationCounts}"
+                            } else if (iterationCounts.size() < testTypes.size()) {
+                                iterationCounts = iterationCounts + [1] * (testTypes.size() - iterationCounts.size())
+                                echo "Warning: Added default iteration count (1) for unmatched tests. Using ${iterationCounts}"
+                            }
+                            echo "Using custom iteration counts: ${iterationCounts}"
+                        } else if (params.ITERATION_COUNTS ==~ /^\d+$/) {
+                            def uniformCount = params.ITERATION_COUNTS.toInteger()
+                            iterationCounts = [uniformCount] * testTypes.size()
+                            echo "Using uniform iteration count: ${uniformCount} for all tests"
+                        } else {
+                            error "Invalid ITERATION_COUNTS format. Use a single number (e.g., 1) or comma-separated integers (e.g., 2,1,3)."
+                        }
+                    } else {
+                        iterationCounts = [1] * testTypes.size()
+                        echo "Using default iteration count: 1 for all tests"
+                    }
+
+                    echo "Number of iterations: ${iterationCounts}"
 
                     echo "✅ Cleared old workspace"
 
@@ -48,11 +82,6 @@ pipeline {
                     // Debug: Check the type and value of TEST_TYPES
                     echo "DEBUG: params.TEST_TYPES = ${params.TEST_TYPES}"
                     echo "DEBUG: Type of params.TEST_TYPES = ${params.TEST_TYPES?.getClass()}"
-
-                    // Handle TEST_TYPES as a list; convert string to list if needed
-                    def testTypes = params.TEST_TYPES instanceof String ?
-                        params.TEST_TYPES.split(',').collect { it.trim() } :
-                        (params.TEST_TYPES ?: [])
 
                     if (testTypes.isEmpty()) {
                         error "No test types selected in TEST_TYPES"
@@ -76,7 +105,7 @@ pipeline {
                             error "Unknown test type: ${testType}"
                         }
 
-                        def iterationCount = iterationCounts.size() > index ? iterationCounts[index] : defaultIterationCount
+                        def iterationCount = iterationCounts[index]
                         echo "Running ${testType} sequentially with ${iterationCount} iterations"
                         echo "----------------------------------------"
                         for (int i = 1; i <= iterationCount; i++) {
