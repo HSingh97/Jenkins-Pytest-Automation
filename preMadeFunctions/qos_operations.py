@@ -135,7 +135,7 @@ def qos_sfc_clear(ip):
         connection.send_command(command)
 
     connection = ConnectHandler(**pc_details)
-    connection.send_command("ucidyn apply", read_timeout=120)
+    connection.send_command("ucidyn apply", read_timeout=300)
     print("SFC Clear QoS configuration sent.")
 
 def qos_sfc_config(ip):
