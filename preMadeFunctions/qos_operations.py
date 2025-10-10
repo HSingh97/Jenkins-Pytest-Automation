@@ -150,7 +150,7 @@ def qos_config_delete(ip):
 
     connection = ConnectHandler(**pc_details)
 
-    for i in range(7, 2, -1):
+    for i in range(7, 0, -1):
         connection.send_command(f"ucidyn delete ath1qos.@pirlist {i} >&/dev/null", read_timeout=60)
         print(f"------ Deleting : {i} ------")
 
