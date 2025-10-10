@@ -164,7 +164,7 @@ def qos_sfc_config(ip):
         connection.send_command(command)
 
     connection = ConnectHandler(**pc_details)
-    connection.send_command("ucidyn apply", read_timeout=120)
+    connection.send_command("ucidyn apply", read_timeout=300)
     print("SFC QoS configuration sent.")
 
 def qos_config_delete(ip):
