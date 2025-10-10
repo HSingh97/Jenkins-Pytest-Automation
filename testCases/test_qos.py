@@ -98,6 +98,11 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
 
             qos_operations.qos_apply(local_ip)
 
+            print("++++++++++++++++++++++++++++++++")
+            print("\tConfiguring SFC List")
+            print("++++++++++++++++++++++++++++++++")
+            qos_operations.qos_sfc_config(local_ip)
+
         elif qosPIR == "DSCP":
             dscp_number_1 = random.randint(1, 63)
             dscp_number_2 = random.choice([i for i in range(1, 63) if i != dscp_number_1])
@@ -125,6 +130,11 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
             qos_operations.qos_config_commit(local_ip, qos_dscp_2)
 
             qos_operations.qos_apply(local_ip)
+
+            print("++++++++++++++++++++++++++++++++")
+            print("\tConfiguring SFC List")
+            print("++++++++++++++++++++++++++++++++")
+            qos_operations.qos_sfc_config(local_ip)
 
     finally:
         print("--- Starting cleanup for iteration ---")
