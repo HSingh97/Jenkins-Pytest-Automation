@@ -2,6 +2,7 @@ import argparse
 from netmiko import ConnectHandler
 from netmiko import NetmikoAuthenticationException, NetmikoTimeoutException
 import time
+import os
 
 from testCases.conftest import sleep
 
@@ -95,6 +96,7 @@ def qos_config_commit(ip, qos_list):
         print(f"Sending: {command}")
         connection.send_command(command)
 
+
 def qos_apply(ip):
     # Device connection details
 
@@ -147,7 +149,8 @@ def qos_sfc_config(ip):
         "ucidyn set ath1qos.@sfclist[12].pirindex 3",
         "ucidyn set ath1qos.@sfclist[13].pirindex 2",
         "ucidyn set ath1qos.@sfclist[14].pirindex 1",
-        "ucidyn set ath1qos.@sfclist[15].pirindex 0"
+        "ucidyn set ath1qos.@sfclist[15].pirindex 0",
+        "ucidyn set ath1qos.qoscfg.defqos 1"
     ]
 
     pc_details = {

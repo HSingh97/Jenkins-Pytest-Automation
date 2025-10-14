@@ -136,7 +136,6 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
             print("++++++++++++++++++++++++++++++++")
             qos_operations.qos_sfc_config(local_ip)
 
-
             print("++++++++++++++++++++++++++++++++")
             print("\tPassing Traffic")
             print("++++++++++++++++++++++++++++++++")
