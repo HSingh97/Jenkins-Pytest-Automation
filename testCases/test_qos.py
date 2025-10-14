@@ -136,6 +136,21 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
             print("++++++++++++++++++++++++++++++++")
             qos_operations.qos_sfc_config(local_ip)
 
+
+            print("++++++++++++++++++++++++++++++++")
+            print("\tPassing Traffic")
+            print("++++++++++++++++++++++++++++++++")
+
+            print("++++++++++++++++++++++++++++++++")
+            print("\tPassing Traffic for 1st DSCP")
+            print("++++++++++++++++++++++++++++++++")
+            qos_operations.pass_dscp_traffic(remote_ip, qos_dscp_1)
+
+            print("++++++++++++++++++++++++++++++++")
+            print("\tPassing Traffic for 2nd DSCP")
+            print("++++++++++++++++++++++++++++++++")
+            qos_operations.pass_dscp_traffic(remote_ip, qos_dscp_2)
+
     finally:
         print("--- Starting cleanup for iteration ---")
         # vlan_operations.removeTaggedInterface(remote_pc_mgmt_ip, remote_interface, vlan_id)

@@ -185,6 +185,9 @@ def qos_config_delete(ip):
     qos_apply(ip)
     print("QoS configuration deleted successfully.")
 
+def pass_dscp_traffic(ip, dscpID):
+    os.system(f"ping -Q {int(dscpID*4)} {ip} -c 10")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Configure QOS settings")
