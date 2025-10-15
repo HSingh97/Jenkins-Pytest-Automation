@@ -2,6 +2,7 @@ import argparse
 from netmiko import ConnectHandler
 from netmiko import NetmikoAuthenticationException, NetmikoTimeoutException
 import time
+import subprocess
 import os
 
 from testCases.conftest import sleep
@@ -188,10 +189,40 @@ def qos_config_delete(ip):
     qos_apply(ip)
     print("QoS configuration deleted successfully.")
 
-def pass_dscp_traffic(ip, dscp):
-    print(f"*** DSCP ID : {dscp} ***")
-    print(f"TOS : {int(dscp*4)}")
-    os.system(f"ping -Q {int(dscp*4)} {ip} -c 5 &")
+
+def pass_dscp_traffic(ip, dscp, priority):
+    print(f"\n{'=' * 50}")
+    print(f"*** Testing DSCP: {dscp}  |  Checking Priority Queue: {priority} ***")
+    print(f"{'=' * 50}")
+
+    tos = int(dscp * 4)
+    command = ['ping', '-Q', str(tos), ip]
+    ping_process = None
+
+    try:
+        print(f"Starting background ping to {ip} with TOS {tos}...")
+        ping_process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f"Ping process started with PID: {ping_process.pid}")
+
+        tx_kbps, rx_kbps = check_traffic_priority(ip, priority)
+
+        if tx_kbps is not None:
+            print(f"\nSUCCESS for DSCP {dscp}: TxKbps = {tx_kbps}, RxKbps = {rx_kbps}")
+        else:
+            print(f"\nFAILED for DSCP {dscp}: Could not retrieve traffic stats.")
+
+        return tx_kbps, rx_kbps
+
+    except Exception as e:
+        print(f"An unexpected error occurred during the test for DSCP {dscp}: {e}")
+        return None, None
+
+    finally:
+        if ping_process:
+            print(f"Stopping ping process (PID: {ping_process.pid})...")
+            ping_process.terminate()
+            ping_process.wait()
+            print("Ping process stopped.")
 
 def check_traffic_priority(ip, priority):
     pc_details = {
