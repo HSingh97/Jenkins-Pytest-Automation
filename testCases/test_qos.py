@@ -143,12 +143,12 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
             print("++++++++++++++++++++++++++++++++")
             print("\tPassing Traffic for 1st DSCP")
             print("++++++++++++++++++++++++++++++++")
-            qos_operations.pass_dscp_traffic(remote_ip, qos_dscp_1)
+            qos_operations.pass_dscp_traffic(remote_ip, dscp_number_1)
 
             print("++++++++++++++++++++++++++++++++")
             print("\tPassing Traffic for 2nd DSCP")
             print("++++++++++++++++++++++++++++++++")
-            qos_operations.pass_dscp_traffic(remote_ip, qos_dscp_2)
+            qos_operations.pass_dscp_traffic(remote_ip, dscp_number_2)
 
     finally:
         print("--- Starting cleanup for iteration ---")
