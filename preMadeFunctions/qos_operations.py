@@ -191,25 +191,36 @@ def qos_config_delete(ip):
 
 
 def pass_dscp_traffic(ip, dscp, priority):
+    """
+    Starts an accelerated ping, waits briefly for traffic to flow, checks priority,
+    and then stops the ping.
+    """
     print(f"\n{'=' * 50}")
     print(f"*** Testing DSCP: {dscp}  |  Checking Priority Queue: {priority} ***")
     print(f"{'=' * 50}")
 
     tos = int(dscp * 4)
-    command = ['ping', '-Q', str(tos), ip]
+    # MODIFIED: Added "-i 0.2" to send 5 packets per second. Requires sudo.
+    command = ['ping', '-i', '0.2', '-Q', str(tos), ip]
     ping_process = None
 
     try:
-        print(f"Starting background ping to {ip} with TOS {tos}...")
+        # 1. Start the accelerated ping process
+        print(f"Starting accelerated background ping to {ip} with TOS {tos}...")
         ping_process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         print(f"Ping process started with PID: {ping_process.pid}")
 
+        # 2. NEW: Wait for 2 seconds to allow packets to flow before checking
+        print("Waiting 2 seconds for traffic to build up...")
+        time.sleep(2)
+
+        # 3. Call your function to check priority now that traffic is flowing
         tx_kbps, rx_kbps = check_traffic_priority(ip, priority)
 
-        if tx_kbps is not None:
+        if tx_kbps is not None and (tx_kbps > 0 or rx_kbps > 0):
             print(f"\nSUCCESS for DSCP {dscp}: TxKbps = {tx_kbps}, RxKbps = {rx_kbps}")
         else:
-            print(f"\nFAILED for DSCP {dscp}: Could not retrieve traffic stats.")
+            print(f"\nRESULT for DSCP {dscp}: No traffic detected. TxKbps = {tx_kbps}, RxKbps = {rx_kbps}")
 
         return tx_kbps, rx_kbps
 
@@ -218,11 +229,13 @@ def pass_dscp_traffic(ip, dscp, priority):
         return None, None
 
     finally:
+        # 4. Ensure the ping process is always stopped
         if ping_process:
             print(f"Stopping ping process (PID: {ping_process.pid})...")
             ping_process.terminate()
             ping_process.wait()
             print("Ping process stopped.")
+
 
 def check_traffic_priority(ip, priority):
     pc_details = {
