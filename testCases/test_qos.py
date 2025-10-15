@@ -6,6 +6,8 @@ from preMadeFunctions import pingFunction, qos_operations
 import random
 import argparse
 
+from testCases.conftest import sleep
+
 
 def append_result_to_json(result, filename="iteration_results.json"):
     """
@@ -143,15 +145,18 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
             print("++++++++++++++++++++++++++++++++")
             print("\tPassing Traffic for 1st DSCP")
             print("++++++++++++++++++++++++++++++++")
-            tx_kbps, rx_kbps = qos_operations.pass_dscp_traffic(remote_ip, dscp_number_1, 0)
+            qos_operations.pass_dscp_traffic(remote_ip, dscp_number_1)
+            tx_kbps, rx_kbps = qos_operations.check_traffic_priority(local_ip, 0)
             print(f"TX KBPS : {tx_kbps}, RX KBPS : {rx_kbps}")
             if tx_kbps != 0 and rx_kbps != 0:
                 print(f" !!! Traffic Passing !!! : {tx_kbps}, {rx_kbps}")
 
+            sleep(10)
             print("++++++++++++++++++++++++++++++++")
             print("\tPassing Traffic for 2nd DSCP")
             print("++++++++++++++++++++++++++++++++")
-            tx_kbps, rx_kbps = qos_operations.pass_dscp_traffic(remote_ip, dscp_number_2, 1)
+            qos_operations.pass_dscp_traffic(remote_ip, dscp_number_2)
+            tx_kbps, rx_kbps = qos_operations.check_traffic_priority(local_ip, 1)
             print(f"TX KBPS : {tx_kbps}, RX KBPS : {rx_kbps}")
             if tx_kbps != 0 and rx_kbps != 0:
                 print(f" !!! Traffic Passing !!! : {tx_kbps}, {rx_kbps}")
