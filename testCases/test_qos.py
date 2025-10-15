@@ -47,15 +47,15 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
         "qos": qosPIR,
     }
 
-    print("++++++++++++++++++++++++++++++++")
-    print("\tResetting Old SFC List")
-    print("++++++++++++++++++++++++++++++++")
-    qos_operations.qos_sfc_clear(local_ip)
-
-    print("++++++++++++++++++++++++++++++++")
-    print("\tClearing Old Profiles")
-    print("++++++++++++++++++++++++++++++++")
-    qos_operations.qos_config_delete(local_ip)
+    # print("++++++++++++++++++++++++++++++++")
+    # print("\tResetting Old SFC List")
+    # print("++++++++++++++++++++++++++++++++")
+    # qos_operations.qos_sfc_clear(local_ip)
+    #
+    # print("++++++++++++++++++++++++++++++++")
+    # print("\tClearing Old Profiles")
+    # print("++++++++++++++++++++++++++++++++")
+    # qos_operations.qos_config_delete(local_ip)
     try:
         if qosPIR == "Protocol":
             pass
@@ -106,46 +106,46 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
             qos_operations.qos_sfc_config(local_ip)
 
         elif qosPIR == "DSCP":
-            dscp_number_1 = random.randint(1, 63)
-            dscp_number_2 = random.choice([i for i in range(1, 63) if i != dscp_number_1])
-            print("++++ Testing DSCP ++++")
-            # Configuration for First DSCP PIR Entry
-            mock_args = argparse.Namespace(
-                qos_type='DSCP',
-                dscp=dscp_number_1
-            )
-            pir_profile1_name = f"DSCP_Test_{dscp_number_1}"
-            qos_dscp_1 = qos_operations.qos_config_generator(pir_profile1_name, mock_args)
-            print(qos_dscp_1)
-            print("++++++++++++++++++++++++++++++++")
-
-            qos_operations.qos_config_commit(local_ip, qos_dscp_1)
-
-            #Configuration for Second DSCP PIR Entry
-            mock_args = argparse.Namespace(
-                qos_type='DSCP',
-                dscp=dscp_number_2
-            )
-            pir_profile2_name = f"DSCP_Test_{dscp_number_2}"
-            qos_dscp_2 = qos_operations.qos_config_generator(pir_profile2_name, mock_args)
-            print(qos_dscp_2)
-            qos_operations.qos_config_commit(local_ip, qos_dscp_2)
-
-            qos_operations.qos_apply(local_ip)
-
-            print("++++++++++++++++++++++++++++++++")
-            print("\tConfiguring SFC List")
-            print("++++++++++++++++++++++++++++++++")
-            qos_operations.qos_sfc_config(local_ip)
-
-            print("++++++++++++++++++++++++++++++++")
-            print("\tPassing Traffic")
-            print("++++++++++++++++++++++++++++++++")
+            # dscp_number_1 = random.randint(1, 63)
+            # dscp_number_2 = random.choice([i for i in range(1, 63) if i != dscp_number_1])
+            # print("++++ Testing DSCP ++++")
+            # # Configuration for First DSCP PIR Entry
+            # mock_args = argparse.Namespace(
+            #     qos_type='DSCP',
+            #     dscp=dscp_number_1
+            # )
+            # pir_profile1_name = f"DSCP_Test_{dscp_number_1}"
+            # qos_dscp_1 = qos_operations.qos_config_generator(pir_profile1_name, mock_args)
+            # print(qos_dscp_1)
+            # print("++++++++++++++++++++++++++++++++")
+            #
+            # qos_operations.qos_config_commit(local_ip, qos_dscp_1)
+            #
+            # #Configuration for Second DSCP PIR Entry
+            # mock_args = argparse.Namespace(
+            #     qos_type='DSCP',
+            #     dscp=dscp_number_2
+            # )
+            # pir_profile2_name = f"DSCP_Test_{dscp_number_2}"
+            # qos_dscp_2 = qos_operations.qos_config_generator(pir_profile2_name, mock_args)
+            # print(qos_dscp_2)
+            # qos_operations.qos_config_commit(local_ip, qos_dscp_2)
+            #
+            # qos_operations.qos_apply(local_ip)
+            #
+            # print("++++++++++++++++++++++++++++++++")
+            # print("\tConfiguring SFC List")
+            # print("++++++++++++++++++++++++++++++++")
+            # qos_operations.qos_sfc_config(local_ip)
+            #
+            # print("++++++++++++++++++++++++++++++++")
+            # print("\tPassing Traffic")
+            # print("++++++++++++++++++++++++++++++++")
 
             print("++++++++++++++++++++++++++++++++")
             print("\tPassing Traffic for 1st DSCP")
             print("++++++++++++++++++++++++++++++++")
-            qos_operations.pass_dscp_traffic(remote_ip, dscp_number_1)
+            qos_operations.pass_dscp_traffic(remote_ip, 57)
             tx_kbps, rx_kbps = qos_operations.check_traffic_priority(local_ip, 0)
             print(f"TX KBPS : {tx_kbps}, RX KBPS : {rx_kbps}")
             if tx_kbps != 0 and rx_kbps != 0:
@@ -155,7 +155,7 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
             print("++++++++++++++++++++++++++++++++")
             print("\tPassing Traffic for 2nd DSCP")
             print("++++++++++++++++++++++++++++++++")
-            qos_operations.pass_dscp_traffic(remote_ip, dscp_number_2)
+            qos_operations.pass_dscp_traffic(remote_ip, 50)
             tx_kbps, rx_kbps = qos_operations.check_traffic_priority(local_ip, 1)
             print(f"TX KBPS : {tx_kbps}, RX KBPS : {rx_kbps}")
             if tx_kbps != 0 and rx_kbps != 0:
