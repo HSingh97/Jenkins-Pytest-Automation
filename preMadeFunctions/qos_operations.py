@@ -192,6 +192,55 @@ def pass_dscp_traffic(ip, dscp):
     print(f"*** DSCP ID : {dscp} ***")
     os.system(f"ping -Q {int(dscp*4)} {ip} -c 10")
 
+def check_traffic_priority(ip, priority):
+    pc_details = {
+        "device_type": "generic",
+        "host": ip,
+        "username": "root",
+        "password": "admin"
+    }
+
+    try:
+        connection = ConnectHandler(**pc_details)
+
+        print("Clearing logs with dmesg -c")
+        connection.send_command("dmesg -c", read_timeout=30)
+
+        command = "cfg80211tool ath1 g_kwnpkt"
+        print(f"Executing command: {command}")
+        connection.send_command(command, read_timeout=30)
+
+        print("Capturing output with dmesg -c")
+        output = connection.send_command("dmesg -c", read_timeout=30)
+        connection.disconnect()
+        result = {}
+        lines = output.splitlines()
+        tx_line = None
+        rx_line = None
+        for line in lines:
+            if "TxKbps" in line:
+                tx_line = line.strip()
+            if "RxKbps" in line:
+                rx_line = line.strip()
+        if tx_line and rx_line:
+            tx_values = [int(x) for x in tx_line.split("TxKbps(")[1].split(") : ")[1].split("\t") if x]
+            rx_values = [int(x) for x in rx_line.split("RxKbps(")[1].split(") : ")[1].split("\t") if x]
+            for i in range(4):
+                result[str(i)] = {
+                    "TxKbps": tx_values[i] if i < len(tx_values) else 0,
+                    "RxKbps": rx_values[i] if i < len(rx_values) else 0
+                }
+        kbps_data = result
+        if kbps_data:
+            print("Extracted kbps data:")
+            print(kbps_data)
+            return kbps_data[str(priority)]['TxKbps'], kbps_data[str(priority)]['RxKbps']
+        else:
+            print("No TxKbps or RxKbps data found")
+            print(f"Raw output (first 200 chars): {output[:200] + '...' if len(output) > 200 else output}")
+
+    except Exception as e:
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Configure QOS settings")
