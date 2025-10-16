@@ -191,7 +191,7 @@ def qos_config_delete(ip):
 def pass_dscp_traffic(ip, dscp):
     print(f"*** DSCP ID : {dscp} ***")
     print(f"TOS : {int(dscp*4)}")
-    os.system(f"ping -Q {int(dscp*4)} {ip} -c 10 &")
+    os.system(f"ping -Q {int(dscp*4)} {ip} -c 5 &")
 
 def check_traffic_priority(ip, priority):
     pc_details = {
