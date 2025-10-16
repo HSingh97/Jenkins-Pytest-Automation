@@ -141,7 +141,7 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
             # print("++++++++++++++++++++++++++++++++")
             # print("\tPassing Traffic")
             # print("++++++++++++++++++++++++++++++++")
-
+            qos_operations.check_traffic_priority(local_ip, 0)
             print("++++++++++++++++++++++++++++++++")
             print("\tPassing Traffic for 1st DSCP")
             print("++++++++++++++++++++++++++++++++")
@@ -160,7 +160,7 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
             print(f"TX KBPS : {tx_kbps}, RX KBPS : {rx_kbps}")
             if tx_kbps != 0 and rx_kbps != 0:
                 print(f" !!! Traffic Passing !!! : {tx_kbps}, {rx_kbps}")
-
+            time.sleep(5)
 
     finally:
         print("--- Starting cleanup for iteration ---")
