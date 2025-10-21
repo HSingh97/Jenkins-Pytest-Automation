@@ -130,23 +130,35 @@ pipeline {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
 
-                    def local_fw_version = sh(
-                        script: """
-                            ssh-keygen -R ${localIP} >/dev/null 2>&1 || true
-                            ssh-keyscan -H ${localIP} >> ~/.ssh/known_hosts 2>/dev/null
-                            sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'
-                        """,
-                        returnStdout: true
-                    ).trim()
+                    def local_fw_version
+                    try {
+                        local_fw_version = sh(
+                            script: """
+                                ssh-keygen -R ${localIP} >/dev/null 2>&1 || true
+                                ssh-keyscan -H ${localIP} >> ~/.ssh/known_hosts 2>/dev/null
+                                sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'
+                            """,
+                            returnStdout: true
+                        ).trim()
+                    } catch (e) {
+                        echo "⚠️ WARNING: Could not retrieve local firmware version from ${localIP}. Device may be unreachable."
+                        local_fw_version = "N/A (device unreachable)"
+                    }
 
-                    def remote_fw_version = sh(
-                        script: """
-                            ssh-keygen -R ${remoteIP} >/dev/null 2>&1 || true
-                            ssh-keyscan -H ${remoteIP} >> ~/.ssh/known_hosts 2>/dev/null
-                            sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'
-                        """,
-                        returnStdout: true
-                    ).trim()
+                    def remote_fw_version
+                    try {
+                        remote_fw_version = sh(
+                            script: """
+                                ssh-keygen -R ${remoteIP} >/dev/null 2>&1 || true
+                                ssh-keyscan -H ${remoteIP} >> ~/.ssh/known_hosts 2>/dev/null
+                                sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'
+                            """,
+                            returnStdout: true
+                        ).trim()
+                    } catch (e) {
+                        echo "⚠️ WARNING: Could not retrieve remote firmware version from ${remoteIP}. Device may be unreachable."
+                        remote_fw_version = "N/A (device unreachable)"
+                    }
 
 
                     def buildParams = [
