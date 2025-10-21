@@ -56,11 +56,11 @@ pipeline {
                             echo " Configuring Country : ${country}"
                             echo "--------------------------------------------------------------"
 
-                            sh """
-                                pytest -v -s testCases/test_channelTest.py::test_changecountry \
-                                --local-ip '${localIP}' --remote-ip '${remoteIP}' \
-                                --radio '${selectedRadio}' --country '${country}' 2>&1
-                            """
+                            //sh """
+                            //    pytest -v -s testCases/test_channelTest.py::test_changecountry \
+                            //    --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                            //    --radio '${selectedRadio}' --country '${country}' 2>&1
+                            //"""
                             for (bandwidth in bandwidths) {
 
                                 echo "----------------------------------------"

@@ -8,6 +8,7 @@ import paramiko
 import json
 import sys
 import argparse
+import random
 
 import preMadeFunctions.get_snmp_values
 from testCases.conftest import password
