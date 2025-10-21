@@ -146,6 +146,7 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
             print("\tPassing Traffic for 1st DSCP")
             print("++++++++++++++++++++++++++++++++")
             qos_operations.pass_dscp_traffic(remote_ip, 57)
+            time.sleep(2)
             tx_kbps, rx_kbps = qos_operations.check_traffic_priority(local_ip, 0)
             print(f"TX KBPS : {tx_kbps}, RX KBPS : {rx_kbps}")
             if tx_kbps != 0 and rx_kbps != 0:
@@ -156,12 +157,7 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
             print("\tPassing Traffic for 2nd DSCP")
             print("++++++++++++++++++++++++++++++++")
             qos_operations.pass_dscp_traffic(remote_ip, 50)
-            tx_kbps, rx_kbps = qos_operations.check_traffic_priority(local_ip, 1)
-            print(f"TX KBPS : {tx_kbps}, RX KBPS : {rx_kbps}")
-            if tx_kbps != 0 and rx_kbps != 0:
-                print(f" !!! Traffic Passing !!! : {tx_kbps}, {rx_kbps}")
-            time.sleep(5)
-
+            time.sleep(2)
             tx_kbps, rx_kbps = qos_operations.check_traffic_priority(local_ip, 1)
             print(f"TX KBPS : {tx_kbps}, RX KBPS : {rx_kbps}")
             if tx_kbps != 0 and rx_kbps != 0:
