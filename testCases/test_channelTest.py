@@ -92,7 +92,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
 
     bandwidth_param = "wireless.{}.htmode".format(wifi_intf)
     print("\nConfiguring Bandwidth : {} for Local Device ".format(new_bandwidth))
-    # snmp_operations.change_bandwidth(local_ip, radio_ind, new_bandwidth)
+    snmp_operations.change_bandwidth(local_ip, radio_ind, new_bandwidth)
     # ssh_operations.ucidyn_set(local_ip, bandwidth_param, new_bandwidth)
 
     if pingFunction.check_access(local_ip):
