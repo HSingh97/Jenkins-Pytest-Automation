@@ -23,6 +23,7 @@ def pytest_addoption(parser):
     parser.addoption("--username", action="store", default="root", help="Username")
     parser.addoption("--password", action="store", default="admin", help="Password")
     parser.addoption("--sleep", action="store", default="30", help="Sleep")
+    parser.addoption("--extra", action="store", default="1", help="Extra Variable")
     parser.addoption("--check_bw", action="store", default="Null", help="Check Bandwidth")
     parser.addoption("--check_rate", action="store", default="Null", help="Check Data Rate")
     parser.addoption("--traffic-type", action="store", default="Null", help="Traffic Type ( TCP/UDP )")
@@ -110,6 +111,10 @@ def password(request):
 @pytest.fixture
 def sleep(request):
     return request.config.getoption("--sleep")
+
+@pytest.fixture
+def extra(request):
+    return request.config.getoption("--extra")
 
 @pytest.fixture
 def check_bw(request):

@@ -23,13 +23,17 @@ from preMadeFunctions import ssh_operations
 from preMadeFunctions import param_helpers
 
 
-def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
+def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, extra):
 
-    print("\n\nSelected Radio: {}".format(radio))
-    print("Local IP Address: {}".format(local_ip))
-    print("Remote IP Address: {}".format(remote_ip))
-    print("Selected Bandwidth: {}".format(bandwidth))
-    print("Selected Country: {}".format(country))
+    print("\n\n****************************************************")
+    print("Selected Radio      : {}".format(radio))
+    print("Local IP Address    : {}".format(local_ip))
+    print("Remote IP Address   : {}".format(remote_ip))
+    print("Selected Bandwidth  : {}".format(bandwidth))
+    print("Selected Country    : {}".format(country))
+    print("Short Test          : {}".format(extra))
+    print("\n****************************************************\n\n")
+
 
     # Assigning country codes for diff Countries
     if country == "US 5GHz All":
@@ -68,6 +72,20 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country):
 
     channel_list = fetch_ssh_values.fetch_channel_list(local_ip, radio_ind, country_code, new_bandwidth)
     time.sleep(2)
+
+    if extra == "1":
+        channel_groups = {}
+
+        for channel in channel_list:
+            frequency = (int(channel) * 5) + 5000
+            group_key = frequency // 100
+            if group_key not in channel_groups:
+                channel_groups[group_key] = []
+
+            channel_groups[group_key].append(channel)
+
+        random_selection = [random.choice(group) for group in channel_groups.values()]
+        channel_list = random_selection
 
     print("\nChannels available for current selection : {}".format(channel_list))
 
