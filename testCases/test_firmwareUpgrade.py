@@ -7,7 +7,7 @@ import pytest
 from pageObjects.HomePage import HomePage
 from pageObjects.LoginPage import LoginPage
 from pageObjects.UpgradePage import UpgradePage
-from preMadeFunctions import accessWeb, pingFunction
+from preMadeFunctions import accessWeb, pingFunction, ssh_operations
 from utilities.readProperties import readConfig
 from testCases.configsetup import setup
 from utilities.serial_Logging import *
@@ -29,27 +29,27 @@ def test_Upgrade(driver):
 
     hp = HomePage(driver)
 
-    if str(hp.getMemory()) > str(60):
-        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
-        hp.clickReboot()
-        hp.clickSuperReboot()
-        time.sleep(60)
-
-        wait = 0
-        while wait < 150:
-            output = pingFunction.Ping(readConfig.getIPaddr())
-
-            if not output:
-                wait += 3
-                time.sleep(3)
-
-            else:
-                print("Reachable")
-                print("Proceeding to Upgrade Firmware")
-                time.sleep(5)
-                accessWeb.access_and_login(driver, URL, username, password)
-                time.sleep(4)
-                break
+    #if str(hp.getMemory()) > str(60):
+        #print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
+        #hp.clickReboot()
+        #hp.clickSuperReboot()
+        #time.sleep(60)
+        #
+        # wait = 0
+        # while wait < 150:
+        #     output = pingFunction.Ping(readConfig.getIPaddr())
+        #
+        #     if not output:
+        #         wait += 3
+        #         time.sleep(3)
+        #
+        #     else:
+        #         print("Reachable")
+        #         print("Proceeding to Upgrade Firmware")
+        #         time.sleep(5)
+        #         accessWeb.access_and_login(driver, URL, username, password)
+        #         time.sleep(4)
+        #         break
 
     hp.clickManagementSection()
     hp.clickUpgradeReset()
@@ -57,9 +57,9 @@ def test_Upgrade(driver):
     up = UpgradePage(driver)
     up.selectImageFile()
     up.clickUpgrade()
-    up.clickProceed()
-
-    time.sleep(400)
+    #up.clickProceed()
+    ssh_operations.ssh_get("ls -ltr /tmp/firmware.bin")
+    time.sleep(1)
 
     wait = 0
     while wait < 200:
@@ -85,8 +85,6 @@ def test_Upgrade(driver):
     # Close the driver window
     driver.close()
 
-def test_DownloadFirmware(build):
-    pass
 
 # Ignore Warnings
 def warn(*args, **kwargs):

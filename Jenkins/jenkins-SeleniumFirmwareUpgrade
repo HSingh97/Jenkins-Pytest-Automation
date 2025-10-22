@@ -1,13 +1,10 @@
-
 // Functions
-
 def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
 
 // Main Pipeline
-
 pipeline {
     agent { node { label "${TARGET_STAND}"} }
 
@@ -18,8 +15,8 @@ pipeline {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${TARGET_STAND}"
                     echo "----------------------------------------"
-      	        }
-      	    }
+                }
+            }
         }
         stage('Install Python Dependencies') {
             steps {
@@ -31,7 +28,7 @@ pipeline {
                 }
             }
         }
-stage('Download Firmware'){
+        stage('Download Firmware'){
             steps {
                 script {
                     echo "----------------------------------------"
@@ -39,12 +36,9 @@ stage('Download Firmware'){
                     echo "----------------------------------------"
                     sh "mkdir -p artifacts"
                     sh "pwd"
-                    // Ensure you use the correct parameter name from your Jenkins job
                     def customBuildFile = params.UPLOADED_FIRMWARE
-                    // Define the log file path once
                     def logFile = "${workspace}/artifacts/flashing-device.log"
 
-                    // This parsing logic is correct and working.
                     def url = params['Build']
                     int bonsaiIndex = url.indexOf('/bonsai/')
                     if (bonsaiIndex == -1) {
@@ -67,42 +61,23 @@ stage('Download Firmware'){
                     echo "Target Image Filename: ${TARGET_IMG_FILENAME}"
                     echo "Full WGET URL: ${WGET_URL}"
 
-                    // Check if a custom build was uploaded
                     if (customBuildFile) {
-                        // --- 1. A FILE WAS UPLOADED ---
 
                         sh "echo 'Using uploaded custom build: ${customBuildFile}' | tee \"${logFile}\""
                         sh "mv -f '${customBuildFile}' ${TARGET_IMG_FILENAME} 2>&1 | tee -a \"${logFile}\""
-
                         sh "echo 'Downloading -apps.tgz file...' | tee -a \"${logFile}\""
-                        // --- CHANGED --- Added -e robots=off
                         sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
                         sh "mv -f *-apps.tgz test_firwmare.tgz 2>&1 | tee -a \"${logFile}\""
 
                     } else {
-                        // --- 2. NO FILE UPLOADED, DOWNLOAD FROM URL ---
-
                         sh "echo 'No custom build found. Downloading from URL.' | tee \"${logFile}\""
-
-                        // --- CHANGED ---
-                        // Added -e robots=off to ignore robots.txt
-                        // Used the specific patterns you confirmed: '*-apps.img.enc' and '*-apps.tgz'
                         sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc,*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
-                        // --- END OF CHANGE ---
-
-                        // Rename the downloaded .tgz file
                         sh "mv -f *-apps.tgz test_firwmare.tgz 2>&1 | tee -a \"${logFile}\""
 
-                        // --- CHANGED ---
-                        // This shell script now looks for the specific '*-apps.img.enc' pattern
                         sh """
                            #!/bin/bash
                            imgfile=""
-
-                           # Look for the specific .img.enc file
                            imgfile=\$(ls *-apps.img.enc 2>/dev/null | head -n 1)
-
-                           # Now, rename whichever one was found
                            if [ -n "\$imgfile" ]; then
                                echo "Found image file: \$imgfile. Renaming to ${TARGET_IMG_FILENAME}"
                                mv -f "\$imgfile" "${TARGET_IMG_FILENAME}"
@@ -111,11 +86,12 @@ stage('Download Firmware'){
                                exit 1
                            fi
                         """ + " 2>&1 | tee -a \"${logFile}\""
-                        // --- END OF CHANGE ---
                     }
 
-                    // Archive the final .img file, regardless of its source
                     archiveArtifacts(TARGET_IMG_FILENAME)
+
+                    // Save the dynamic filename to an environment variable for the next stage
+                    env.FIRMWARE_FILE = TARGET_IMG_FILENAME
                 }
             }
         }
@@ -129,6 +105,9 @@ stage('Download Firmware'){
                     def buildURL = params['Build']
                     def single = params['Single Image']
 
+                    // Get the count from parameters, default to "1" if not provided
+                    def FIRMWARE_UPGRADE_COUNT = params.FIRMWARE_UPGRADE_COUNT ?: "1"
+
                     echo "Local IP Address: ${localIP}"
                     echo "Remote IP Address: ${remoteIP}"
 
@@ -136,9 +115,12 @@ stage('Download Firmware'){
                     echo "Upgrading the Firmware"
                     echo "----------------------------------------"
                     sh "mkdir -p artifacts"
-                    //for (int i = 1; i <= FIRMWARE_UPGRADE_COUNT.toInteger() ; i++) {
-                    //    sh "pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade 2>&1 | tee ${workspace}/artifacts/firmware-upgrade-device.log"
-                    //}
+
+                    for (int i = 1; i <= FIRMWARE_UPGRADE_COUNT.toInteger() ; i++) {
+                        // Export the firmware path as FW_PATH for pytest
+                        // and correctly quote the tee path
+                        sh "export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade 2>&1 | tee \"${workspace}/artifacts/firmware-upgrade-device.log\""
+                    }
                     archiveArtifacts('artifacts/**/*')
                     //archiveArtifacts('SerialLogs_Device.log')
                 }

@@ -1,7 +1,8 @@
+# Upgrade Page
 import time
 from selenium.common.exceptions import NoSuchElementException
 from pathlib import Path
-
+import os
 
 class UpgradePage:
 
@@ -9,11 +10,13 @@ class UpgradePage:
     upgradeButton_xpath = "//*[@id='kwnupgrade']/div/div[3]/div/input[2]"
     proceedButton_xpath = "//input[@value='Proceed']"
 
-    firmwareLocation = Path("flasher/nor-ipq40xx-single-enc.img").resolve()
+    firmware_name = os.getenv('FW_PATH', 'nor-ipq50xx-single-enc.img')
+    firmwareLocation = Path(firmware_name).resolve()
     firmware_path = str(firmwareLocation)
 
     def __init__(self, driver):
         self.driver = driver
+        print(f"Using firmware file: {self.firmware_path}")
 
     def selectImageFile(self):
         try:
