@@ -31,7 +31,7 @@ pipeline {
                 }
             }
         }
-stage('Download Firmware'){
+        stage('Download Firmware'){
             steps {
                 script {
                     echo "----------------------------------------"
@@ -45,40 +45,42 @@ stage('Download Firmware'){
                     def logFile = "${workspace}/artifacts/flashing-device.log"
 
                     // --- CHANGED ---
-                    // Use simple, sandbox-safe string splitting to get all parts.
-                    def parts = params['Build'].split('/')
+                    // New, more robust parsing logic.
+                    // It finds '/bonsai/' and takes everything *after* it as the build path.
+                    def url = params['Build']
+                    int bonsaiIndex = url.indexOf('/bonsai/')
 
-                    def PLATFORM_ID = ""
-                    def BUILD_NUMBER = ""
-                    def PROJECT = ""
-
-                    if (parts[-1].trim() == "") {
-                        // URL has a trailing slash: https://.../bonsai/5018/debug/343/
-                        BUILD_NUMBER = parts[-2]
-                        PROJECT = parts[-3]
-                        PLATFORM_ID = parts[-4] // This is the new part (e.g., 5018)
-                    } else {
-                        // URL has no trailing slash: https://.../bonsai/5018/debug/343
-                        BUILD_NUMBER = parts[-1]
-                        PROJECT = parts[-2]
-                        PLATFORM_ID = parts[-3] // This is the new part (e.g., 5018)
+                    if (bonsaiIndex == -1) {
+                        error "Invalid Build URL: ${url}. URL must contain '/bonsai/'."
                     }
 
-                    if (PROJECT == "" || BUILD_NUMBER == "" || PLATFORM_ID == "") {
-                        error "Could not parse PLATFORM_ID, PROJECT, and BUILD_NUMBER from URL: ${params['Build']}"
+                    // 1. Get the full path *after* '/bonsai/'
+                    // e.g., "5018/UBR655/debug/343/" OR "5018/UBR655/77/"
+                    def buildPath = url.substring(bonsaiIndex + 8) // +8 for length of '/bonsai/'
+
+                    // 2. Get the first part of that path for the platform ID
+                    def parts = buildPath.split('/')
+                    def PLATFORM_ID = parts[0] // This will be "5018", "6018", etc.
+
+                    if (PLATFORM_ID == null || PLATFORM_ID.trim() == "") {
+                        error "Could not parse PLATFORM_ID from URL: ${url}"
                     }
 
-                    // --- CHANGED ---
-                    // Dynamically create the target filename based on the platform
-                    // e.g., "5018" -> "ipq50xx", "6018" -> "ipq60xx"
+                    // Dynamically create the target filename
                     def platformPrefix = PLATFORM_ID.substring(0, 2) // "50" or "60"
                     def TARGET_IMG_FILENAME = "nor-ipq${platformPrefix}xx-apps.img.enc"
+
+                    // 3. The WGET URL is just the base + the full buildPath
+                    // We also ensure it's a directory by adding a trailing / if missing
+                    def WGET_URL = "https://jenkins.senao.com/bonsai/${buildPath}"
+                    if (!WGET_URL.endsWith('/')) {
+                        WGET_URL += '/'
+                    }
                     // --- END OF CHANGE ---
 
                     echo "Parsed PLATFORM_ID: ${PLATFORM_ID}"
-                    echo "Parsed PROJECT: ${PROJECT}"
-                    echo "Parsed BUILD_NUMBER: ${BUILD_NUMBER}"
                     echo "Target Image Filename: ${TARGET_IMG_FILENAME}"
+                    echo "Full WGET URL: ${WGET_URL}"
 
                     // Check if a custom build was uploaded
                     if (customBuildFile) {
@@ -89,23 +91,21 @@ stage('Download Firmware'){
 
                         // We still need to download the -apps.tgz file
                         sh "echo 'Downloading -apps.tgz file...' | tee -a \"${logFile}\""
-                        // --- CHANGED --- Use dynamic PLATFORM_ID in URL
-                        sh "wget --no-verbose --no-parent --no-check-certificate --recursive --level=1 -A '*-apps.tgz' --no-directories https://jenkins.senao.com/bonsai/${PLATFORM_ID}/${PROJECT}/${BUILD_NUMBER}/ 2>&1 | tee -a \"${logFile}\""
+                        // --- CHANGED --- Use the full extracted WGET_URL
+                        sh "wget --no-verbose --no-parent --no-check-certificate --recursive --level=1 -A '*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
                         sh "mv -f *-apps.tgz test_firwmare.tgz 2>&1 | tee -a \"${logFile}\""
 
                     } else {
                         // --- 2. NO FILE UPLOADED, DOWNLOAD FROM URL ---
 
                         sh "echo 'No custom build found. Downloading from URL.' | tee \"${logFile}\""
-                        // --- CHANGED --- Use dynamic PLATFORM_ID in URL
-                        sh "wget --no-verbose --no-parent --no-check-certificate --recursive --level=1 -A '*-B*[0-9]-enc.img,*-apps.tgz' --no-directories https://jenkins.senao.com/bonsai/${PLATFORM_ID}/${PROJECT}/${BUILD_NUMBER}/ 2>&1 | tee -a \"${logFile}\""
+                        // --- CHANGED --- Use the full extracted WGET_URL
+                        sh "wget --no-verbose --no-parent --no-check-certificate --recursive --level=1 -A '*-B*[0-9]-enc.img,*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
 
                         // Rename the downloaded .tgz file
                         sh "mv -f *-apps.tgz test_firwmare.tgz 2>&1 | tee -a \"${logFile}\""
 
-                        // --- CHANGED ---
                         // Use a safer shell script to find and rename the .img file
-                        // This avoids the 'mv: missing destination' error if ls finds nothing
                         sh """
                            #!/bin/bash
                            imgfile=\$(ls *-B*[0-9]-enc.img 2>/dev/null | head -n 1)
@@ -116,11 +116,10 @@ stage('Download Firmware'){
                                echo "ERROR: No downloaded .img file matching '*-B*[0-9]-enc.img' was found."
                                exit 1
                            fi
-                        """ + " 2>&1 | tee -a \"${logFile}\"" // Append logging to the whole block
+                        """ + " 2>&1 | tee -a \"${logFile}\""
                     }
 
                     // Archive the final .img file, regardless of its source
-                    // --- CHANGED --- Use dynamic filename variable
                     archiveArtifacts(TARGET_IMG_FILENAME)
                 }
             }
