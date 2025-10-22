@@ -40,8 +40,9 @@ pipeline {
                     sh "mkdir -p artifacts"
                     sh "pwd"
                     dir('flasher') {
-                        sh "wget --no-verbose --no-parent --no-check-certificate --recursive --level=1 -A '*-B*[0-9]-enc.img' --no-directories https://jenkins.senao.com/bonsai/5018/{PROJECT}/{BUILD_NUMBER}/EnGenius-{PROJECT}-xxx-1.1.0.{BUILD_NUMBER}-apps.tgz 2>&1 | tee ${workspace}/artifacts/flashing-device.log"
-                        sh "mv *.tgz test_firwmare.tgz"
+
+                        sh "wget --no-verbose --no-parent --no-check-certificate --recursive --level=1 -A '*-B*[0-9]-enc.img,*-apps.tgz' --no-directories https://jenkins.senao.com/bonsai/5018/{PROJECT}/{BUILD_NUMBER}/ 2>&1 | tee ${workspace}/artifacts/flashing-device.log"
+                        sh "mv -f *-apps.tgz test_firwmare.tgz 2>&1 | tee -a ${workspace}/artifacts/flashing-device.log"
                         sh "mv -f \$(ls *-B*[0-9]-enc.img) nor-ipq40xx-single-enc.img 2>&1 | tee -a ${workspace}/artifacts/flashing-device.log"
                         archiveArtifacts('nor-ipq40xx-single-enc.img')
                     }
