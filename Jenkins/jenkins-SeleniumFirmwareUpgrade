@@ -36,6 +36,12 @@ pipeline {
                     echo "----------------------------------------"
                     sh "mkdir -p artifacts"
                     sh "pwd"
+
+                    // --- ADD THIS LINE ---
+                    echo "Cleaning up any old firmware files..."
+                    sh "rm -f *.img.enc *.tgz"
+                    // --- END OF CHANGE ---
+
                     def customBuildFile = params.UPLOADED_FIRMWARE
                     def logFile = "${workspace}/artifacts/flashing-device.log"
 
@@ -77,7 +83,8 @@ pipeline {
                         sh """
                            #!/bin/bash
                            imgfile=""
-                           imgfile=\$(ls *-apps.img.enc 2>/dev/null | head -n 1)
+                           # We can use 'ls -t' (sort by time) just to be extra safe
+                           imgfile=\$(ls -t *-apps.img.enc 2>/dev/null | head -n 1)
                            if [ -n "\$imgfile" ]; then
                                echo "Found image file: \$imgfile. Renaming to ${TARGET_IMG_FILENAME}"
                                mv -f "\$imgfile" "${TARGET_IMG_FILENAME}"
