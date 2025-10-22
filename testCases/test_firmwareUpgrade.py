@@ -13,13 +13,14 @@ from testCases.configsetup import setup
 from utilities.serial_Logging import *
 
 
-URL = "http://"+readConfig.getIPaddr()+"/cgi-bin/luci"
 #serial_port = readConfig.getSerialPortDevice()
 #serial_port_log = readConfig.getSerialLogsDevice()
 driver = setup
 
 
-def test_Upgrade(driver):
+def test_Upgrade(driver, local_ip):
+    URL = "http://" + local_ip + "/cgi-bin/luci"
+
     # Start Serial Console logging for specific port
     #serial_logging_start(serial_port, serial_port_log)
 

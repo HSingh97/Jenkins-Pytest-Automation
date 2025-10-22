@@ -126,7 +126,7 @@ pipeline {
                     for (int i = 1; i <= FIRMWARE_UPGRADE_COUNT.toInteger() ; i++) {
                         // Export the firmware path as FW_PATH for pytest
                         // and correctly quote the tee path
-                        sh "export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade 2>&1 | tee \"${workspace}/artifacts/firmware-upgrade-device.log\""
+                        sh "export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade --local-ip '${localIP}' 2>&1 | tee \"${workspace}/artifacts/firmware-upgrade-device.log\""
                     }
                     archiveArtifacts('artifacts/**/*')
                     //archiveArtifacts('SerialLogs_Device.log')
