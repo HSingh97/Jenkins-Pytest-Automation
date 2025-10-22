@@ -37,57 +37,74 @@ pipeline {
                     sh "mkdir -p artifacts"
                     sh "pwd"
 
-                    // --- ADD THIS LINE ---
+                    // --- CHANGED ---
+                    // Clean up old files using the new naming convention
                     echo "Cleaning up any old firmware files..."
-                    sh "rm -f *.img.enc *.tgz"
-                    // --- END OF CHANGE ---
+                    sh "rm -f fw.img.enc fw.tgz"
+
+                    // Define new target filenames
+                    def targetImgFile = "fw.img.enc"
+                    def targetTgzFile = "fw.tgz"
+
+                    // Get the 'Single Image' parameter (this will be true or false)
+                    // We must check if it exists first, default to false.
+                    def singleImage = params['Single Image'] ?: false
 
                     def customBuildFile = params.UPLOADED_FIRMWARE
                     def logFile = "${workspace}/artifacts/flashing-device.log"
 
+                    // URL Parsing Logic (no changes here)
                     def url = params['Build']
                     int bonsaiIndex = url.indexOf('/bonsai/')
                     if (bonsaiIndex == -1) {
                         error "Invalid Build URL: ${url}. URL must contain '/bonsai/'."
                     }
                     def buildPath = url.substring(bonsaiIndex + 8)
-                    def parts = buildPath.split('/')
-                    def PLATFORM_ID = parts[0]
-                    if (PLATFORM_ID == null || PLATFORM_ID.trim() == "") {
-                        error "Could not parse PLATFORM_ID from URL: ${url}"
-                    }
-                    def platformPrefix = PLATFORM_ID.substring(0, 2)
-                    def TARGET_IMG_FILENAME = "nor-ipq${platformPrefix}xx-apps.img.enc"
                     def WGET_URL = "https://jenkins.senao.com/bonsai/${buildPath}"
                     if (!WGET_URL.endsWith('/')) {
                         WGET_URL += '/'
                     }
-
-                    echo "Parsed PLATFORM_ID: ${PLATFORM_ID}"
-                    echo "Target Image Filename: ${TARGET_IMG_FILENAME}"
                     echo "Full WGET URL: ${WGET_URL}"
+                    // --- END OF URL LOGIC ---
+
 
                     if (customBuildFile) {
-
-                        sh "echo 'Using uploaded custom build: ${customBuildFile}' | tee \"${logFile}\""
-                        sh "mv -f '${customBuildFile}' ${TARGET_IMG_FILENAME} 2>&1 | tee -a \"${logFile}\""
-                        sh "echo 'Downloading -apps.tgz file...' | tee -a \"${logFile}\""
-                        sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
-                        sh "mv -f *-apps.tgz test_firwmare.tgz 2>&1 | tee -a \"${logFile}\""
+                        // --- 1. A FILE WAS UPLOADED ---
+                        if (singleImage) {
+                            echo "Using custom uploaded file as SINGLE IMAGE: ${targetImgFile}"
+                            sh "mv -f '${customBuildFile}' ${targetImgFile} 2>&1 | tee \"${logFile}\""
+                            // Still need to download the tgz
+                            sh "echo 'Downloading .tgz file...' | tee -a \"${logFile}\""
+                            sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
+                            sh "mv -f *-apps.tgz ${targetTgzFile} 2>&1 | tee -a \"${logFile}\""
+                        } else {
+                            echo "Using custom uploaded file as TGZ: ${targetTgzFile}"
+                            sh "mv -f '${customBuildFile}' ${targetTgzFile} 2>&1 | tee \"${logFile}\""
+                            // Still need to download the img.enc
+                            sh "echo 'Downloading .img.enc file...' | tee -a \"${logFile}\""
+                            sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
+                            sh """
+                               #!/bin/bash
+                               imgfile=\$(ls -t *-apps.img.enc 2>/dev/null | head -n 1)
+                               if [ -n "\$imgfile" ]; then mv -f "\$imgfile" "${targetImgFile}"; fi
+                            """ + " 2>&1 | tee -a \"${logFile}\""
+                        }
 
                     } else {
+                        // --- 2. NO FILE UPLOADED, DOWNLOAD FROM URL ---
                         sh "echo 'No custom build found. Downloading from URL.' | tee \"${logFile}\""
                         sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc,*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
-                        sh "mv -f *-apps.tgz test_firwmare.tgz 2>&1 | tee -a \"${logFile}\""
 
+                        // Rename the tgz file
+                        sh "mv -f *-apps.tgz ${targetTgzFile} 2>&1 | tee -a \"${logFile}\""
+
+                        // Rename the img.enc file
                         sh """
                            #!/bin/bash
-                           imgfile=""
-                           # We can use 'ls -t' (sort by time) just to be extra safe
                            imgfile=\$(ls -t *-apps.img.enc 2>/dev/null | head -n 1)
                            if [ -n "\$imgfile" ]; then
-                               echo "Found image file: \$imgfile. Renaming to ${TARGET_IMG_FILENAME}"
-                               mv -f "\$imgfile" "${TARGET_IMG_FILENAME}"
+                               echo "Found image file: \$imgfile. Renaming to ${targetImgFile}"
+                               mv -f "\$imgfile" "${targetImgFile}"
                            else
                                echo "ERROR: No downloaded .img file matching '*-apps.img.enc' was found."
                                exit 1
@@ -95,28 +112,37 @@ pipeline {
                         """ + " 2>&1 | tee -a \"${logFile}\""
                     }
 
-                    archiveArtifacts(TARGET_IMG_FILENAME)
+                    // --- CHANGED ---
+                    // Conditionally set the env.FIRMWARE_FILE based on the checkbox
+                    if (singleImage) {
+                        echo "Single Image selected. Setting firmware for upgrade: ${targetImgFile}"
+                        env.FIRMWARE_FILE = targetImgFile
+                    } else {
+                        echo "Single Image not selected. Setting firmware for upgrade: ${targetTgzFile}"
+                        env.FIRMWARE_FILE = targetTgzFile
+                    }
 
-                    // Save the dynamic filename to an environment variable for the next stage
-                    env.FIRMWARE_FILE = TARGET_IMG_FILENAME
+                    // Archive both files
+                    archiveArtifacts(targetImgFile)
+                    archiveArtifacts(targetTgzFile)
                 }
             }
         }
         stage('Firmware Upgrade') {
             steps {
                 script {
-
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
                     def model = params['Model']
                     def buildURL = params['Build']
-                    def single = params['Single Image']
+                    // def single = params['Single Image'] // This is now handled in the Download stage
 
                     // Get the count from parameters, default to "1" if not provided
                     def FIRMWARE_UPGRADE_COUNT = params.FIRMWARE_UPGRADE_COUNT ?: "1"
 
                     echo "Local IP Address: ${localIP}"
                     echo "Remote IP Address: ${remoteIP}"
+                    echo "--- Firmware file being passed to Pytest: ${env.FIRMWARE_FILE} ---"
 
                     echo "----------------------------------------"
                     echo "Upgrading the Firmware"
@@ -124,9 +150,8 @@ pipeline {
                     sh "mkdir -p artifacts"
 
                     for (int i = 1; i <= FIRMWARE_UPGRADE_COUNT.toInteger() ; i++) {
-                        // Export the firmware path as FW_PATH for pytest
-                        // and correctly quote the tee path
-                        sh "export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade --local-ip '${localIP}' 2>&1 | tee \"${workspace}/artifacts/firmware-upgrade-device.log\""
+                        // This command now correctly passes either 'fw.img.enc' or 'fw.tgz'
+                        sh "export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade 2>&1 | tee \"${workspace}/artifacts/firmware-upgrade-device.log\""
                     }
                     archiveArtifacts('artifacts/**/*')
                     //archiveArtifacts('SerialLogs_Device.log')

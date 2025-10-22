@@ -28,29 +28,6 @@ def test_Upgrade(driver, local_ip):
     time.sleep(2)
 
     hp = HomePage(driver)
-
-    #if str(hp.getMemory()) > str(60):
-        #print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
-        #hp.clickReboot()
-        #hp.clickSuperReboot()
-        #time.sleep(60)
-        #
-        # wait = 0
-        # while wait < 150:
-        #     output = pingFunction.Ping(readConfig.getIPaddr())
-        #
-        #     if not output:
-        #         wait += 3
-        #         time.sleep(3)
-        #
-        #     else:
-        #         print("Reachable")
-        #         print("Proceeding to Upgrade Firmware")
-        #         time.sleep(5)
-        #         accessWeb.access_and_login(driver, URL, username, password)
-        #         time.sleep(4)
-        #         break
-
     hp.clickManagementSection()
     hp.clickUpgradeReset()
 
