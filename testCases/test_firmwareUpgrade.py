@@ -37,14 +37,15 @@ def test_Upgrade(driver, local_ip):
     up = UpgradePage(driver)
     up.selectImageFile()
     up.clickUpgrade()
-    #up.clickProceed()
+
     output = ssh_operations.ssh_get(local_ip,"ls -ltr /tmp/firmware.bin")
 
     if output == "ls: /tmp/firmware.bin: No such file or directory":
         print("!!!! FW Uplaod Failed !!!!")
     else:
-        print("!!!! FW Upgrade Successful !!!!")
+        print("!!!! FW Upload Successful !!!!")
 
+    up.clickProceed()
     time.sleep(1)
 
     wait = 0
