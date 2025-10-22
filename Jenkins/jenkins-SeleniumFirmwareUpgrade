@@ -84,31 +84,39 @@ pipeline {
                         sh "echo 'No custom build found. Downloading from URL.' | tee \"${logFile}\""
 
                         // --- CHANGED ---
-                        // Updated the -A pattern to look for '*-apps.img.enc' (based on your example)
-                        // instead of '*-B*[0-9]-enc.img'
-                        sh "wget --no-verbose --no-parent --no-check-certificate --recursive --level=1 -A '*-apps.img.enc,*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
+                        // Added *both* image patterns to the -A flag:
+                        // your original '*-B*[0-9]-enc.img' AND your new '*-apps.img.enc'
+                        sh "wget --no-verbose --no-parent --no-check-certificate --recursive --level=1 -A '*-B*[0-9]-enc.img,*-apps.img.enc,*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
                         // --- END OF CHANGE ---
 
                         // Rename the downloaded .tgz file
                         sh "mv -f *-apps.tgz test_firwmare.tgz 2>&1 | tee -a \"${logFile}\""
 
-                        // Use a safer shell script to find and rename the .img file
+                        // --- CHANGED ---
+                        // This shell script now checks for *both* patterns,
+                        // finds whichever one was downloaded, and renames it.
                         sh """
                            #!/bin/bash
+                           imgfile=""
 
-                           # --- CHANGED ---
-                           # Updated the ls pattern to look for '*-apps.img.enc'
-                           imgfile=\$(ls *-apps.img.enc 2>/dev/null | head -n 1)
-                           # --- END OF CHANGE ---
+                           # First, check for the original pattern
+                           imgfile=\$(ls *-B*[0-9]-enc.img 2>/dev/null | head -n 1)
 
+                           # If that's not found, check for the new pattern
+                           if [ -z "\$imgfile" ]; then
+                               imgfile=\$(ls *-apps.img.enc 2>/dev/null | head -n 1)
+                           fi
+
+                           # Now, rename whichever one was found
                            if [ -n "\$imgfile" ]; then
                                echo "Found image file: \$imgfile. Renaming to ${TARGET_IMG_FILENAME}"
                                mv -f "\$imgfile" "${TARGET_IMG_FILENAME}"
                            else
-                               echo "ERROR: No downloaded .img file matching '*-apps.img.enc' was found."
+                               echo "ERROR: No downloaded .img file matching '*-B*[0-9]-enc.img' OR '*-apps.img.enc' was found."
                                exit 1
                            fi
                         """ + " 2>&1 | tee -a \"${logFile}\""
+                        // --- END OF CHANGE ---
                     }
 
                     // Archive the final .img file, regardless of its source
