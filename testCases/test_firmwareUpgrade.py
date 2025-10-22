@@ -8,7 +8,6 @@ from pageObjects.HomePage import HomePage
 from pageObjects.LoginPage import LoginPage
 from pageObjects.UpgradePage import UpgradePage
 from preMadeFunctions import accessWeb, pingFunction, ssh_operations
-from utilities.readProperties import readConfig
 from testCases.configsetup import setup
 from utilities.serial_Logging import *
 
@@ -64,7 +63,7 @@ def test_Upgrade(driver, local_ip):
 
     wait = 0
     while wait < 200:
-        output = pingFunction.Ping(readConfig.getIPaddr())
+        output = pingFunction.Ping(local_ip)
 
         if not output:
             wait += 3
