@@ -37,23 +37,17 @@ pipeline {
                     sh "mkdir -p artifacts"
                     sh "pwd"
 
-                    // --- CHANGED ---
-                    // Clean up old files using the new naming convention
                     echo "Cleaning up any old firmware files..."
                     sh "rm -f fw.img.enc fw.tgz"
 
-                    // Define new target filenames
                     def targetImgFile = "fw.img.enc"
                     def targetTgzFile = "fw.tgz"
 
-                    // Get the 'Single Image' parameter (this will be true or false)
-                    // We must check if it exists first, default to false.
                     def singleImage = params['Single Image'] ?: false
 
                     def customBuildFile = params.UPLOADED_FIRMWARE
                     def logFile = "${workspace}/artifacts/flashing-device.log"
 
-                    // URL Parsing Logic (no changes here)
                     def url = params['Build']
                     int bonsaiIndex = url.indexOf('/bonsai/')
                     if (bonsaiIndex == -1) {
@@ -65,22 +59,18 @@ pipeline {
                         WGET_URL += '/'
                     }
                     echo "Full WGET URL: ${WGET_URL}"
-                    // --- END OF URL LOGIC ---
 
 
                     if (customBuildFile) {
-                        // --- 1. A FILE WAS UPLOADED ---
                         if (singleImage) {
                             echo "Using custom uploaded file as SINGLE IMAGE: ${targetImgFile}"
                             sh "mv -f '${customBuildFile}' ${targetImgFile} 2>&1 | tee \"${logFile}\""
-                            // Still need to download the tgz
                             sh "echo 'Downloading .tgz file...' | tee -a \"${logFile}\""
                             sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
                             sh "mv -f *-apps.tgz ${targetTgzFile} 2>&1 | tee -a \"${logFile}\""
                         } else {
                             echo "Using custom uploaded file as TGZ: ${targetTgzFile}"
                             sh "mv -f '${customBuildFile}' ${targetTgzFile} 2>&1 | tee \"${logFile}\""
-                            // Still need to download the img.enc
                             sh "echo 'Downloading .img.enc file...' | tee -a \"${logFile}\""
                             sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
                             sh """
@@ -91,7 +81,6 @@ pipeline {
                         }
 
                     } else {
-                        // --- 2. NO FILE UPLOADED, DOWNLOAD FROM URL ---
                         sh "echo 'No custom build found. Downloading from URL.' | tee \"${logFile}\""
                         sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc,*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
 
@@ -112,8 +101,6 @@ pipeline {
                         """ + " 2>&1 | tee -a \"${logFile}\""
                     }
 
-                    // --- CHANGED ---
-                    // Conditionally set the env.FIRMWARE_FILE based on the checkbox
                     if (singleImage) {
                         echo "Single Image selected. Setting firmware for upgrade: ${targetImgFile}"
                         env.FIRMWARE_FILE = targetImgFile
@@ -122,7 +109,6 @@ pipeline {
                         env.FIRMWARE_FILE = targetTgzFile
                     }
 
-                    // Archive both files
                     archiveArtifacts(targetImgFile)
                     archiveArtifacts(targetTgzFile)
                 }
@@ -136,7 +122,6 @@ pipeline {
                     def model = params['Model']
                     def buildURL = params['Build']
 
-                    // Get the count from parameters, default to "1" if not provided
                     def FIRMWARE_UPGRADE_COUNT = params.FIRMWARE_UPGRADE_COUNT ?: "1"
 
                     echo "Local IP Address: ${localIP}"
@@ -149,7 +134,6 @@ pipeline {
                     sh "mkdir -p artifacts"
 
                     for (int i = 1; i <= FIRMWARE_UPGRADE_COUNT.toInteger() ; i++) {
-                        // This command now correctly passes either 'fw.img.enc' or 'fw.tgz'
                         sh "export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade 2>&1 --local-ip '$localIP' | tee \"${workspace}/artifacts/firmware-upgrade-device.log\""
                     }
                     archiveArtifacts('artifacts/**/*')
