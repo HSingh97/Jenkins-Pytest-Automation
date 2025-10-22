@@ -93,11 +93,11 @@ pipeline {
                         sh "echo 'No custom build found. Downloading from URL.' | tee \"${logFile}\""
                         sh "wget --no-verbose --no-parent --no-check-certificate --recursive --level=1 -A '*-B*[0-9]-enc.img,*-apps.tgz' --no-directories https://jenkins.senao.com/bonsai/5018/${PROJECT}/${BUILD_NUMBER}/ 2>&1 | tee -a \"${logFile}\""
                         sh "mv -f *-apps.tgz test_firwmare.tgz 2>&1 | tee -a \"${logFile}\""
-                        sh "mv -f \$(ls *-B*[0-9]-enc.img) nor-ipq40xx-single-enc.img 2>&1 | tee -a \"${logFile}\""
+                        sh "mv -f \$(ls *-B*[0-9]-enc.img) nor-ipq50xx-single-enc.img 2>&1 | tee -a \"${logFile}\""
                     }
 
                     // Archive the final .img file, regardless of its source
-                    archiveArtifacts('nor-ipq40xx-single-enc.img')
+                    archiveArtifacts('nor-ipq50xx-single-enc.img')
                 }
             }
         }
