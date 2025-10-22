@@ -1,24 +1,8 @@
-import groovy.transform.NonCPS
+
 // Functions
 
 def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
-}
-
-/**
- * This function is annotated with @NonCPS to prevent serialization errors.
- * It uses a regex Matcher (which is not serializable) to parse the URL
- * and returns a simple, serializable Map of the results.
- */
-@NonCPS
-def parseBuildUrl(String url) {
-    // Regex to find the last two parts of the URL path
-    def matcher = (url =~ /.*\/([^\/]+)\/([^\/]+)\/?$/)
-    if (matcher.matches()) {
-        // Return a serializable Map
-        return [PROJECT: matcher.group(1), BUILD_NUMBER: matcher.group(2)]
-    }
-    return null // Return null if no match
 }
 
 
@@ -61,15 +45,31 @@ pipeline {
                     def logFile = "${workspace}/artifacts/flashing-device.log"
 
                     // --- CHANGED ---
-                    // Call our @NonCPS helper function to parse the URL
-                    // This avoids the NotSerializableException
-                    def urlParts = parseBuildUrl(params['Build'])
-                    if (urlParts == null) {
-                        error "Could not parse PROJECT and BUILD_NUMBER from URL: ${params['Build']}. Expected format .../PROJECT/BUILD_NUMBER/"
+                    // Use simple, sandbox-safe string splitting.
+                    // This avoids all previous errors (RejectedAccessException, NotSerializableException, and NonCPS class resolution).
+                    def parts = params['Build'].split('/')
+
+                    // Get the last two parts of the URL
+                    // Example: https://.../PROJECT/BUILD_NUMBER/
+                    // parts[-1] will be BUILD_NUMBER (or empty if a trailing / exists)
+                    // parts[-2] will be PROJECT
+
+                    def BUILD_NUMBER = ""
+                    def PROJECT = ""
+
+                    if (parts[-1].trim() == "") {
+                        // URL has a trailing slash: https://.../PROJ/123/
+                        BUILD_NUMBER = parts[-2]
+                        PROJECT = parts[-3]
+                    } else {
+                        // URL has no trailing slash: https://.../PROJ/123
+                        BUILD_NUMBER = parts[-1]
+                        PROJECT = parts[-2]
                     }
 
-                    def PROJECT = urlParts.PROJECT
-                    def BUILD_NUMBER = urlParts.BUILD_NUMBER
+                    if (PROJECT == "" || BUILD_NUMBER == "") {
+                        error "Could not parse PROJECT and BUILD_NUMBER from URL: ${params['Build']}"
+                    }
                     // --- END OF CHANGE ---
 
                     echo "Parsed PROJECT: ${PROJECT}"
