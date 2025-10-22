@@ -31,7 +31,7 @@ pipeline {
                 }
             }
         }
-        stage('Download Firmware'){
+stage('Download Firmware'){
             steps {
                 script {
                     echo "----------------------------------------"
@@ -45,59 +45,83 @@ pipeline {
                     def logFile = "${workspace}/artifacts/flashing-device.log"
 
                     // --- CHANGED ---
-                    // Use simple, sandbox-safe string splitting.
-                    // This avoids all previous errors (RejectedAccessException, NotSerializableException, and NonCPS class resolution).
+                    // Use simple, sandbox-safe string splitting to get all parts.
                     def parts = params['Build'].split('/')
 
-                    // Get the last two parts of the URL
-                    // Example: https://.../PROJECT/BUILD_NUMBER/
-                    // parts[-1] will be BUILD_NUMBER (or empty if a trailing / exists)
-                    // parts[-2] will be PROJECT
-
+                    def PLATFORM_ID = ""
                     def BUILD_NUMBER = ""
                     def PROJECT = ""
 
                     if (parts[-1].trim() == "") {
-                        // URL has a trailing slash: https://.../PROJ/123/
+                        // URL has a trailing slash: https://.../bonsai/5018/debug/343/
                         BUILD_NUMBER = parts[-2]
                         PROJECT = parts[-3]
+                        PLATFORM_ID = parts[-4] // This is the new part (e.g., 5018)
                     } else {
-                        // URL has no trailing slash: https://.../PROJ/123
+                        // URL has no trailing slash: https://.../bonsai/5018/debug/343
                         BUILD_NUMBER = parts[-1]
                         PROJECT = parts[-2]
+                        PLATFORM_ID = parts[-3] // This is the new part (e.g., 5018)
                     }
 
-                    if (PROJECT == "" || BUILD_NUMBER == "") {
-                        error "Could not parse PROJECT and BUILD_NUMBER from URL: ${params['Build']}"
+                    if (PROJECT == "" || BUILD_NUMBER == "" || PLATFORM_ID == "") {
+                        error "Could not parse PLATFORM_ID, PROJECT, and BUILD_NUMBER from URL: ${params['Build']}"
                     }
+
+                    // --- CHANGED ---
+                    // Dynamically create the target filename based on the platform
+                    // e.g., "5018" -> "ipq50xx", "6018" -> "ipq60xx"
+                    def platformPrefix = PLATFORM_ID.substring(0, 2) // "50" or "60"
+                    def TARGET_IMG_FILENAME = "nor-ipq${platformPrefix}xx-apps.img.enc"
                     // --- END OF CHANGE ---
 
+                    echo "Parsed PLATFORM_ID: ${PLATFORM_ID}"
                     echo "Parsed PROJECT: ${PROJECT}"
                     echo "Parsed BUILD_NUMBER: ${BUILD_NUMBER}"
+                    echo "Target Image Filename: ${TARGET_IMG_FILENAME}"
 
                     // Check if a custom build was uploaded
                     if (customBuildFile) {
                         // --- 1. A FILE WAS UPLOADED ---
 
                         sh "echo 'Using uploaded custom build: ${customBuildFile}' | tee \"${logFile}\""
-                        sh "mv -f '${customBuildFile}' nor-ipq40xx-single-enc.img 2>&1 | tee -a \"${logFile}\""
+                        sh "mv -f '${customBuildFile}' ${TARGET_IMG_FILENAME} 2>&1 | tee -a \"${logFile}\""
 
                         // We still need to download the -apps.tgz file
                         sh "echo 'Downloading -apps.tgz file...' | tee -a \"${logFile}\""
-                        sh "wget --no-verbose --no-parent --no-check-certificate --recursive --level=1 -A '*-apps.tgz' --no-directories https://jenkins.senao.com/bonsai/5018/${PROJECT}/${BUILD_NUMBER}/ 2>&1 | tee -a \"${logFile}\""
+                        // --- CHANGED --- Use dynamic PLATFORM_ID in URL
+                        sh "wget --no-verbose --no-parent --no-check-certificate --recursive --level=1 -A '*-apps.tgz' --no-directories https://jenkins.senao.com/bonsai/${PLATFORM_ID}/${PROJECT}/${BUILD_NUMBER}/ 2>&1 | tee -a \"${logFile}\""
                         sh "mv -f *-apps.tgz test_firwmare.tgz 2>&1 | tee -a \"${logFile}\""
 
                     } else {
                         // --- 2. NO FILE UPLOADED, DOWNLOAD FROM URL ---
 
                         sh "echo 'No custom build found. Downloading from URL.' | tee \"${logFile}\""
-                        sh "wget --no-verbose --no-parent --no-check-certificate --recursive --level=1 -A '*-B*[0-9]-enc.img,*-apps.tgz' --no-directories https://jenkins.senao.com/bonsai/5018/${PROJECT}/${BUILD_NUMBER}/ 2>&1 | tee -a \"${logFile}\""
+                        // --- CHANGED --- Use dynamic PLATFORM_ID in URL
+                        sh "wget --no-verbose --no-parent --no-check-certificate --recursive --level=1 -A '*-B*[0-9]-enc.img,*-apps.tgz' --no-directories https://jenkins.senao.com/bonsai/${PLATFORM_ID}/${PROJECT}/${BUILD_NUMBER}/ 2>&1 | tee -a \"${logFile}\""
+
+                        // Rename the downloaded .tgz file
                         sh "mv -f *-apps.tgz test_firwmare.tgz 2>&1 | tee -a \"${logFile}\""
-                        sh "mv -f \$(ls *-B*[0-9]-enc.img) nor-ipq50xx-apps.img.enc 2>&1 | tee -a \"${logFile}\""
+
+                        // --- CHANGED ---
+                        // Use a safer shell script to find and rename the .img file
+                        // This avoids the 'mv: missing destination' error if ls finds nothing
+                        sh """
+                           #!/bin/bash
+                           imgfile=\$(ls *-B*[0-9]-enc.img 2>/dev/null | head -n 1)
+                           if [ -n "\$imgfile" ]; then
+                               echo "Found image file: \$imgfile. Renaming to ${TARGET_IMG_FILENAME}"
+                               mv -f "\$imgfile" "${TARGET_IMG_FILENAME}"
+                           else
+                               echo "ERROR: No downloaded .img file matching '*-B*[0-9]-enc.img' was found."
+                               exit 1
+                           fi
+                        """ + " 2>&1 | tee -a \"${logFile}\"" // Append logging to the whole block
                     }
 
                     // Archive the final .img file, regardless of its source
-                    archiveArtifacts('nor-ipq50xx-apps.img.enc')
+                    // --- CHANGED --- Use dynamic filename variable
+                    archiveArtifacts(TARGET_IMG_FILENAME)
                 }
             }
         }
