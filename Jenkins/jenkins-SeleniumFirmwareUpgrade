@@ -44,56 +44,65 @@ pipeline {
                     // Define the log file path once
                     def logFile = "${workspace}/artifacts/flashing-device.log"
 
-                    // Extract PROJECT and BUILD_NUMBER from the buildURL
-                    // The 'buildURL' (params['Build']) is the full URL, e.g., "https://.../5018/PROJ/123/"
-                    // We need to get the last two parts.
-                    def parts = new URL(params['Build']).getPath().split('/')
-                    def BUILD_NUMBER = parts[-1]
-                    def PROJECT = parts[-2]
+                    // --- CHANGED ---
+                    // Replaced 'new URL(...).getPath()' with sandbox-safe regex to fix RejectedAccessException
+                    // This also correctly parses the PROJECT and BUILD_NUMBER
+                    def url = params['Build']
+                    def matcher = (url =~ /.*\/([^\/]+)\/([^\/]+)\/?$/)
 
-                    // --- Shell Steps ---
-                    stage('Download and Prepare Firmware') {
-                        steps {
-                            script {
-                                // Check if a custom build was uploaded
-                                if (customBuildFile) {
-                                    // --- 1. A FILE WAS UPLOADED ---
-
-                                    sh "echo 'Using uploaded custom build: ${customBuildFile}' | tee \"${logFile}\""
-
-                                    // Move the uploaded file (which is already in the workspace) to the standard name
-                                    // Note: The file parameter variable holds the *original* filename
-                                    sh "mv -f '${customBuildFile}' nor-ipq40xx-single-enc.img 2>&1 | tee -a \"${logFile}\""
-
-                                    // We still need to download the -apps.tgz file
-                                    sh "echo 'Downloading -apps.tgz file...' | tee -a \"${logFile}\""
-                                    sh "wget --no-verbose --no-parent --no-check-certificate --recursive --level=1 -A '*-apps.tgz' --no-directories https://jenkins.senao.com/bonsai/5018/${PROJECT}/${BUILD_NUMBER}/ 2>&1 | tee -a \"${logFile}\""
-
-                                    sh "mv -f *-apps.tgz test_firwmare.tgz 2>&1 | tee -a \"${logFile}\""
-
-                                } else {
-                                    // --- 2. NO FILE UPLOADED, DOWNLOAD FROM URL ---
-
-                                    sh "echo 'No custom build found. Downloading from URL.' | tee \"${logFile}\""
-
-                                    // Download *both* file types from the build directory
-                                    // Use double quotes (") for the sh step for Groovy variable interpolation
-                                    // Use single quotes (') for the -A argument for the shell
-                                    // Use escaped quotes (\") for the tee command's file path
-                                    sh "wget --no-verbose --no-parent --no-check-certificate --recursive --level=1 -A '*-B*[0-9]-enc.img,*-apps.tgz' --no-directories https://jenkins.senao.com/bonsai/5018/${PROJECT}/${BUILD_NUMBER}/ 2>&1 | tee -a \"${logFile}\""
-
-                                    // Rename the downloaded .tgz file
-                                    sh "mv -f *-apps.tgz test_firwmare.tgz 2>&1 | tee -a \"${logFile}\""
-
-                                    // Rename the downloaded .img file
-                                    sh "mv -f \$(ls *-B*[0-9]-enc.img) nor-ipq40xx-single-enc.img 2>&1 | tee -a \"${logFile}\""
-                                }
-
-                                // Archive the final .img file, regardless of its source
-                                archiveArtifacts('nor-ipq40xx-single-enc.img')
-                            }
-                        }
+                    if (!matcher.matches()) {
+                        error "Could not parse PROJECT and BUILD_NUMBER from URL: ${url}. Expected format .../PROJECT/BUILD_NUMBER/"
                     }
+
+                    def PROJECT = matcher.group(1)
+                    def BUILD_NUMBER = matcher.group(2)
+
+                    echo "Parsed PROJECT: ${PROJECT}"
+                    echo "Parsed BUILD_NUMBER: ${BUILD_NUMBER}"
+                    // --- END OF CHANGE ---
+
+
+                    // --- CHANGED ---
+                    // Removed nested 'stage', 'steps', and 'script' blocks, as they are not allowed here.
+                    // The logic is now correctly placed inside the parent 'script' block.
+
+                    // Check if a custom build was uploaded
+                    if (customBuildFile) {
+                        // --- 1. A FILE WAS UPLOADED ---
+
+                        sh "echo 'Using uploaded custom build: ${customBuildFile}' | tee \"${logFile}\""
+
+                        // Move the uploaded file (which is already in the workspace) to the standard name
+                        // Note: The file parameter variable holds the *original* filename
+                        sh "mv -f '${customBuildFile}' nor-ipq40xx-single-enc.img 2>&1 | tee -a \"${logFile}\""
+
+                        // We still need to download the -apps.tgz file
+                        sh "echo 'Downloading -apps.tgz file...' | tee -a \"${logFile}\""
+                        sh "wget --no-verbose --no-parent --no-check-certificate --recursive --level=1 -A '*-apps.tgz' --no-directories https://jenkins.senao.com/bonsai/5018/${PROJECT}/${BUILD_NUMBER}/ 2>&1 | tee -a \"${logFile}\""
+
+                        sh "mv -f *-apps.tgz test_firwmare.tgz 2>&1 | tee -a \"${logFile}\""
+
+                    } else {
+                        // --- 2. NO FILE UPLOADED, DOWNLOAD FROM URL ---
+
+                        sh "echo 'No custom build found. Downloading from URL.' | tee \"${logFile}\""
+
+                        // Download *both* file types from the build directory
+                        // Use double quotes (") for the sh step for Groovy variable interpolation
+                        // Use single quotes (') for the -A argument for the shell
+                        // Use escaped quotes (\") for the tee command's file path
+                        sh "wget --no-verbose --no-parent --no-check-certificate --recursive --level=1 -A '*-B*[0-9]-enc.img,*-apps.tgz' --no-directories https://jenkins.senao.com/bonsai/5018/${PROJECT}/${BUILD_NUMBER}/ 2>&1 | tee -a \"${logFile}\""
+
+                        // Rename the downloaded .tgz file
+                        sh "mv -f *-apps.tgz test_firwmare.tgz 2>&1 | tee -a \"${logFile}\""
+
+                        // Rename the downloaded .img file
+                        sh "mv -f \$(ls *-B*[0-9]-enc.img) nor-ipq40xx-single-enc.img 2>&1 | tee -a \"${logFile}\""
+                    }
+
+                    // Archive the final .img file, regardless of its source
+                    archiveArtifacts('nor-ipq40xx-single-enc.img')
+                    // --- END OF CHANGE ---
                 }
             }
         }
