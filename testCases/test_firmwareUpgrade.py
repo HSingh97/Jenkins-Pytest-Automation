@@ -46,7 +46,7 @@ def test_Upgrade(driver, local_ip):
         print("!!!! FW Upload Successful !!!!")
 
     up.clickProceed()
-    time.sleep(1)
+    time.sleep(200)
 
     wait = 0
     while wait < 200:

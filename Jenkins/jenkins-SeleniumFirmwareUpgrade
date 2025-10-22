@@ -135,7 +135,6 @@ pipeline {
                     def remoteIP = params['Remote IP Address']
                     def model = params['Model']
                     def buildURL = params['Build']
-                    // def single = params['Single Image'] // This is now handled in the Download stage
 
                     // Get the count from parameters, default to "1" if not provided
                     def FIRMWARE_UPGRADE_COUNT = params.FIRMWARE_UPGRADE_COUNT ?: "1"
