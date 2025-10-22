@@ -7,7 +7,7 @@ import os
 class UpgradePage:
 
     chooseImage_xpath = "//*[@id='image']"
-    upgradeButton_xpath = "//*[@id='kwnupgrade']/div/div[3]/div/input[2]"
+    upgradeButton_xpath = "//*[@id='fw_submit']"
     proceedButton_xpath = "//input[@value='Proceed']"
 
     firmware_name = os.getenv('FW_PATH', 'nor-ipq50xx-single-enc.img')

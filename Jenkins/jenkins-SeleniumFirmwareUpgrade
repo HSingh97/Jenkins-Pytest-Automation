@@ -151,7 +151,7 @@ pipeline {
 
                     for (int i = 1; i <= FIRMWARE_UPGRADE_COUNT.toInteger() ; i++) {
                         // This command now correctly passes either 'fw.img.enc' or 'fw.tgz'
-                        sh "export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade 2>&1 | tee \"${workspace}/artifacts/firmware-upgrade-device.log\""
+                        sh "export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade 2>&1 --local-ip '$localIP' | tee \"${workspace}/artifacts/firmware-upgrade-device.log\""
                     }
                     archiveArtifacts('artifacts/**/*')
                     //archiveArtifacts('SerialLogs_Device.log')

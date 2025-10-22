@@ -18,6 +18,9 @@ driver = setup
 
 
 def test_Upgrade(driver, local_ip):
+    print("************************\n")
+    print(f"Local IP : {local_ip}")
+    print("\n************************\n")
     URL = "http://" + local_ip + "/cgi-bin/luci"
 
     # Start Serial Console logging for specific port
