@@ -12,8 +12,8 @@ from testCases.configsetup import setup
 from utilities.serial_Logging import *
 
 
-#serial_port = readConfig.getSerialPortDevice()
-#serial_port_log = readConfig.getSerialLogsDevice()
+serial_port = readConfig.getSerialPortDevice()
+serial_port_log = readConfig.getSerialLogsDevice()
 driver = setup
 
 
@@ -24,7 +24,7 @@ def test_Upgrade(driver, local_ip):
     URL = "http://" + local_ip + "/cgi-bin/luci"
 
     # Start Serial Console logging for specific port
-    #serial_logging_start(serial_port, serial_port_log)
+    serial_logging_start(serial_port, serial_port_log)
 
     accessWeb.access_and_login(driver, URL, "root", "admin")
 
@@ -45,8 +45,8 @@ def test_Upgrade(driver, local_ip):
     else:
         print("!!!! FW Upload Successful !!!!")
 
-    up.clickProceed()
-    time.sleep(180)
+    #up.clickProceed()
+    #time.sleep(180)
 
     wait = 0
     while wait < 200:
@@ -67,7 +67,7 @@ def test_Upgrade(driver, local_ip):
         assert True
 
     # Stop Serial logging
-    #serial_logging_stop()
+    serial_logging_stop()
 
     # Close the driver window
     driver.close()
