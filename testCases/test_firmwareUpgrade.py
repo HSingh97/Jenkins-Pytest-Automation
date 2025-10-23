@@ -10,7 +10,7 @@ from pageObjects.LoginPage import LoginPage
 from pageObjects.UpgradePage import UpgradePage
 from preMadeFunctions import accessWeb, pingFunction, ssh_operations
 from testCases.configsetup import setup
-from utilities import serial_Logging, serial_logger
+from utilities import serial_logger
 
 driver = setup
 
@@ -45,8 +45,8 @@ def test_Upgrade(driver, local_ip, serialPort):
         else:
             print("!!!! FW Upload Successful !!!!")
 
-        # up.clickProceed()
-        # time.sleep(180)
+        up.clickProceed()
+        time.sleep(180)
 
         wait = 0
         while wait < 200:
