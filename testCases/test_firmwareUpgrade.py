@@ -10,7 +10,7 @@ from pageObjects.LoginPage import LoginPage
 from pageObjects.UpgradePage import UpgradePage
 from preMadeFunctions import accessWeb, pingFunction, ssh_operations
 from testCases.configsetup import setup
-from utilities import serial_Logging
+from utilities import serial_Logging, serial_logger
 
 driver = setup
 
@@ -24,7 +24,7 @@ def test_Upgrade(driver, local_ip, serialPort):
 
     # Start Serial Console logging
     print(f"--- Starting serial logger on {serialPort} ---")
-    serial_Logging.serial_logging_start(serialPort, "test.log")
+    serial_logger.start_logger(serialPort, "test.log")
 
     try:
         accessWeb.access_and_login(driver, URL, "root", "admin")
@@ -63,10 +63,9 @@ def test_Upgrade(driver, local_ip, serialPort):
             assert True
 
     finally:
-        # --- This block runs even if the test fails ---
         # Stop Serial logging
         print(f"--- Stopping serial logger on {serialPort} ---")
-        serial_Logging.serial_logging_stop()
+        serial_logger.stop_logger(serialPort)
         # Close the driver window
         driver.close()
 
