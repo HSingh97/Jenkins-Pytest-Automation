@@ -10,6 +10,7 @@ from utilities import readProperties
 from pageObjects.UpgradePage import UpgradePage
 from preMadeFunctions import accessWeb, pingFunction, ssh_operations
 from testCases.configsetup import setup
+from utilities.readProperties import readConfig
 from utilities.serial_Logging import *
 
 
