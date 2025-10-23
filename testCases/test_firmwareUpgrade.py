@@ -10,7 +10,7 @@ from pageObjects.LoginPage import LoginPage
 from pageObjects.UpgradePage import UpgradePage
 from preMadeFunctions import accessWeb, pingFunction, ssh_operations
 from testCases.configsetup import setup
-
+from utilities import serial_logger
 
 driver = setup
 
@@ -24,11 +24,7 @@ def test_Upgrade(driver, local_ip, serialPort):
 
     # Start Serial Console logging
     print(f"--- Starting serial logger on {serialPort} ---")
-    subprocess.run([
-        "python3", "../utilities/serial_logger.py", "start",
-        "--port", serialPort,
-        "--logfile", "test1.log"
-    ], check=True)
+    serial_logger.start_logger(serialPort, "test.log")
 
     try:
         accessWeb.access_and_login(driver, URL, "root", "admin")
@@ -49,8 +45,8 @@ def test_Upgrade(driver, local_ip, serialPort):
         else:
             print("!!!! FW Upload Successful !!!!")
 
-        # up.clickProceed()
-        # time.sleep(180)
+        up.clickProceed()
+        time.sleep(180)
 
         wait = 0
         while wait < 200:
@@ -67,15 +63,9 @@ def test_Upgrade(driver, local_ip, serialPort):
             assert True
 
     finally:
-        # --- This block runs even if the test fails ---
         # Stop Serial logging
         print(f"--- Stopping serial logger on {serialPort} ---")
-        subprocess.run([
-            "python3", "../utilities/serial_logger.py", "stop",
-            "--port", serialPort
-        ], check=True)
-        # --- End of change ---
-
+        serial_logger.stop_logger(serialPort)
         # Close the driver window
         driver.close()
 
