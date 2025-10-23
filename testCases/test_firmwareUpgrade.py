@@ -10,11 +10,8 @@ from pageObjects.LoginPage import LoginPage
 from pageObjects.UpgradePage import UpgradePage
 from preMadeFunctions import accessWeb, pingFunction, ssh_operations
 from testCases.configsetup import setup
-from utilities.readProperties import readConfig
 
 
-serial_port = readConfig.getSerialPortDevice()
-serial_port_log = readConfig.getSerialLogsDevice()
 driver = setup
 
 
@@ -26,11 +23,11 @@ def test_Upgrade(driver, local_ip, serialPort):
     URL = "http://" + local_ip + "/cgi-bin/luci"
 
     # Start Serial Console logging
-    print(f"--- Starting serial logger on {serial_port} ---")
+    print(f"--- Starting serial logger on {serialPort} ---")
     subprocess.run([
         "python3", "../utilities/serial_logger.py", "start",
-        "--port", serial_port,
-        "--logfile", serial_port_log
+        "--port", serialPort,
+        "--logfile", "test1.log"
     ], check=True)
 
     try:
@@ -72,10 +69,10 @@ def test_Upgrade(driver, local_ip, serialPort):
     finally:
         # --- This block runs even if the test fails ---
         # Stop Serial logging
-        print(f"--- Stopping serial logger on {serial_port} ---")
+        print(f"--- Stopping serial logger on {serialPort} ---")
         subprocess.run([
             "python3", "../utilities/serial_logger.py", "stop",
-            "--port", serial_port
+            "--port", serialPort
         ], check=True)
         # --- End of change ---
 
