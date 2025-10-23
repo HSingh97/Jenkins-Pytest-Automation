@@ -40,7 +40,8 @@ pipeline {
                     sh "mkdir -p artifacts"
                     sh "pwd"
                     dir('flasher') {
-                        sh "wget --no-verbose --no-parent --recursive --level=1 -A '*-B*[0-9]-enc.img' --no-directories https://cdn.keywestnetworks.com/${BUILD_BRANCH}/${BUILD_NUM}/ 2>&1 | tee ${workspace}/artifacts/flashing-device.log"
+                        sh "wget --no-verbose --no-parent --no-check-certificate --recursive --level=1 -A '*-B*[0-9]-enc.img' --no-directories https://jenkins.senao.com/bonsai/5018/{PROJECT}/{BUILD_NUMBER}/EnGenius-{PROJECT}-xxx-1.1.0.{BUILD_NUMBER}-apps.tgz 2>&1 | tee ${workspace}/artifacts/flashing-device.log"
+                        sh "mv *.tgz test_firwmare.tgz"
                         sh "mv -f \$(ls *-B*[0-9]-enc.img) nor-ipq40xx-single-enc.img 2>&1 | tee -a ${workspace}/artifacts/flashing-device.log"
                         archiveArtifacts('nor-ipq40xx-single-enc.img')
                     }
@@ -54,15 +55,18 @@ pipeline {
 
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
+                    def model = params['Model']
+                    def buildURL = params['Build']
+                    def single = params['Single Image']
 
                     echo "Local IP Address: ${localIP}"
                     echo "Remote IP Address: ${remoteIP}"
 
                     echo "----------------------------------------"
-                    echo "Flashing the Firmware"
+                    echo "Upgrading the Firmware"
                     echo "----------------------------------------"
                     sh "mkdir -p artifacts"
-                    for (int i = 1; i <= UPGRADE_COUNT.toInteger() ; i++) {
+                    for (int i = 1; i <= FIRMWARE_UPGRADE_COUNT.toInteger() ; i++) {
                         sh "pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade 2>&1 | tee ${workspace}/artifacts/firmware-upgrade-device.log"
                     }
                     archiveArtifacts('artifacts/**/*')

@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import platform
 import subprocess
 import time
@@ -12,7 +14,7 @@ def Ping(host):
 def check_access(host):
     wait = 0
 
-    while wait < 50:
+    while wait < 150:
         localping = Ping(host)
         if not localping:
             wait += 3

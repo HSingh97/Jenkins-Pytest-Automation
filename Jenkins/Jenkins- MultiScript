@@ -5,7 +5,6 @@ def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
-// Main Pipeline
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
     stages {
@@ -14,56 +13,119 @@ pipeline {
                 script {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${TARGET_STAND}"
+                    echo "--- Selected Tests: ${params.TEST_TYPES}"
                     echo "----------------------------------------"
+                    if (!params['Local IP Address'] || !params['Remote IP Address']) {
+                        error "Missing required parameters: Local IP Address or Remote IP Address"
+                    }
+                    def testTypes = params.TEST_TYPES?.split(',')?.collect { it.trim() } ?: []
+                    if (testTypes.isEmpty()) {
+                        error "No test types selected in TEST_TYPES"
+                    }
+                    if (params.ITERATION_COUNTS?.trim()) {
+                        def iterationCounts = params.ITERATION_COUNTS.split(',').collect { it.trim() }
+                        if (iterationCounts.size() != testTypes.size() && iterationCounts[0] != "1") {
+                            error "Number of iteration counts (${iterationCounts.size()}) must match number of test types (${testTypes.size}). Use '1' for uniform iteration or match counts (e.g., 2,1,3)."
+                        }
+                    }
                 }
             }
         }
-
         stage('Install Python Dependencies') {
             steps {
                 script {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
+                    sh 'pip install pytest'
                 }
             }
         }
-
-        stage('Soft Reset Testing') {
+        stage('Run Selected Tests') {
             steps {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
+                    def testTypes = params.TEST_TYPES.split(',').collect { it.trim() }
+                    def iterationCounts
 
-                    def ResetCount = params.RESET_COUNT ?: 1
-                    echo "Number of reboot iterations: ${ResetCount}"
+                    // Parse ITERATION_COUNTS as a String parameter
+                    if (params.ITERATION_COUNTS?.trim()) {
+                        if (params.ITERATION_COUNTS ==~ /\d+(,\d+)*/) {
+                            iterationCounts = params.ITERATION_COUNTS.split(',').collect { it.trim().toInteger() }
+                            if (iterationCounts.size() > testTypes.size()) {
+                                iterationCounts = iterationCounts.subList(0, testTypes.size())
+                                echo "Warning: Extra iteration counts ignored. Using ${iterationCounts}"
+                            } else if (iterationCounts.size() < testTypes.size()) {
+                                iterationCounts = iterationCounts + [1] * (testTypes.size() - iterationCounts.size())
+                                echo "Warning: Added default iteration count (1) for unmatched tests. Using ${iterationCounts}"
+                            }
+                            echo "Using custom iteration counts: ${iterationCounts}"
+                        } else if (params.ITERATION_COUNTS ==~ /^\d+$/) {
+                            def uniformCount = params.ITERATION_COUNTS.toInteger()
+                            iterationCounts = [uniformCount] * testTypes.size()
+                            echo "Using uniform iteration count: ${uniformCount} for all tests"
+                        } else {
+                            error "Invalid ITERATION_COUNTS format. Use a single number (e.g., 1) or comma-separated integers (e.g., 2,1,3)."
+                        }
+                    } else {
+                        iterationCounts = [1] * testTypes.size()
+                        echo "Using default iteration count: 1 for all tests"
+                    }
 
+                    echo "Number of iterations: ${iterationCounts}"
 
                     echo "✅ Cleared old workspace"
 
                     echo "----------------------------------------"
-                    echo "Testing Soft Reset"
-                    echo "----------------------------------------"
+                    // Initialize JSON with proper structure
+                    sh 'echo "{\"iterations\": []}" > iteration_results.json'
 
-                    // Initialize results file
-                    sh "echo [] > iteration_results.json"  // Initialize JSON array
+                    // Debug: Check the type and value of TEST_TYPES
+                    echo "DEBUG: params.TEST_TYPES = ${params.TEST_TYPES}"
+                    echo "DEBUG: Type of params.TEST_TYPES = ${params.TEST_TYPES?.getClass()}"
 
-                    for (int i = 1; i <= ResetCount.toInteger(); i++) {
-                        echo "Running reboot test iteration ${i}"
-                        try {
-                            sh """
-                                pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
-                                --local-ip '${localIP}' --remote-ip '${remoteIP}' \
-                                --iter ${i}
-                            """
-                        } catch (Exception e) {
-                            echo "Reset test iteration ${i} failed: ${e.message}"
+                    if (testTypes.isEmpty()) {
+                        error "No test types selected in TEST_TYPES"
+                    }
+
+                    // Run tests sequentially with 40-second delay between each
+                    testTypes.eachWithIndex { testType, index ->
+                        echo "DEBUG: Processing test type: ${testType}"
+                        def testScript
+                        def testFunction
+                        if (testType == 'SSH Reboot') {
+                            testScript = 'testCases/test_SSHReboot.py'
+                            testFunction = 'test_reboot'
+                        } else if (testType == 'SSH Reset') {
+                            testScript = 'testCases/test_SSHReset.py'
+                            testFunction = 'test_soft_reset'
+                        } else if (testType == 'New Test 1') {
+                            testScript = 'testCases/new_test1.py'
+                            testFunction = 'test_function1'
+                        } else {
+                            error "Unknown test type: ${testType}"
                         }
+
+                        def iterationCount = iterationCounts[index]
+                        echo "Running ${testType} sequentially with ${iterationCount} iterations"
+                        echo "----------------------------------------"
+                        for (int i = 1; i <= iterationCount; i++) {
+                            def result = sh(script: """
+                                pytest -v -s ${testScript}::${testFunction} --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${i} | tee output.log
+                            """, returnStatus: true)
+                            def status = (result == 0) ? "PASS" : "FAIL"
+                            echo "DEBUG: Test ${testType} Iteration ${i} Result: ${status}"
+                            sh """
+                                python3 -c "import json; data = json.load(open('iteration_results.json')); data['iterations'].append({'test': '${testType.replaceAll(' ', '_').toLowerCase()}', 'iteration': ${i}, 'status': '${status}'}); json.dump(data, open('iteration_results.json', 'w'))" || true
+                            """
+                        }
+                        // Add 40-second delay before next test
+                        sh 'sleep 40'
                     }
                 }
             }
         }
-
         stage('Generate Report') {
             steps {
                 script {
@@ -88,7 +150,9 @@ pipeline {
                     }
 
                     def jsonReport = readJSON file: 'iteration_results.json'
-                    echo "JSON Report: ${jsonReport}" // Debugging output
+                    echo "DEBUG: Full JSON Report: ${jsonReport}"
+                    echo "DEBUG: Iterations content: ${jsonReport.iterations}"
+
                     def buildParams = [
                         "Local IP Address": params['Local IP Address'],
                         "Remote IP Address": params['Remote IP Address'],
@@ -187,29 +251,50 @@ pipeline {
                         <table>
                             ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
                         </table>
-                        <h2>Test Results</h2>
-                        <table>
-                            <tr>
-                                <th>Iteration</th>
-                                <th>Status</th>
-                            </tr>
                     """
 
-                    jsonReport.iterations.each { result ->
-                        def iteration = result.iteration ?: "-"
-                        def status = result.status == "PASS" ? "<span class='pass'>PASS</span>" : "<span class='fail'>FAIL</span>"
+                    // Derive test types dynamically from params.TEST_TYPES
+                    def testTypes = params.TEST_TYPES instanceof String ?
+                        params.TEST_TYPES.split(',').collect { it.trim() } :
+                        (params.TEST_TYPES ?: [])
 
+                    // Generate table for each test type
+                    testTypes.each { testType ->
+                        def normalizedTestType = testType.replaceAll(' ', '_').toLowerCase()
+                        def testResults = jsonReport.iterations.findAll { it.test == normalizedTestType }
                         htmlContent += """
-                            <tr>
-                                <td>${iteration}</td>
-                                <td>${status}</td>
+                            <h2>${testType}</h2>
+                            <table>
+                                <tr>
+                                    <th>ITERATION</th>
+                                    <th>STATUS</th>
+                                </tr>
                         """
-
-                        htmlContent += "</tr>"
+                        if (testResults) {
+                            testResults.each { result ->
+                                def iteration = result.iteration ?: "-"
+                                def status = result.status == "PASS" ? "<span class='pass'>PASS</span>" : result.status == "FAIL" ? "<span class='fail'>FAIL</span>" : result.status ?: "-"
+                                htmlContent += """
+                                    <tr>
+                                        <td>${iteration}</td>
+                                        <td>${status}</td>
+                                    </tr>
+                                """
+                            }
+                        } else {
+                            htmlContent += """
+                                <tr>
+                                    <td colspan="2">No results available</td>
+                                </tr>
+                            """
+                        }
+                        htmlContent += """
+                            </table>
+                            <hr/>
+                        """
                     }
 
                     htmlContent += """
-                        </table>
                     </body>
                     </html>
                     """
@@ -221,7 +306,7 @@ pipeline {
     }
     post {
         always {
-            publishHTML (target: [
+            publishHTML(target: [
                 allowMissing: false,
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
@@ -229,7 +314,7 @@ pipeline {
                 reportFiles: 'report.html',
                 reportName: 'Test Report'
             ])
-            echo "-----------------------------------------"
+            echo "----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
             script {
@@ -279,7 +364,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html'  // Only attach, do not embed
+                    attachmentsPattern: 'report.html, iteration_results.json'
                 )
             }
         }

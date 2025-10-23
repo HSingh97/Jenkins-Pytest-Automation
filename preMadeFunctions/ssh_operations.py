@@ -1,3 +1,5 @@
+#!/usr/bin/env python3.10
+
 import platform
 import subprocess
 import paramiko
@@ -12,12 +14,11 @@ def ssh_get(ip, command):
 
     # Read the output of the command
     output = stdout.read().decode('utf-8')
-    print("@@@@@@ output : {} ".format(output))
+    print("[DEBUG] SSH GET Command :  {}  ||  Output : {} ".format(command, output))
     ssh_client.close()
     output = output.strip()
 
     return output
-
 
 
 def ssh_set(ip, command, value):
@@ -33,3 +34,18 @@ def ssh_set(ip, command, value):
 
     ssh_client.close()
 
+
+def ucidyn_set(ip, command, value):
+    ssh_client = paramiko.SSHClient()
+    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh_client.connect(ip, username="root", password="admin")
+
+    # make the command syntax
+    finalcommand = 'ucidyn set {} {}'.format(command, value)
+    print("[DEBUG] %%%%%% Executing : {} %%%%%%".format(finalcommand))
+    # execute the final command
+    ssh_client.exec_command(finalcommand)
+    time.sleep(1)
+    ssh_client.exec_command("ucidyn apply")
+    time.sleep(60)
+    ssh_client.close()

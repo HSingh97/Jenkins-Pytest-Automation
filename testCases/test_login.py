@@ -8,8 +8,8 @@ import weasyprint
 import pytest
 
 
-username = readConfig.get_username()
-password = readConfig.get_passwd()
+username = "root"
+password = "admin"
 
 driver = setup
 

@@ -1,3 +1,5 @@
+#!/usr/bin/env python3.10
+
 import os
 import paramiko
 import pexpect
@@ -9,108 +11,79 @@ from optparse import OptionParser
 from datetime import datetime
 
 
-def get_linkstats(host, radio_ind):
-    i = 1
-    while i < 33:
-        remoteip = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.4.{}.{}".format(host, radio_ind, i)
-        remoteip_output = subprocess.check_output(remoteip, shell=True).decode("utf-8")
+def safe_snmp_get(oid_cmd):
+    try:
+        output = subprocess.check_output(oid_cmd, shell=True).decode("utf-8")
 
-        print(remoteip_output)
-        # Check if the output contains "No Such Instance currently exists at this OID"
-        if "No Such Instance currently exists at this OID" in remoteip_output:
-            i += 1
+        # Match INTEGER
+        int_match = re.search(r'INTEGER:\s*(-?\d+)', output)
+        if int_match:
+            return int_match.group(1)
+
+        # Match STRING
+        str_match = re.search(r'STRING:\s*"?([\w\d:]+)"?', output)
+        if str_match:
+            return str_match.group(1)
+
+        return "-"
+    except subprocess.CalledProcessError:
+        return "-"
+    except Exception as e:
+        print(f"Error running SNMP command: {oid_cmd}\n{e}")
+        return "-"
+
+
+def get_linkstats(host, radio_ind):
+    for i in range(1, 33):
+        remoteip_oid = f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.4.{radio_ind}.{i}"
+        try:
+            remoteip_output = subprocess.check_output(remoteip_oid, shell=True).decode("utf-8")
+            if "No Such Instance currently exists at this OID" in remoteip_output:
+                continue
+            match = re.search(r'IpAddress:\s*([\d.]+)', remoteip_output)
+            ip_address = match.group(1) if match else "-"
+        except subprocess.CalledProcessError:
             continue
 
-        match = re.search(r'IpAddress:\s*([\d.]+)', remoteip_output)
-        if match:
-            ip_address = match.group(1)
-        else:
-            ip_address = "-"
+        stats = {
+            "ip_address": ip_address,
+            "local_SNR_A1": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.13.{radio_ind}.{i}"),
+            "local_SNR_A2": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.14.{radio_ind}.{i}"),
+            "remote_SNR_A1": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.15.{radio_ind}.{i}"),
+            "remote_SNR_A2": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.16.{radio_ind}.{i}"),
+            "tx_rate": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.10.{radio_ind}.{i}"),
+            "rx_rate": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.9.{radio_ind}.{i}"),
+            "local_rtx_rate": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.47.{radio_ind}.{i}"),
+            "remote_rtx_rate": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.48.{radio_ind}.{i}"),
+            "link_uptime": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.52.{radio_ind}.{i}"),
+            "local_noise": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.26.{radio_ind}.{i}"),
+            "remote_noise": safe_snmp_get(f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.27.{radio_ind}.{i}")
+        }
 
-        localSNRA1 = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.13.{}.{}".format(host, radio_ind, i)
-        localSNRA1_output = subprocess.check_output(localSNRA1, shell=True).decode("utf-8")
-
-        localSNRA2 = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.14.{}.{}".format(host, radio_ind, i)
-        localSNRA2_output = subprocess.check_output(localSNRA2, shell=True).decode("utf-8")
-
-        remoteSNRA1 = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.15.{}.{}".format(host, radio_ind, i)
-        remoteSNRA1_output = subprocess.check_output(remoteSNRA1, shell=True).decode("utf-8")
-
-        remoteSNRA2 = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.16.{}.{}".format(host, radio_ind, i)
-        remoteSNRA2_output = subprocess.check_output(remoteSNRA2, shell=True).decode("utf-8")
-
-        txrate = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.10.{}.{}".format(host, radio_ind, i)
-        txrate_output = subprocess.check_output(txrate, shell=True).decode("utf-8")
-
-        rxrate = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.9.{}.{}".format(host, radio_ind, i)
-        rxrate_output = subprocess.check_output(rxrate, shell=True).decode("utf-8")
-
-        local_rtxrate = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.47.{}.{}".format(host, radio_ind, i)
-        local_rtxrate_output = subprocess.check_output(local_rtxrate, shell=True).decode("utf-8")
-
-        remote_rtxrate = "snmpget -v 2c -c private {} .1.3.6.1.4.1.52619.1.3.3.1.48.{}.{}".format(host, radio_ind,
-                                                                                                  i)
-        remote_rtxrate_output = subprocess.check_output(remote_rtxrate, shell=True).decode("utf-8")
-
-        match = re.search(r'INTEGER:\s*(\d+)', localSNRA1_output)
-        if match:
-            localSNRA1_value = match.group(1)
-        else:
-            localSNRA1_value = "-"
-
-        match = re.search(r'INTEGER:\s*(\d+)', localSNRA2_output)
-        if match:
-            localSNRA2_value = match.group(1)
-        else:
-            localSNRA2_value = "-"
-
-        match = re.search(r'INTEGER:\s*(\d+)', remoteSNRA1_output)
-        if match:
-            remoteSNRA1_value = match.group(1)
-        else:
-            remoteSNRA1_value = "-"
-
-        match = re.search(r'INTEGER:\s*(\d+)', remoteSNRA2_output)
-        if match:
-            remoteSNRA2_value = match.group(1)
-        else:
-            remoteSNRA2_value = "-"
-
-        match = re.search(r'INTEGER:\s*(\d+)', txrate_output)
-        if match:
-            txrate_value = match.group(1)
-        else:
-            txrate_value = "-"
-
-        match = re.search(r'INTEGER:\s*(\d+)', rxrate_output)
-        if match:
-            rxrate_value = match.group(1)
-        else:
-            rxrate_value = "-"
-
-        match = re.search(r'INTEGER:\s*(\d+)', local_rtxrate_output)
-        if match:
-            local_rtxrate_value = match.group(1)
-        else:
-            local_rtxrate_value = "-"
-
-        match = re.search(r'INTEGER:\s*(\d+)', remote_rtxrate_output)
-        if match:
-            remote_rtxrate_value = match.group(1)
-        else:
-            remote_rtxrate_value = "-"
-
+        # Print nicely
         print("\n----------------------------------------------------------------")
-        print("Remote IP\t\tLocal SNR \tRemote SNR\tTx Rate\tRx Rate")
+        print("Remote IP\t\tLocal SNR \tRemote SNR\tTx Rate\tRx Rate\tLink Uptime")
         print("----------------------------------------------------------------")
         print("\t\t\t\tA1\t   A2 \tA1\t   A2")
         print("----------------------------------------------------------------")
         print(
-            "{}\t{}\t   {} \t{}\t   {}\t  {}\t  {}".format(ip_address, localSNRA1_value, localSNRA2_value,
-                                                           remoteSNRA1_value,
-                                                           remoteSNRA2_value, txrate_value, rxrate_value,
-                                                           local_rtxrate_value, remote_rtxrate_value))
-        print("----------------------------------------------------------------\n\n")
+            "{}\t{}\t   {} \t{}\t   {}\t  {}\t  {}  \t{}".format(
+                stats["ip_address"],
+                stats["local_SNR_A1"], stats["local_SNR_A2"],
+                stats["remote_SNR_A1"], stats["remote_SNR_A2"],
+                stats["tx_rate"], stats["rx_rate"], stats["link_uptime"]
+            )
+        )
+        print("----------------------------------------------------------------\n")
 
+        return stats
 
-        break
+    # No valid entry found
+    return {
+        "ip_address": "-",
+        "local_SNR_A1": "-", "local_SNR_A2": "-",
+        "remote_SNR_A1": "-", "remote_SNR_A2": "-",
+        "tx_rate": "-", "rx_rate": "-",
+        "local_rtx_rate": "-", "remote_rtx_rate": "-", "link_uptime": "-", "local_noise":"-", "remote_noise":"-"
+    }
+

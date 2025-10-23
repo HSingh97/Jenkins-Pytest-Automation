@@ -81,7 +81,6 @@ def test_Disconnect_Connect(driver, local_ip, remote_ip, model, radio):
     else:
         assert True
 
-    serial_logging_stop()
     driver.close()
 
 

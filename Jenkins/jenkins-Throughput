@@ -1,0 +1,441 @@
+// Functions
+
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
+def dateStamp = new Date().format("yyyyMMdd", TimeZone.getTimeZone("Asia/Kolkata"))
+def reportFilename = "throughput_report_${env.BUILD_NUMBER}_${dateStamp}.html"
+
+
+// Main Pipeline
+
+pipeline {
+    agent { node { label "${params['Local PC']}" } }
+
+    stages {
+        stage('Prepare Testbed') {
+            steps {
+                script {
+
+                    def local_pc = params['Local PC']
+                    def remote_pc = params['Remote PC']
+
+                    echo "------------------------------------------"
+                    echo "---> Local TARGET STAND: ${local_pc} "
+                    echo "------------------------------------------"
+
+                    echo "------------------------------------------"
+                    echo "---> Local PC : ${local_pc} "
+                    echo "------------------------------------------"
+
+                    echo "----------------------------------------"
+                    echo "---> Remote PC: ${remote_pc} "
+                    echo "----------------------------------------"
+      	        }
+      	    }
+        }
+        stage('Install Dependencies') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "         Installing Dependencies"
+                    echo "----------------------------------------"
+                    sh "sh utilities/requirements.txt"
+                }
+            }
+        }
+        stage('Throughput Testing') {
+            steps {
+                script {
+                    try {
+                        def remotePC = params['Remote PC']
+                        def remotePCIP = null
+
+                        node(remotePC) {
+                            remotePCIP = sh(
+                                script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$4}' | cut -d'/' -f1 | head -n1",
+                                returnStdout: true
+                            ).trim()
+
+                            if (!remotePCIP) {
+                                error("❌ Could not find 192.168.1.x IP on node '$remotePC' ")
+                            }
+
+                            echo "✅ Remote PC IP: ${remotePCIP}"
+                        }
+
+
+                        def localIP = params['Local IP Address']
+                        def remoteIP = params['Remote IP Address']
+                        def selectedRadio = params['Radio']
+                        // def selectedTrafficGenerator = params['Traffic Generator']
+                        def traffic_types = params.'Traffic Type'.split(',')
+                        def directions = params.Direction.split(',')
+                        def bandwidths = params.Bandwidth.split(',')
+                        def modulationrates = params.MCS.split(',')
+                        def test_time = params['Throughput Test Time']
+
+                        sh 'rm -f *_HT*.json iteration_results.json'
+                        sh 'rm -f throughput_report_*.html'
+                        echo "✅ Cleared old workspace"
+                        sh "echo {\\\"iterations\\\": []} > iteration_results.json"
+
+                        def iteration = 1
+
+                        for (bandwidth in bandwidths) {
+                            echo "--------------------------------------------------------------"
+                            echo " Configuring Bandwidth : ${bandwidth}"
+                            echo "--------------------------------------------------------------"
+
+                            sh """
+                                python3.10 -m  pytest -v -s testCases/test_Throughput.py::test_changebandwidth \
+                                --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                                --radio '${selectedRadio}' --bandwidth '${bandwidth}' 2>&1
+                            """
+
+                            for (mcsrate in modulationrates) {
+                                echo "--------------------------------------------------------------"
+                                echo " Configuring MCS : ${mcsrate}"
+                                echo "--------------------------------------------------------------"
+
+                                sh """
+                                    python3.10 -m pytest -v -s testCases/test_Throughput.py::test_changemcs \
+                                    --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                                    --radio '${selectedRadio}' --mcs-rate '${mcsrate}' 2>&1
+                                """
+
+                                for (traffic_type in traffic_types) {
+
+                                    echo "--------------------------------------------------------------"
+                                    echo " Testing: Bandwidth=${bandwidth} | MCS=${mcsrate} | Type=${traffic_type} "
+                                    echo "--------------------------------------------------------------"
+
+                                    sh "echo '{\"iterations\": []}' > custom_results.json"
+
+                                    def pytest_output = sh(script: """
+                                        python3.10 -m pytest -v -s testCases/test_Throughput.py::test_throughputtest \
+                                        --local-ip '${localIP}' \
+                                        --remote-ip '${remoteIP}' \
+                                        --radio '${selectedRadio}' \
+                                        --mcs-rate '${mcsrate}' \
+                                        --traffic-type '${traffic_type}' \
+                                        --traffic-dir '${directions.join(",")}' \
+                                        --remote-pc-ip '${remotePCIP}' \
+                                        --bandwidth '${bandwidth}' \
+                                        --sleep '${test_time}' \
+                                        2>&1
+                                    """, returnStdout: true).trim()
+
+                                    echo "Pytest Output:\n${pytest_output}"
+
+                                    def iterationResults = readJSON file: 'custom_results.json'
+                                    def normalizedBandwidth = bandwidth == "HT40" ? "HT40+" : bandwidth
+
+                                    def newTests = iterationResults.iterations
+
+                                    newTests.each { test ->
+                                        test.iteration = iteration++
+                                        test.logs = pytest_output
+                                    }
+
+                                    def filename = "Throughput_${bandwidth.trim()}_${mcsrate.trim()}.json"
+                                    writeJSON file: filename, json: [iterations: newTests]
+
+                                    newTests.each { test ->
+                                        echo "Iteration ${test.iteration} - ${test.test} => ${test.status}"
+                                        test.results_direction.eachWithIndex { result, idx ->
+                                            echo "  ↪ Run ${idx + 1} => Dir: ${result.Direction}, Type: ${result.traffic_type}"
+                                            echo "     Bandwidth: ${result.bandwidth}, MCS: ${result.data_rate}, Throughput: ${result.throughput} Mbps"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        echo "⚠️ Exception occurred during Throughput Testing: ${e.message}"
+                    }
+                }
+            }
+        }
+        stage('Generate Report') {
+            steps {
+                script {
+                    try {
+                        def reportFiles = findFiles(glob: 'Throughput_*.json').findAll { it.length > 20 }
+                        def allResults = []
+
+                        reportFiles.each { file ->
+                            def data = readJSON file: file.name
+                            if (data?.iterations && !data.iterations.isEmpty()) {
+                                allResults << [filename: file.name, content: data.iterations]
+                            }
+                        }
+
+                        if (allResults.isEmpty()) {
+                            echo "⚠️ No iterations found in any result file."
+                            writeFile file: reportFilename, text: "<html><body><h2>No results found.</h2></body></html>"
+                            return
+                        }
+
+                        def localIP = params['Local IP Address']
+                        def remoteIP = params['Remote IP Address']
+                        sh "ssh-keygen -R ${localIP} || true"
+                        sh "ssh-keygen -R ${remoteIP} || true"
+
+                        def local_fw_version = "N/A"
+                        def remote_fw_version = "N/A"
+
+                        try {
+                            local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
+                        } catch (Exception e) {
+                            echo "⚠️ Failed to get local FW version from ${localIP}: ${e.message}"
+                        }
+
+                        try {
+                            remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
+                        } catch (Exception e) {
+                            echo "⚠️ Failed to get remote FW version from ${remoteIP}: ${e.message}"
+                        }
+
+                        def buildParams = [
+                            "Local IP Address": localIP,
+                            "Remote IP Address": remoteIP,
+                            "Radio": params['Radio'],
+                            "Bandwidths": params['Bandwidth'],
+                            "MCS Rates": params['MCS'],
+                            "Traffic Types": params['Traffic Type'],
+                            "Directions": params['Direction'],
+                            "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
+                        ]
+
+                        def trafficTypes = params['Traffic Type'].split(',').collect { it.trim().toUpperCase() }
+                        def directions = params['Direction'].split(',').collect { it.trim().capitalize() }
+
+                        def modulationBase = [
+                            "MCS0": "BPSK 1/2", "MCS1": "QPSK 1/2", "MCS2": "QPSK 3/4",
+                            "MCS3": "16-QAM 1/2", "MCS4": "16-QAM 3/4", "MCS5": "64-QAM 2/3",
+                            "MCS6": "64-QAM 3/4", "MCS7": "64-QAM 5/6", "MCS8": "256-QAM 3/4",
+                            "MCS9": "256-QAM 5/6", "MCS10": "1024-QAM 3/4", "MCS11": "1024-QAM 5/6"
+                        ]
+                        def modulationTable = [:]
+                        (0..23).each { i -> modulationTable["MCS${i}"] = modulationBase["MCS${i % 12}"] }
+
+                        def mcsOrder = (0..23).collect { "MCS$it".toUpperCase() }
+                        def bandwidthOrder = ["HT20", "HT40", "HT80", "HT160"]
+
+                        def groupedByBandwidth = allResults.groupBy { it.filename.split('_')[1].trim().toUpperCase() }
+
+                        def getThroughputCell = { val, tx, key, data ->
+                            def cell = "-"
+                            if (val != "-" && tx > 0) {
+                                try {
+                                    def value = (val as double)
+                                    def percent = Math.round(value / tx * 100)
+                                    def color = percent < 40 ? "red" : percent < 65 ? "orange" : "green"
+                                    def percentText = "<span style='color:${color};'>( ~${percent}% )</span>"
+
+                                    if (key.endsWith("_bi-di")) {
+                                        def txVal = data["${key}_tx"] ?: 0
+                                        def rxVal = data["${key}_rx"] ?: 0
+                                        cell = "<b style='color:black;'>${value}</b> ( ${txVal}+${rxVal} ) ${percentText}"
+                                    } else {
+                                        cell = "<b style='color:black;'>${value}</b> ${percentText}"
+                                    }
+                                } catch (Exception ignored) {}
+                            }
+                            return cell
+                        }
+
+                        def dateStr = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
+                        def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+                        def pipelineName = env.JOB_NAME
+
+                        def htmlContent = """
+                            <html><head><title>Throughput Test Report</title>
+                            <script src='https://cdn.jsdelivr.net/npm/chart.js'></script>
+                            <style>
+                                body { font-family: 'Segoe UI', sans-serif; background: #f9f9f9; color: #333; padding: 20px; }
+                                .header { display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 20px; border-bottom: 2px solid #ddd; }
+                                .header img { height: 60px; }
+                                .header-info { text-align: right; }
+                                h2 { margin-top: 40px; font-size: 22px; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
+                                table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+                                th, td { padding: 10px 12px; border: 1px solid #ccc; text-align: center; }
+                                th { background: #2c3e50; color: #fff; }
+                                table.build-params td, table.build-params th { text-align: left !important; }
+                                tr:nth-child(even) { background-color: #f4f4f4; }
+                            </style></head><body>
+                            <div class="header">
+                                <img src="${companyLogoUrl}" />
+                                <div class="header-info">
+                                    <h1>Throughput Test Report</h1>
+                                    <p><strong>Pipeline:</strong> ${pipelineName}</p>
+                                    <p><strong>Date:</strong> ${dateStr}</p>
+                                </div>
+                            </div>
+
+                            <h2>Build Parameters</h2>
+                            <table class="build-params">
+                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
+                            </table>
+                        """
+
+                        bandwidthOrder.each { bandwidth ->
+                            if (!groupedByBandwidth.containsKey(bandwidth)) return
+
+                            def entries = groupedByBandwidth[bandwidth]
+                            def mcsMap = [:]
+
+                            entries.each { entry ->
+                                def mcs = entry.filename.split('_')[2].replace(".json", "").trim().toUpperCase()
+                                if (!mcsMap[mcs]) mcsMap[mcs] = [:]
+
+                                entry.content.each { iteration ->
+                                    iteration.results_direction.each { result ->
+                                        def key = "${result.traffic_type}_${result.Direction}".toLowerCase()
+                                        mcsMap[mcs][key] = result.throughput
+                                        if (result.Direction.toLowerCase() == "bi-di") {
+                                            mcsMap[mcs]["${key}_tx"] = result.tx_value ?: 0.0
+                                            mcsMap[mcs]["${key}_rx"] = result.rx_value ?: 0.0
+                                        }
+                                        if (!mcsMap[mcs].link_stats) {
+                                            mcsMap[mcs].link_stats = result.link_stats
+                                        }
+                                    }
+                                }
+                            }
+
+                            htmlContent += "<h2>Bandwidth: ${bandwidth}</h2><table><tr><th rowspan='2'>MCS</th><th rowspan='2'>Modulation</th><th colspan='2'>Rate (Mbps)</th>"
+                            trafficTypes.each { htmlContent += "<th colspan='${directions.size()}'>Throughput (${it}) (Mbps)</th>" }
+                            htmlContent += "<th colspan='2'>Local SNR (dB)</th><th colspan='2'>Remote SNR (dB)</th><th colspan='2'>Noise (dBm)</th></tr><tr><th>Tx</th><th>Rx</th>"
+                            trafficTypes.each { directions.each { htmlContent += "<th>${it}</th>" } }
+                            htmlContent += "<th>A1</th><th>A2</th><th>A1</th><th>A2</th><th>Local</th><th>Remote</th></tr>"
+
+                            mcsOrder.each { mcs ->
+                                def data = mcsMap[mcs]
+                                if (!data) return
+                                def stats = data.link_stats ?: [:]
+                                def tx = ((stats.tx_rate ?: "0") as double)
+                                def rx = ((stats.rx_rate ?: "0") as double)
+                                def modulation = modulationTable[mcs] ?: "-"
+                                def rateTxStyle = tx != rx ? "style='color:red; font-weight:bold;'" : ""
+                                def rateRxStyle = tx != rx ? "style='color:red; font-weight:bold;'" : ""
+
+                                htmlContent += "<tr><td>${mcs}</td><td>${modulation}</td><td ${rateTxStyle}>${tx.intValue()}</td><td ${rateRxStyle}>${rx.intValue()}</td>"
+
+                                trafficTypes.each { t ->
+                                    directions.each { d ->
+                                        def key = "${t.toLowerCase()}_${d.toLowerCase()}"
+                                        def val = data[key] ?: "-"
+                                        htmlContent += "<td>${getThroughputCell(val, tx, key, data)}</td>"
+                                    }
+                                }
+
+                                htmlContent += "<td>${stats.local_SNR_A1 ?: '-'}</td><td>${stats.local_SNR_A2 ?: '-'}</td>"
+                                htmlContent += "<td>${stats.remote_SNR_A1 ?: '-'}</td><td>${stats.remote_SNR_A2 ?: '-'}</td>"
+                                htmlContent += "<td>${stats.local_noise ?: '-'}</td><td>${stats.remote_noise ?: '-'}</td></tr>"
+                            }
+
+                            htmlContent += "</table>"
+                        }
+
+                        htmlContent += "<p style='margin-top: 20px; font-size: 13px; color: #555;'>Note: Throughput percentage is calculated relative to Tx rate. Mismatched Tx/Rx are shown in <b style='color:red;'>red</b>.</p></body></html>"
+
+                        writeFile file: reportFilename, text: htmlContent
+                        echo "✅ HTML report generated: ${reportFilename}"
+
+                    } catch (Exception e) {
+                        echo "❌ Report generation failed: ${e.message}"
+                        writeFile file: reportFilename, text: """
+                            <html><body>
+                            <h2 style='color:red;'>Report generation failed</h2>
+                            <p>${e.message}</p>
+                            </body></html>
+                        """
+                    }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            publishHTML (target: [
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: '.',
+                reportFiles: "${reportFilename}",
+                reportName: "Throughput Report - Build ${env.BUILD_NUMBER}"
+            ])
+            echo "-----------------------------------------"
+            echo 'Script Done!'
+            echo "-----------------------------------------"
+            script {
+                def buildCauses = currentBuild.getBuildCauses()
+                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+
+                def buildUserName = userCause?.userName ?: "Unknown User"
+                def buildUserId = userCause?.userId ?: "unknown"
+
+                echo "Build started by: ${buildUserName} (${buildUserId})"
+
+                // Define a mapping of user IDs to emails (update as needed)
+                def userEmails = [
+                    "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@senao.com",
+                    "sandeep": "sandeep.manchikanti@senao.com",
+                    "sampath": "sampath.marella@senao.com",
+                    "jayanth": "jayanth.munnaluru@senao.com",
+                    "srilatha": "srilatha.tadiboina@senao.com",
+                    "phani": "phani.darla@senao.com",
+                    "dinesh": "dinesh.redddy@senao.com"
+                ]
+
+                // Get email from predefined mapping, else use default
+                def userEmail = userEmails.get(buildUserId, "harmanjot.singh@senao.com")
+
+                echo "Sending email to: ${userEmail}"
+
+                // Send email notification
+                emailext(
+                    subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    body: """
+                        <html>
+                        <body>
+                            <h2 style="color:blue;">Jenkins Build Notification</h2>
+                            <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
+                            <p><strong>Status:</strong>
+                                <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
+                                ${currentBuild.currentResult}</span>
+                            </p>
+                            <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
+                            <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                            <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                            <p><strong>HTML Report:</strong> <a href="${env.BUILD_URL}artifact/${reportFilename}">Click here to view</a></p>
+                            <br/>
+                            <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
+                        </body>
+                        </html>
+                    """,
+                    to: userEmail,
+                    mimeType: 'text/html',
+                    attachmentsPattern: "${reportFilename}"
+                )
+
+            }
+        }
+
+        success {
+            echo "-----------------------------------------"
+            echo 'Script Success'
+            echo "-----------------------------------------"
+        }
+
+        failure {
+            echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
+        }
+    }
+}

@@ -3,7 +3,7 @@ import platform
 import warnings
 import subprocess
 import pytest
-
+import time
 from pageObjects.HomePage import HomePage
 from pageObjects.LoginPage import LoginPage
 from pageObjects.FactoryResetPage import ResetPage
@@ -15,15 +15,15 @@ from preMadeFunctions import accessWeb
 from preMadeFunctions import ssh_operations
 
 
-username = readConfig.get_username()
-password = readConfig.get_passwd()
+username = "root"
+password = "admin"
 # serial_port = readConfig.getSerialPortDevice()
 # serial_port_log = readConfig.getSerialLogsDevice()
 driver = setup
 
 def test_configureparams(local_ip, retain, model):
 
-    print("Retained params : {}".format(retain))
+    print("Factory Reset Params : {}".format(retain))
     retained_params = retain.split(" ")
 
     if "System" in retained_params:
@@ -43,7 +43,7 @@ def test_configureparams(local_ip, retain, model):
 def test_FactoryReset(driver, local_ip, retain, model):
     # Start Serial Console logging for specific port
     # serial_logging_start(serial_port, serial_port_log)
-    print("Retained params : {}".format(retain))
+    print("Factory Reset params : {}".format(retain))
     retained_params = retain.split(" ")
 
     print(f"Local IP Address: {local_ip}")
@@ -81,6 +81,8 @@ def test_FactoryReset(driver, local_ip, retain, model):
 
     frp.clickProceed()
 
+    frp.acceptPopUp()
+
     time.sleep(250)
 
     wait = 0
@@ -111,7 +113,7 @@ def test_FactoryReset(driver, local_ip, retain, model):
 
 def test_verifyparams(retain, model):
 
-    print("Retained params : {}".format(retain))
+    print("Factory Reset params : {}".format(retain))
     retained_params = retain.split(" ")
 
     if "System" in retained_params:

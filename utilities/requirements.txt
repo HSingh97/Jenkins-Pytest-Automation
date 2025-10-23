@@ -13,3 +13,7 @@ pip3 install pexpect
 pip3 install pytest pytest-html weasyprint
 pip install pytest-html
 pip install pytest-json-report
+apt-get install sshpass
+apt-get install python-setuptools -y
+pip install netmiko
+pip install prettytable
