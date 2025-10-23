@@ -6,6 +6,7 @@ import pytest
 
 from pageObjects.HomePage import HomePage
 from pageObjects.LoginPage import LoginPage
+from utilities import readProperties
 from pageObjects.UpgradePage import UpgradePage
 from preMadeFunctions import accessWeb, pingFunction, ssh_operations
 from testCases.configsetup import setup
