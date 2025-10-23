@@ -5,9 +5,9 @@ def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
-// Main Pipeline
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
+
     stages {
         stage('Prepare tests') {
             steps {
@@ -15,11 +15,13 @@ pipeline {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${TARGET_STAND}"
                     echo "----------------------------------------"
+                    if (!params['Local IP Address'] || !params['Remote IP Address']) {
+                        error "Missing required parameters: Local IP Address or Remote IP Address"
+                    }
                 }
             }
         }
-
-        stage('Install Python Dependencies') {
+        stage('Install Dependencies') {
             steps {
                 script {
                     echo "----------------------------------------"
@@ -28,42 +30,41 @@ pipeline {
                 }
             }
         }
-
-        stage('Soft Reset Testing') {
+        stage('Reboot') {
             steps {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
 
-                    def ResetCount = params.RESET_COUNT ?: 1
-                    echo "Number of reboot iterations: ${ResetCount}"
+                    echo "Local IP Address: ${localIP}"
+                    echo "Remote IP Address: ${remoteIP}"
 
+                    def rebootCount = params.REBOOT_COUNT ?: 1
+                    echo "Number of reboot iterations: ${rebootCount}"
 
                     echo "✅ Cleared old workspace"
 
                     echo "----------------------------------------"
-                    echo "Testing Soft Reset"
+                    echo "Testing Reboot - SSH"
                     echo "----------------------------------------"
 
-                    // Initialize results file
                     sh "echo [] > iteration_results.json"  // Initialize JSON array
 
-                    for (int i = 1; i <= ResetCount.toInteger(); i++) {
+                    for (int i = 1; i <= rebootCount.toInteger(); i++) {
                         echo "Running reboot test iteration ${i}"
                         try {
                             sh """
-                                pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
+                                pytest -v -s testCases/test_SSHReboot.py::test_reboot \
                                 --local-ip '${localIP}' --remote-ip '${remoteIP}' \
                                 --iter ${i}
                             """
                         } catch (Exception e) {
-                            echo "Reset test iteration ${i} failed: ${e.message}"
+                            echo "Reboot test iteration ${i} failed: ${e.message}"
                         }
                     }
                 }
             }
         }
-
         stage('Generate Report') {
             steps {
                 script {
@@ -203,9 +204,8 @@ pipeline {
                             <tr>
                                 <td>${iteration}</td>
                                 <td>${status}</td>
+                            </tr>
                         """
-
-                        htmlContent += "</tr>"
                     }
 
                     htmlContent += """
@@ -221,7 +221,7 @@ pipeline {
     }
     post {
         always {
-            publishHTML (target: [
+            publishHTML(target: [
                 allowMissing: false,
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
@@ -260,6 +260,7 @@ pipeline {
                 echo "Sending email to: ${userEmail}"
 
                 // Send email notification
+
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
                     body: """
@@ -279,7 +280,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html'  // Only attach, do not embed
+                    attachmentsPattern: 'report.html,iteration_results.json' // Fixed comma placement
                 )
             }
         }

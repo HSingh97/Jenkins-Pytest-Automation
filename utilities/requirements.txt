@@ -16,3 +16,4 @@ pip install pytest-json-report
 apt-get install sshpass
 apt-get install python-setuptools -y
 pip install netmiko
+pip install prettytable
