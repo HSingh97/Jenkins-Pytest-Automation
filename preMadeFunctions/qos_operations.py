@@ -2,11 +2,15 @@ import argparse
 from netmiko import ConnectHandler
 from netmiko import NetmikoAuthenticationException, NetmikoTimeoutException
 import time
+import os
+
+from testCases.conftest import sleep
+
 
 def qos_config_generator(name, args):
 
     qos_config_commands = [
-        f"ucidyn add ath1qos pirlist"
+        f"ucidyn add ath1qos pirlist",
         f"ucidyn set ath1qos.@pirlist[-1].name {name}",
         f"ucidyn set ath1qos.@pirlist[-1].qostyp 0",
         f"ucidyn set ath1qos.@pirlist[-1].typ 3",
@@ -77,7 +81,7 @@ def qos_config_generator(name, args):
 
     return qos_config_commands
 
-def qos_config_apply(ip, qos_list):
+def qos_config_commit(ip, qos_list):
     # Device connection details
     pc_details = {
         "device_type": "generic",
@@ -90,10 +94,154 @@ def qos_config_apply(ip, qos_list):
 
     for command in qos_list:
         print(f"Sending: {command}")
-        output = connection.send_command(command)
-    connection.send_command("ucidyn apply", read_timeout=60)
+        connection.send_command(command)
+
+
+def qos_apply(ip):
+    # Device connection details
+
+    pc_details = {
+        "device_type": "generic",
+        "host": ip,
+        "username": "root",
+        "password": "admin"
+    }
+
+    connection = ConnectHandler(**pc_details)
+    connection.send_command("ucidyn apply", read_timeout=100)
     print("QoS configuration successfully sent.")
 
+def qos_sfc_clear(ip):
+    command_list = [
+        "ucidyn set ath1qos.@sfclist[8].pirindex 1",
+        "ucidyn set ath1qos.@sfclist[9].pirindex 0",
+        "ucidyn set ath1qos.@sfclist[10].pirindex 0",
+        "ucidyn set ath1qos.@sfclist[11].pirindex 0",
+        "ucidyn set ath1qos.@sfclist[12].pirindex 1",
+        "ucidyn set ath1qos.@sfclist[13].pirindex 0",
+        "ucidyn set ath1qos.@sfclist[14].pirindex 0",
+        "ucidyn set ath1qos.@sfclist[15].pirindex 0"
+    ]
+
+    pc_details = {
+        "device_type": "generic",
+        "host": ip,
+        "username": "root",
+        "password": "admin"
+    }
+
+    connection = ConnectHandler(**pc_details)
+
+    for command in command_list:
+        print(f"Sending: {command}")
+        connection.send_command(command)
+
+    connection = ConnectHandler(**pc_details)
+    connection.send_command("ucidyn apply", read_timeout=300)
+    print("SFC Clear QoS configuration sent.")
+
+def qos_sfc_config(ip):
+    command_list = [
+        "ucidyn set ath1qos.@sfclist[8].pirindex 3",
+        "ucidyn set ath1qos.@sfclist[9].pirindex 2",
+        "ucidyn set ath1qos.@sfclist[10].pirindex 1",
+        "ucidyn set ath1qos.@sfclist[11].pirindex 0",
+        "ucidyn set ath1qos.@sfclist[12].pirindex 3",
+        "ucidyn set ath1qos.@sfclist[13].pirindex 2",
+        "ucidyn set ath1qos.@sfclist[14].pirindex 1",
+        "ucidyn set ath1qos.@sfclist[15].pirindex 0",
+        "ucidyn set ath1qos.qoscfg.defqos 1"
+    ]
+
+    pc_details = {
+        "device_type": "generic",
+        "host": ip,
+        "username": "root",
+        "password": "admin"
+    }
+
+    connection = ConnectHandler(**pc_details)
+
+    for command in command_list:
+        print(f"Sending: {command}")
+        connection.send_command(command)
+
+    connection = ConnectHandler(**pc_details)
+    connection.send_command("ucidyn apply", read_timeout=300)
+    print("SFC QoS configuration sent.")
+
+def qos_config_delete(ip):
+    # Device connection details
+    pc_details = {
+        "device_type": "generic",
+        "host": ip,
+        "username": "root",
+        "password": "admin"
+    }
+
+    connection = ConnectHandler(**pc_details)
+
+    for i in range(7, 0, -1):
+        connection.send_command(f"ucidyn delete ath1qos.@pirlist {i} >&/dev/null", read_timeout=60)
+        print(f"------ Deleting : {i} ------")
+
+    qos_apply(ip)
+    print("QoS configuration deleted successfully.")
+
+def pass_dscp_traffic(ip, dscp):
+    print(f"*** DSCP ID : {dscp} ***")
+    print(f"TOS : {int(dscp*4)}")
+    os.system(f"ping -Q {int(dscp*4)} {ip} -c 10 &")
+
+def check_traffic_priority(ip, priority):
+    pc_details = {
+        "device_type": "generic",
+        "host": ip,
+        "username": "root",
+        "password": "admin"
+    }
+
+    try:
+        connection = ConnectHandler(**pc_details)
+
+        print("Clearing logs with dmesg -c")
+        connection.send_command("dmesg -c", read_timeout=30)
+
+        command = "cfg80211tool ath1 g_kwnpkt"
+        print(f"Executing command: {command}")
+        connection.send_command(command, read_timeout=30)
+
+        print("Capturing output with dmesg -c")
+        output = connection.send_command("dmesg -c", read_timeout=30)
+        connection.disconnect()
+        result = {}
+        lines = output.splitlines()
+        tx_line = None
+        rx_line = None
+        for line in lines:
+            if "TxKbps" in line:
+                tx_line = line.strip()
+            if "RxKbps" in line:
+                rx_line = line.strip()
+        if tx_line and rx_line:
+            tx_values = [int(x) for x in tx_line.split("TxKbps(")[1].split(") : ")[1].split("\t") if x]
+            rx_values = [int(x) for x in rx_line.split("RxKbps(")[1].split(") : ")[1].split("\t") if x]
+            for i in range(4):
+                result[str(i)] = {
+                    "TxKbps": tx_values[i] if i < len(tx_values) else 0,
+                    "RxKbps": rx_values[i] if i < len(rx_values) else 0
+                }
+        kbps_data = result
+        if kbps_data:
+            print("Extracted kbps data:")
+            print(kbps_data)
+            return kbps_data[str(priority)]['TxKbps'], kbps_data[str(priority)]['RxKbps']
+        else:
+            print("No TxKbps or RxKbps data found")
+            print(f"Raw output (first 200 chars): {output[:200] + '...' if len(output) > 200 else output}")
+
+    except Exception as e:
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Configure QOS settings")

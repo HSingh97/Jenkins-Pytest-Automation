@@ -2,9 +2,6 @@ import time
 import warnings
 import pytest
 import argparse
-from utilities.readProperties import readConfig
-from testCases.configsetup import setup
-from utilities.serial_Logging import *
 from preMadeFunctions import digilogger_PDU
 from preMadeFunctions import pingFunction
 

@@ -11,7 +11,7 @@ import subprocess
 import json
 
 from preMadeFunctions.param_helpers import get_radio_index
-from utilities.readProperties import readConfig
+from utilities.serial_logger import readConfig
 from utilities.serial_Logging import *
 from preMadeFunctions import pingFunction, get_linkstats, snmp_operations, ssh_operations,execute_ssh_command
 from preMadeFunctions import param_helpers
@@ -229,7 +229,10 @@ def test_changebandwidth(local_ip, remote_ip, radio, bandwidth):
 
 def test_changemcs(local_ip, remote_ip, radio, mcs_rate):
 
-    mcs = mcs_rate.replace("MCS", "")
+    if mcs_rate == "Auto":
+        mcs = 24
+    else:
+        mcs = mcs_rate.replace("MCS", "")
 
     if pingFunction.check_access(local_ip):
         if pingFunction.check_access(remote_ip):
@@ -238,6 +241,22 @@ def test_changemcs(local_ip, remote_ip, radio, mcs_rate):
 
             print("\nConfiguring Data Rate : {} for {} ".format(mcs, local_ip))
             snmp_operations.change_ddrs_rate(local_ip, get_radio_index(radio)["radio_ind"], mcs)
+        else:
+            print("!!!! Device : {} Not Reachable !!!!".format(remote_ip))
+    else:
+        print("!!!! Device : {} Not Reachable !!!!".format(local_ip))
+
+def test_changelinktype(local_ip, remote_ip, radio, link_type):
+
+    link_type = str(link_type)
+    print(link_type)
+    if pingFunction.check_access(local_ip):
+        if pingFunction.check_access(remote_ip):
+            print("\nConfiguring Link Type : {} for {} ".format(link_type, remote_ip))
+            snmp_operations.change_linktype(remote_ip, get_radio_index(radio)["radio_ind"], link_type)
+
+            print("\nConfiguring Link Type : {} for {} ".format(link_type, local_ip))
+            snmp_operations.change_linktype(local_ip, get_radio_index(radio)["radio_ind"], link_type)
         else:
             print("!!!! Device : {} Not Reachable !!!!".format(remote_ip))
     else:

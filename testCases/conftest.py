@@ -12,6 +12,7 @@ def pytest_addoption(parser):
     parser.addoption("--remote-interface", action="store", default="enp1s0", help="Remote PC Interface")
     parser.addoption("--bandwidth", action="store", default="HT20", help="Bandwidth")
     parser.addoption("--mcs-rate", action="store", default="MCS0", help="MCS Rate")
+    parser.addoption("--link-type", action="store", default="PTP", help="Link Type")
     parser.addoption("--country", action="store", default="US 5GHz All", help="Country")
     parser.addoption("--pdu-port", action="store", default="1", help="PDU Port")
     parser.addoption("--iter", action="store", default="1", help="Iteration")
@@ -23,6 +24,8 @@ def pytest_addoption(parser):
     parser.addoption("--username", action="store", default="root", help="Username")
     parser.addoption("--password", action="store", default="admin", help="Password")
     parser.addoption("--sleep", action="store", default="30", help="Sleep")
+    parser.addoption("--serialPort", action="store", default="/dev/ttyUSB0", help="Serial Port")
+    parser.addoption("--extra", action="store", default="1", help="Extra Variable")
     parser.addoption("--check_bw", action="store", default="Null", help="Check Bandwidth")
     parser.addoption("--check_rate", action="store", default="Null", help="Check Data Rate")
     parser.addoption("--traffic-type", action="store", default="Null", help="Traffic Type ( TCP/UDP )")
@@ -68,6 +71,10 @@ def mcs_rate(request):
     return request.config.getoption("--mcs-rate")
 
 @pytest.fixture
+def link_type(request):
+    return request.config.getoption("--link-type")
+
+@pytest.fixture
 def country(request):
     return request.config.getoption("--country")
 
@@ -110,6 +117,14 @@ def password(request):
 @pytest.fixture
 def sleep(request):
     return request.config.getoption("--sleep")
+
+@pytest.fixture
+def serialPort(request):
+    return request.config.getoption("--serialPort")
+
+@pytest.fixture
+def extra(request):
+    return request.config.getoption("--extra")
 
 @pytest.fixture
 def check_bw(request):

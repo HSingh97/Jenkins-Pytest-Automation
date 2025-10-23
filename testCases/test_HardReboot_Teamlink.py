@@ -2,7 +2,7 @@ import time
 import warnings
 import pytest
 from testCases.conftest import local_ip
-from utilities.readProperties import readConfig
+from utilities.serial_logger import readConfig
 from testCases.configsetup import setup
 from utilities.serial_Logging import *
 from preMadeFunctions import pingFunction

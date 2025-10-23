@@ -73,6 +73,7 @@ pipeline {
                         def traffic_types = params.'Traffic Type'.split(',')
                         def directions = params.Direction.split(',')
                         def bandwidths = params.Bandwidth.split(',')
+                        def link_types = params.'Link Type'.split(',')
                         def modulationrates = params.MCS.split(',')
                         def test_time = params['Throughput Test Time']
 
@@ -83,70 +84,81 @@ pipeline {
 
                         def iteration = 1
 
-                        for (bandwidth in bandwidths) {
-                            echo "--------------------------------------------------------------"
-                            echo " Configuring Bandwidth : ${bandwidth}"
-                            echo "--------------------------------------------------------------"
+                        for (link_type in link_types) {
+                            echo "=============================================================="
+                            echo "         Testing Link Type : ${link_type}"
+                            echo "=============================================================="
 
                             sh """
-                                python3.10 -m  pytest -v -s testCases/test_Throughput.py::test_changebandwidth \
+                                python3.10 -m pytest -v -s testCases/test_Throughput.py::test_changelinktype \
                                 --local-ip '${localIP}' --remote-ip '${remoteIP}' \
-                                --radio '${selectedRadio}' --bandwidth '${bandwidth}' 2>&1
+                                --radio '${selectedRadio}' --link-type '${link_type}' 2>&1
                             """
 
-                            for (mcsrate in modulationrates) {
+                            for (bandwidth in bandwidths) {
                                 echo "--------------------------------------------------------------"
-                                echo " Configuring MCS : ${mcsrate}"
+                                echo " Configuring Bandwidth : ${bandwidth}"
                                 echo "--------------------------------------------------------------"
 
                                 sh """
-                                    python3.10 -m pytest -v -s testCases/test_Throughput.py::test_changemcs \
+                                    python3.10 -m  pytest -v -s testCases/test_Throughput.py::test_changebandwidth \
                                     --local-ip '${localIP}' --remote-ip '${remoteIP}' \
-                                    --radio '${selectedRadio}' --mcs-rate '${mcsrate}' 2>&1
+                                    --radio '${selectedRadio}' --bandwidth '${bandwidth}' 2>&1
                                 """
 
-                                for (traffic_type in traffic_types) {
-
+                                for (mcsrate in modulationrates) {
                                     echo "--------------------------------------------------------------"
-                                    echo " Testing: Bandwidth=${bandwidth} | MCS=${mcsrate} | Type=${traffic_type} "
+                                    echo " Configuring MCS : ${mcsrate}"
                                     echo "--------------------------------------------------------------"
 
-                                    sh "echo '{\"iterations\": []}' > custom_results.json"
+                                    sh """
+                                        python3.10 -m pytest -v -s testCases/test_Throughput.py::test_changemcs \
+                                        --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                                        --radio '${selectedRadio}' --mcs-rate '${mcsrate}' 2>&1
+                                    """
 
-                                    def pytest_output = sh(script: """
-                                        python3.10 -m pytest -v -s testCases/test_Throughput.py::test_throughputtest \
-                                        --local-ip '${localIP}' \
-                                        --remote-ip '${remoteIP}' \
-                                        --radio '${selectedRadio}' \
-                                        --mcs-rate '${mcsrate}' \
-                                        --traffic-type '${traffic_type}' \
-                                        --traffic-dir '${directions.join(",")}' \
-                                        --remote-pc-ip '${remotePCIP}' \
-                                        --bandwidth '${bandwidth}' \
-                                        --sleep '${test_time}' \
-                                        2>&1
-                                    """, returnStdout: true).trim()
+                                    for (traffic_type in traffic_types) {
 
-                                    echo "Pytest Output:\n${pytest_output}"
+                                        echo "--------------------------------------------------------------"
+                                        echo " Testing: Bandwidth=${bandwidth} | MCS=${mcsrate} | Type=${traffic_type} "
+                                        echo "--------------------------------------------------------------"
 
-                                    def iterationResults = readJSON file: 'custom_results.json'
-                                    def normalizedBandwidth = bandwidth == "HT40" ? "HT40+" : bandwidth
+                                        sh "echo '{\"iterations\": []}' > custom_results.json"
 
-                                    def newTests = iterationResults.iterations
+                                        def pytest_output = sh(script: """
+                                            python3.10 -m pytest -v -s testCases/test_Throughput.py::test_throughputtest \
+                                            --local-ip '${localIP}' \
+                                            --remote-ip '${remoteIP}' \
+                                            --radio '${selectedRadio}' \
+                                            --mcs-rate '${mcsrate}' \
+                                            --traffic-type '${traffic_type}' \
+                                            --traffic-dir '${directions.join(",")}' \
+                                            --remote-pc-ip '${remotePCIP}' \
+                                            --bandwidth '${bandwidth}' \
+                                            --sleep '${test_time}' \
+                                            2>&1
+                                        """, returnStdout: true).trim()
 
-                                    newTests.each { test ->
-                                        test.iteration = iteration++
-                                        test.logs = pytest_output
-                                    }
+                                        echo "Pytest Output:\n${pytest_output}"
 
-                                    def filename = "Throughput_${bandwidth.trim()}_${mcsrate.trim()}.json"
-                                    writeJSON file: filename, json: [iterations: newTests]
+                                        def iterationResults = readJSON file: 'custom_results.json'
+                                        def normalizedBandwidth = bandwidth == "HT40" ? "HT40+" : bandwidth
 
-                                    newTests.each { test ->
-                                        echo "Iteration ${test.iteration} - ${test.test} => ${test.status}"
-                                        test.results_direction.eachWithIndex { result, idx ->
-                                            echo "  ↪ Run ${idx + 1} => Dir: ${result.Direction}, Type: ${result.traffic_type}"
-                                            echo "     Bandwidth: ${result.bandwidth}, MCS: ${result.data_rate}, Throughput: ${result.throughput} Mbps"
+                                        def newTests = iterationResults.iterations
+
+                                        newTests.each { test ->
+                                            test.iteration = iteration++
+                                            test.logs = pytest_output
+                                        }
+                                        def filename = "Throughput_${link_type.trim()}_${bandwidth.trim()}_${mcsrate.trim()}.json"
+                                        writeJSON file: filename, json: [iterations: newTests]
+
+                                        newTests.each { test ->
+                                            echo "Iteration ${test.iteration} - ${test.test} => ${test.status}"
+                                            test.results_direction.eachWithIndex { result, idx ->
+                                                echo "  ↪ Run ${idx + 1} => Dir: ${result.Direction}, Type: ${result.traffic_type}"
+                                                echo "     Bandwidth: ${result.bandwidth}, MCS: ${result.data_rate}, Throughput: ${result.throughput} Mbps"
+                                            }
                                         }
                                     }
                                 }
@@ -202,6 +214,7 @@ pipeline {
                             "Local IP Address": localIP,
                             "Remote IP Address": remoteIP,
                             "Radio": params['Radio'],
+                            "Link Types": params['Link Type'],
                             "Bandwidths": params['Bandwidth'],
                             "MCS Rates": params['MCS'],
                             "Traffic Types": params['Traffic Type'],

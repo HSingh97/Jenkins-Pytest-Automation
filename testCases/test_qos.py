@@ -6,6 +6,8 @@ from preMadeFunctions import pingFunction, qos_operations
 import random
 import argparse
 
+from testCases.conftest import sleep
+
 
 def append_result_to_json(result, filename="iteration_results.json"):
     """
@@ -45,6 +47,15 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
         "qos": qosPIR,
     }
 
+    # print("++++++++++++++++++++++++++++++++")
+    # print("\tResetting Old SFC List")
+    # print("++++++++++++++++++++++++++++++++")
+    # qos_operations.qos_sfc_clear(local_ip)
+    #
+    # print("++++++++++++++++++++++++++++++++")
+    # print("\tClearing Old Profiles")
+    # print("++++++++++++++++++++++++++++++++")
+    # qos_operations.qos_config_delete(local_ip)
     try:
         if qosPIR == "Protocol":
             pass
@@ -62,32 +73,96 @@ def test_qosTest(local_ip, remote_ip, qosPIR,
             pass
 
         elif qosPIR == "802.1P":
-            pass
-
-        elif qosPIR == "DSCP":
-            dscp_number_1 = random.randint(1, 63)
-            dscp_number_2 = random.choice([i for i in range(1, 63) if i != dscp_number_1])
-            print("++++ Testing DSCP ++++")
-            # Configuration for First DSCP PIR Entry
+            vlan_number_1 = random.randint(0, 7)
+            vlan_number_2 = random.choice([i for i in range(0, 7) if i != vlan_number_1])
+            print("++++ Testing VLAN Priority : 802.1P ++++")
+            # Configuration for First VLAN priority PIR Entry
             mock_args = argparse.Namespace(
-                qos_type='DSCP',
-                dscp=dscp_number_1
+                qos_type='802.1P',
+                vlanPriority=vlan_number_1
             )
-            qos_dscp_1 = qos_operations.qos_config_generator('dscp_Test3', mock_args)
-            print(qos_dscp_1)
+            pir_profile1_name = f"Vlan_Test_{vlan_number_1}"
+            qos_vlan_1 = qos_operations.qos_config_generator(pir_profile1_name, mock_args)
+            print(qos_vlan_1)
             print("++++++++++++++++++++++++++++++++")
 
-            #qos_operations.qos_config_apply(local_ip, qos_dscp_1)
+            qos_operations.qos_config_commit(local_ip, qos_vlan_1)
 
-            #Configuration for Second DSCP PIR Entry
+            #Configuration for Second VLAN priority PIR Entry
             mock_args = argparse.Namespace(
-                qos_type='DSCP',
-                dscp=dscp_number_2
+                qos_type='802.1P',
+                vlanPriority=vlan_number_2
             )
-            qos_dscp_2 = qos_operations.qos_config_generator('dscp_Test4', mock_args)
-            print(qos_dscp_2)
-            #qos_operations.qos_config_apply(local_ip, qos_dscp_2)
+            pir_profile2_name = f"Vlan_Test_{vlan_number_2}"
+            qos_vlan_2 = qos_operations.qos_config_generator(pir_profile2_name, mock_args)
+            print(qos_vlan_1)
+            qos_operations.qos_config_commit(local_ip, qos_vlan_2)
 
+            qos_operations.qos_apply(local_ip)
+
+            print("++++++++++++++++++++++++++++++++")
+            print("\tConfiguring SFC List")
+            print("++++++++++++++++++++++++++++++++")
+            qos_operations.qos_sfc_config(local_ip)
+
+        elif qosPIR == "DSCP":
+            # dscp_number_1 = random.randint(1, 63)
+            # dscp_number_2 = random.choice([i for i in range(1, 63) if i != dscp_number_1])
+            # print("++++ Testing DSCP ++++")
+            # # Configuration for First DSCP PIR Entry
+            # mock_args = argparse.Namespace(
+            #     qos_type='DSCP',
+            #     dscp=dscp_number_1
+            # )
+            # pir_profile1_name = f"DSCP_Test_{dscp_number_1}"
+            # qos_dscp_1 = qos_operations.qos_config_generator(pir_profile1_name, mock_args)
+            # print(qos_dscp_1)
+            # print("++++++++++++++++++++++++++++++++")
+            #
+            # qos_operations.qos_config_commit(local_ip, qos_dscp_1)
+            #
+            # #Configuration for Second DSCP PIR Entry
+            # mock_args = argparse.Namespace(
+            #     qos_type='DSCP',
+            #     dscp=dscp_number_2
+            # )
+            # pir_profile2_name = f"DSCP_Test_{dscp_number_2}"
+            # qos_dscp_2 = qos_operations.qos_config_generator(pir_profile2_name, mock_args)
+            # print(qos_dscp_2)
+            # qos_operations.qos_config_commit(local_ip, qos_dscp_2)
+            #
+            # qos_operations.qos_apply(local_ip)
+            #
+            # print("++++++++++++++++++++++++++++++++")
+            # print("\tConfiguring SFC List")
+            # print("++++++++++++++++++++++++++++++++")
+            # qos_operations.qos_sfc_config(local_ip)
+            #
+            # print("++++++++++++++++++++++++++++++++")
+            # print("\tPassing Traffic")
+            # print("++++++++++++++++++++++++++++++++")
+            qos_operations.check_traffic_priority(local_ip, 0)
+            print("++++++++++++++++++++++++++++++++")
+            print("\tPassing Traffic for 1st DSCP")
+            print("++++++++++++++++++++++++++++++++")
+            qos_operations.pass_dscp_traffic(remote_ip, 57)
+            time.sleep(2)
+            tx_kbps, rx_kbps = qos_operations.check_traffic_priority(local_ip, 0)
+            print(f"TX KBPS : {tx_kbps}, RX KBPS : {rx_kbps}")
+            if tx_kbps != 0 and rx_kbps != 0:
+                print(f" !!! Traffic Passing !!! : {tx_kbps}, {rx_kbps}")
+
+            time.sleep(5)
+            print("++++++++++++++++++++++++++++++++")
+            print("\tPassing Traffic for 2nd DSCP")
+            print("++++++++++++++++++++++++++++++++")
+            qos_operations.pass_dscp_traffic(remote_ip, 50)
+            time.sleep(2)
+            tx_kbps, rx_kbps = qos_operations.check_traffic_priority(local_ip, 1)
+            print(f"TX KBPS : {tx_kbps}, RX KBPS : {rx_kbps}")
+            if tx_kbps != 0 and rx_kbps != 0:
+                print(f" !!! Traffic Passing !!! : {tx_kbps}, {rx_kbps}")
+            time.sleep(5)
 
     finally:
         print("--- Starting cleanup for iteration ---")

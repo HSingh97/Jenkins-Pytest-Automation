@@ -3,90 +3,82 @@ import platform
 import warnings
 import subprocess
 import pytest
+import os  # <-- Import os
 
 from pageObjects.HomePage import HomePage
 from pageObjects.LoginPage import LoginPage
 from pageObjects.UpgradePage import UpgradePage
-from preMadeFunctions import accessWeb, pingFunction
-from utilities.readProperties import readConfig
+from preMadeFunctions import accessWeb, pingFunction, ssh_operations
 from testCases.configsetup import setup
-from utilities.serial_Logging import *
 
 
-URL = "http://"+readConfig.getIPaddr()+"/cgi-bin/luci"
-#serial_port = readConfig.getSerialPortDevice()
-#serial_port_log = readConfig.getSerialLogsDevice()
 driver = setup
 
 
-def test_Upgrade(driver):
-    # Start Serial Console logging for specific port
-    #serial_logging_start(serial_port, serial_port_log)
+def test_Upgrade(driver, local_ip, serialPort):
+    print("************************\n")
+    print(f"Local IP    : {local_ip}")
+    print(f"Serial Port : {serialPort}")
+    print("\n************************\n")
+    URL = "http://" + local_ip + "/cgi-bin/luci"
 
-    accessWeb.access_and_login(driver, URL, "root", "admin")
+    # Start Serial Console logging
+    print(f"--- Starting serial logger on {serialPort} ---")
+    subprocess.run([
+        "python3", "../utilities/serial_logger.py", "start",
+        "--port", serialPort,
+        "--logfile", "test1.log"
+    ], check=True)
 
-    time.sleep(2)
+    try:
+        accessWeb.access_and_login(driver, URL, "root", "admin")
+        time.sleep(2)
 
-    hp = HomePage(driver)
+        hp = HomePage(driver)
+        hp.clickManagementSection()
+        hp.clickUpgradeReset()
 
-    if str(hp.getMemory()) > str(60):
-        print("Memory is over 65%, Rebooting the device now before proceeding for firmware upgrade")
-        hp.clickReboot()
-        hp.clickSuperReboot()
-        time.sleep(60)
+        up = UpgradePage(driver)
+        up.selectImageFile()
+        up.clickUpgrade()
+
+        output = ssh_operations.ssh_get(local_ip, "ls -ltr /tmp/firmware.bin")
+
+        if output == "ls: /tmp/firmware.bin: No such file or directory":
+            print("!!!! FW Upload Failed !!!!")
+        else:
+            print("!!!! FW Upload Successful !!!!")
+
+        # up.clickProceed()
+        # time.sleep(180)
 
         wait = 0
-        while wait < 150:
-            output = pingFunction.Ping(readConfig.getIPaddr())
-
+        while wait < 200:
+            output = pingFunction.Ping(local_ip)
             if not output:
                 wait += 3
-                time.sleep(3)
-
             else:
                 print("Reachable")
-                print("Proceeding to Upgrade Firmware")
-                time.sleep(5)
-                accessWeb.access_and_login(driver, URL, username, password)
-                time.sleep(4)
                 break
 
-    hp.clickManagementSection()
-    hp.clickUpgradeReset()
-
-    up = UpgradePage(driver)
-    up.selectImageFile()
-    up.clickUpgrade()
-    up.clickProceed()
-
-    time.sleep(400)
-
-    wait = 0
-    while wait < 200:
-        output = pingFunction.Ping(readConfig.getIPaddr())
-
-        if not output:
-            wait += 3
-
+        if output != 1:
+            assert False
         else:
-            print("Reachable")
-            break
+            assert True
 
+    finally:
+        # --- This block runs even if the test fails ---
+        # Stop Serial logging
+        print(f"--- Stopping serial logger on {serialPort} ---")
+        subprocess.run([
+            "python3", "../utilities/serial_logger.py", "stop",
+            "--port", serialPort
+        ], check=True)
+        # --- End of change ---
 
-    if output != 1:
-        assert False
+        # Close the driver window
+        driver.close()
 
-    else:
-        assert True
-
-    # Stop Serial logging
-    #serial_logging_stop()
-
-    # Close the driver window
-    driver.close()
-
-def test_DownloadFirmware(build):
-    pass
 
 # Ignore Warnings
 def warn(*args, **kwargs):

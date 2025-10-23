@@ -6,6 +6,8 @@ def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
+def dateStamp = new Date().format("yyyyMMdd", TimeZone.getTimeZone("Asia/Kolkata"))
+def reportFilename = "QOS_report_${env.BUILD_NUMBER}_${dateStamp}.html"
 
 // Main Pipeline
 
@@ -94,6 +96,8 @@ pipeline {
                     echo "----------------------------------------"
 
                     sh "echo [] > iteration_results.json"  // Initialize JSON array
+                    sh "ssh-keygen -R ${localIP} || true"
+                    sh "ssh-keygen -R ${remoteIP} || true"
 
                     for (qos in qosPirList) {
                         echo "--------------------------------------------------------------"
@@ -103,7 +107,7 @@ pipeline {
                         sh """
                             python3.10 -m  pytest -v -s testCases/test_qos.py::test_qosTest \
                             --local-ip '${localIP}' --remote-ip '${remoteIP}' \
-                            --qosPIR '${qos}'
+                            --qosPIR '${qos}' \
                             --local-pc-mgmt-ip '${localPCmgmtIP}' --remote-pc-mgmt-ip '${remotePCmgmtIP}' 2>&1
                         """
                     }
@@ -137,7 +141,6 @@ pipeline {
                     def buildParams = [
                         "Local IP Address": params['Local IP Address'],
                         "Remote IP Address": params['Remote IP Address'],
-                        "Radio" : params['Radio'],
                         "QOS" : params['QOS PIR'],
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
@@ -265,7 +268,8 @@ pipeline {
                     </html>
                     """
 
-                    writeFile file: 'report.html', text: htmlContent
+                    writeFile file: reportFilename, text: htmlContent
+                    echo "✅ HTML report generated: ${reportFilename}"
                 }
             }
         }
@@ -279,8 +283,8 @@ pipeline {
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
                 reportDir: '.',
-                reportFiles: 'report.html',
-                reportName: 'Test Report'
+                reportFiles: "${reportFilename}",
+                reportName: "QOS Report - Build ${env.BUILD_NUMBER}"
             ])
             echo "-----------------------------------------"
             echo 'Script Done!'
@@ -331,7 +335,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html'  // Only attach, do not embed
+                    attachmentsPattern: "${reportFilename}"
                 )
             }
         }
