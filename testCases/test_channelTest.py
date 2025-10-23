@@ -12,7 +12,7 @@ import random
 
 import preMadeFunctions.get_snmp_values
 from testCases.conftest import password
-from utilities.readProperties import readConfig
+from utilities.serial_logger import readConfig
 from testCases.configsetup import setup
 from utilities.serial_Logging import *
 from preMadeFunctions import pingFunction

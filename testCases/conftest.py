@@ -23,6 +23,7 @@ def pytest_addoption(parser):
     parser.addoption("--username", action="store", default="root", help="Username")
     parser.addoption("--password", action="store", default="admin", help="Password")
     parser.addoption("--sleep", action="store", default="30", help="Sleep")
+    parser.addoption("--serialPort", action="store", default="/dev/ttyUSB0", help="Serial Port")
     parser.addoption("--extra", action="store", default="1", help="Extra Variable")
     parser.addoption("--check_bw", action="store", default="Null", help="Check Bandwidth")
     parser.addoption("--check_rate", action="store", default="Null", help="Check Data Rate")
@@ -111,6 +112,10 @@ def password(request):
 @pytest.fixture
 def sleep(request):
     return request.config.getoption("--sleep")
+
+@pytest.fixture
+def serialPort(request):
+    return request.config.getoption("--serialPort")
 
 @pytest.fixture
 def extra(request):

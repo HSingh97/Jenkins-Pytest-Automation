@@ -7,7 +7,7 @@ import time
 from pageObjects.HomePage import HomePage
 from pageObjects.LoginPage import LoginPage
 from pageObjects.FactoryResetPage import ResetPage
-from utilities.readProperties import readConfig
+from utilities.serial_logger import readConfig
 from testCases.configsetup import setup
 from utilities.serial_Logging import *
 from preMadeFunctions import pingFunction

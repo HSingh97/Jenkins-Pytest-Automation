@@ -1,6 +1,6 @@
 import time
 from pageObjects.LoginPage import LoginPage
-from utilities.readProperties import readConfig
+from utilities.serial_logger import readConfig
 from testCases.configsetup import setup
 from preMadeFunctions import accessWeb
 import warnings

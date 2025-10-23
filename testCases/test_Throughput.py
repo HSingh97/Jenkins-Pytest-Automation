@@ -11,7 +11,7 @@ import subprocess
 import json
 
 from preMadeFunctions.param_helpers import get_radio_index
-from utilities.readProperties import readConfig
+from utilities.serial_logger import readConfig
 from utilities.serial_Logging import *
 from preMadeFunctions import pingFunction, get_linkstats, snmp_operations, ssh_operations,execute_ssh_command
 from preMadeFunctions import param_helpers

@@ -121,6 +121,7 @@ pipeline {
                     def remoteIP = params['Remote IP Address']
                     def model = params['Model']
                     def buildURL = params['Build']
+                    def serialPort = params['Serial Logging Port']
 
                     def FIRMWARE_UPGRADE_COUNT = params.FIRMWARE_UPGRADE_COUNT ?: "1"
 
@@ -134,7 +135,7 @@ pipeline {
                     sh "mkdir -p artifacts"
 
                     for (int i = 1; i <= FIRMWARE_UPGRADE_COUNT.toInteger() ; i++) {
-                        sh "export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade 2>&1 --local-ip '$localIP' | tee \"${workspace}/artifacts/firmware-upgrade-device.log\""
+                        sh "export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade 2>&1 --local-ip '$localIP' --serialPort '$serialPort' | tee \"${workspace}/artifacts/firmware-upgrade-device.log\""
                     }
                     archiveArtifacts('artifacts/**/*')
                     //archiveArtifacts('SerialLogs_Device.log')
