@@ -9,14 +9,13 @@ import signal
 
 def get_pid_file_path(port):
     """Generates a consistent PID file path based on the port name."""
-    safe_port_name = os.path.basename(port)  # e.g., ttyUSB0
+    safe_port_name = os.path.basename(port)
     return f"/tmp/serial_log_{safe_port_name}.pid"
 
 
 def kill_process_on_port(port):
     """Forcefully kills any process currently using the specified serial port."""
     print(f"--- Forcefully clearing port {port} ---")
-    # Use '|| true' to prevent script from failing if no process is found
     subprocess.run(f"fuser -k {port} || true", shell=True, check=True)
 
 
