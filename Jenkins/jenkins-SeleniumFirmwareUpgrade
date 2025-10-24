@@ -124,7 +124,7 @@ pipeline {
                     def serialPort = params['Serial Logging Port']
 
                     // Clear old files
-                    sh 'rm -f test-*.log'
+                    sh 'rm -f test-*.log test.log'
                     echo "✅ Cleared old workspace"
 
                     def FIRMWARE_UPGRADE_COUNT = params.FIRMWARE_UPGRADE_COUNT ?: "1"
