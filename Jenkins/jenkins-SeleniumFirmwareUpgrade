@@ -142,9 +142,9 @@ pipeline {
                         sh "export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade 2>&1 --local-ip '$localIP' --serialPort '$serialPort' --iter ${i} | tee \"${workspace}/artifacts/firmware-upgrade-device.log\""
                     }
 
-                    sh 'zip test_results.zip test-*.log'
+                    sh 'zip fw_upgrade_test_results.zip test-*.log'
+                    sh 'rm -f test-*.log'
                     archiveArtifacts('artifacts/**/*')
-                    //archiveArtifacts('SerialLogs_Device.log')
                 }
             }
         }
