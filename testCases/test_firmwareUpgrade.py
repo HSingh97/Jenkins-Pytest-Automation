@@ -7,7 +7,6 @@ import os
 import json
 
 from pageObjects.HomePage import HomePage
-from pageObjects.LoginPage import LoginPage
 from pageObjects.UpgradePage import UpgradePage
 from preMadeFunctions import accessWeb, pingFunction, ssh_operations
 from testCases.configsetup import setup
