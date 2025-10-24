@@ -237,16 +237,33 @@ pipeline {
                                 display: flex;
                                 justify-content: space-between;
                                 align-items: center;
-                                background-color: #ffffff;
-                                padding: 24px 32px;
+                                background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%); /* New gradient */
+                                padding: 28px 36px; /* Increased padding */
                                 border: 1px solid #e5e7eb;
                                 border-radius: 12px;
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+                                box-shadow: 0 4px 6px rgba(0,0,0,0.04); /* Slightly stronger shadow */
                             }
-                            .header img { height: 50px; }
+                            .header img {
+                                height: 65px; /* Bigger logo */
+                                transition: transform 0.2s ease-in-out;
+                            }
+                            .header img:hover {
+                                transform: scale(1.03); /* Subtle hover effect */
+                            }
                             .header-info { text-align: right; }
-                            .header-info h1 { margin: 0; font-size: 28px; font-weight: 600; color: #111827; }
-                            .header-info p { margin: 5px 0; font-size: 14px; color: #6b7280; }
+                            .header-info h1 {
+                                margin: 0;
+                                font-size: 30px; /* Bigger title */
+                                font-weight: 700; /* Bolder */
+                                color: #0a2540; /* Darker, more corporate blue/black */
+                            }
+                            .header-info p {
+                                margin: 5px 0;
+                                font-size: 15px; /* Slightly larger sub-text */
+                                color: #4a5568; /* Darker gray */
+                            }
+                            /* ######## END: MODIFIED CSS (HEADER) ######## --> */
+
                             h2 {
                                 margin-top: 32px;
                                 font-size: 24px;
@@ -256,7 +273,7 @@ pipeline {
                                 padding-bottom: 12px;
                             }
 
-                            /* --- New Summary Cards --- */
+                            /* --- Summary Cards --- */
                             .summary-container {
                                 display: grid;
                                 grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -309,7 +326,7 @@ pipeline {
                             .card-fail { border-color: #ef4444; }
                             .card-fail .card-icon { background-color: #fee2e2; color: #ef4444; }
 
-                            /* --- New Table Style --- */
+                            /* --- Table Style --- */
                             table {
                                 width: 100%;
                                 border-collapse: collapse;
@@ -374,7 +391,7 @@ pipeline {
                                 box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                             }
 
-                            /* --- New Modal Styles --- */
+                            /* --- Modal Styles --- */
                             .modal {
                                 display: none;
                                 position: fixed;
@@ -444,6 +461,7 @@ pipeline {
                                 to {transform: translateY(0); opacity: 1}
                             }
                         </style>
+
                         <script>
                             function showLog(logDataId) {
                                 var logContent = document.getElementById(logDataId).innerHTML;
@@ -512,6 +530,8 @@ pipeline {
                                     </div>
                                 </div>
                             </div>
+
+
                             <h2>Test Results</h2>
                             <table>
                                 <tr>
@@ -577,6 +597,7 @@ pipeline {
                             </div>
                           </div>
                         </div>
+
                         ${logDataBlocks}
 
                     </body>
@@ -629,7 +650,7 @@ pipeline {
                 ]
 
                 // Get email from predefined mapping, else use default
-                def userEmail = userEmails.get(buildUserId, "harmanjot.singh@sSenao.com")
+                def userEmail = userEmails.get(buildUserId, "harmanjot.singh@senao.com")
 
                 echo "Sending email to: ${userEmail}"
 
