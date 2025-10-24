@@ -100,9 +100,9 @@ pipeline {
                         } else if (testType == 'SSH Reset') {
                             testScript = 'testCases/test_SSHReset.py'
                             testFunction = 'test_soft_reset'
-                        } else if (testType == 'New Test 1') {
-                            testScript = 'testCases/new_test1.py'
-                            testFunction = 'test_function1'
+                        } else if (testType == 'Firmware Upgrade') {
+                            testScript = 'testCases/test_firmwareUpgrade.py'
+                            testFunction = 'test_firmwareUpgrade'
                         } else {
                             error "Unknown test type: ${testType}"
                         }
