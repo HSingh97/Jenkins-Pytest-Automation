@@ -15,16 +15,17 @@ from utilities import serial_logger
 driver = setup
 
 
-def test_Upgrade(driver, local_ip, serialPort):
+def test_Upgrade(driver, local_ip, serialPort, iter):
     print("************************\n")
     print(f"Local IP    : {local_ip}")
     print(f"Serial Port : {serialPort}")
+    print(f"Iteration   : {iter}")
     print("\n************************\n")
     URL = "http://" + local_ip + "/cgi-bin/luci"
 
     # Start Serial Console logging
     print(f"--- Starting serial logger on {serialPort} ---")
-    serial_logger.start_logger(serialPort, "test.log")
+    serial_logger.start_logger(serialPort, f"test-{iter}.log")
 
     try:
         accessWeb.access_and_login(driver, URL, "root", "admin")
@@ -45,8 +46,9 @@ def test_Upgrade(driver, local_ip, serialPort):
         else:
             print("!!!! FW Upload Successful !!!!")
 
-        up.clickProceed()
-        time.sleep(180)
+        #up.clickProceed()
+        #time.sleep(180)
+        ssh_operations.ssh_get(local_ip, "cfg80211tool ath1 g_kwnpkt")
 
         wait = 0
         while wait < 200:

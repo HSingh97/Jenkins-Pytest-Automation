@@ -123,6 +123,10 @@ pipeline {
                     def buildURL = params['Build']
                     def serialPort = params['Serial Logging Port']
 
+                    // Clear old files
+                    sh 'rm -f test-*.log'
+                    echo "✅ Cleared old workspace"
+
                     def FIRMWARE_UPGRADE_COUNT = params.FIRMWARE_UPGRADE_COUNT ?: "1"
 
                     echo "Local IP Address: ${localIP}"
@@ -135,8 +139,10 @@ pipeline {
                     sh "mkdir -p artifacts"
 
                     for (int i = 1; i <= FIRMWARE_UPGRADE_COUNT.toInteger() ; i++) {
-                        sh "export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade 2>&1 --local-ip '$localIP' --serialPort '$serialPort' | tee \"${workspace}/artifacts/firmware-upgrade-device.log\""
+                        sh "export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade 2>&1 --local-ip '$localIP' --serialPort '$serialPort' --iter ${i} | tee \"${workspace}/artifacts/firmware-upgrade-device.log\""
                     }
+
+                    sh 'zip test_results.zip test-*.log'
                     archiveArtifacts('artifacts/**/*')
                     //archiveArtifacts('SerialLogs_Device.log')
                 }
