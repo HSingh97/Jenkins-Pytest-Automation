@@ -123,7 +123,7 @@ pipeline {
                     def buildURL = params['Build']
                     def serialPort = params['Serial Logging Port']
 
-                    // Clear old files
+                    // Clear old files from previous runs
                     sh 'rm -f test-*.log test.log'
                     echo "✅ Cleared old workspace"
 
@@ -153,22 +153,14 @@ pipeline {
                         }
                     }
 
-                    // --- MODIFICATION START ---
-                    // Archive individual logs *first* so they can be linked in the HTML report
-                    echo "Archiving individual test logs for report..."
-                    archiveArtifacts('test-*.log')
-
-                    // Archive the zip file for bulk download
-                    echo "Zipping and archiving all test logs..."
+                    // --- MODIFICATION ---
+                    // Zip the logs for archival
                     sh 'zip fw_upgrade_test_results.zip test-*.log'
+                    // Archive the zip file
                     archiveArtifacts('fw_upgrade_test_results.zip')
-
-                    // Clean up workspace
-                    sh 'rm -f test-*.log'
-
-                    // Archive other artifacts (like firmware-upgrade-device.log)
+                    // DO NOT remove test-*.log files here. They are needed for the next stage.
+                    // They will be removed in the post-build 'always' block.
                     archiveArtifacts('artifacts/**/*')
-                    // --- MODIFICATION END ---
                 }
             }
         }
@@ -196,9 +188,9 @@ pipeline {
                     }
 
                     def jsonReport = readJSON file: 'iteration_results.json'
-                    echo "JSON Report: ${jsonReport}" // Debugging output
+                    echo "JSON Report: ${jsonReport}"
 
-                    // --- MODIFICATION START: Calculate Stats ---
+                    // --- Calculate Stats ---
                     def totalTests = 0
                     def passCount = 0
                     if (jsonReport.iterations) {
@@ -208,7 +200,6 @@ pipeline {
                     def failCount = totalTests - passCount
                     def successPercentage = (totalTests > 0) ? (passCount / (double)totalTests) * 100 : 0
                     def successPercentageStr = String.format("%.1f", successPercentage)
-                    // --- MODIFICATION END ---
 
                     def buildParams = [
                         "Local IP Address": params['Local IP Address'],
@@ -224,8 +215,8 @@ pipeline {
 
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
-                    def buildUrl = env.BUILD_URL // Get base build URL for artifact links
 
+                    // --- MODIFICATION START: Added Modal CSS and updated button style ---
                     def htmlContent = """
                     <html>
                     <head>
@@ -253,22 +244,10 @@ pipeline {
                                 border-radius: 8px;
                                 box-shadow: 0 1px 5px rgba(0,0,0,0.05);
                             }
-                            .header img {
-                                height: 50px;
-                            }
-                            .header-info {
-                                text-align: right;
-                            }
-                            .header-info h1 {
-                                margin: 0;
-                                font-size: 28px;
-                                font-weight: 600;
-                            }
-                            .header-info p {
-                                margin: 5px 0;
-                                font-size: 14px;
-                                color: #586069;
-                            }
+                            .header img { height: 50px; }
+                            .header-info { text-align: right; }
+                            .header-info h1 { margin: 0; font-size: 28px; font-weight: 600; }
+                            .header-info p { margin: 5px 0; font-size: 14px; color: #586069; }
                             h2 {
                                 margin-top: 30px;
                                 font-size: 22px;
@@ -277,8 +256,6 @@ pipeline {
                                 border-bottom: 2px solid #e1e4e8;
                                 padding-bottom: 8px;
                             }
-
-                            /* --- Summary Cards --- */
                             .summary-container {
                                 display: grid;
                                 grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -293,22 +270,13 @@ pipeline {
                                 box-shadow: 0 1px 3px rgba(0,0,0,0.05);
                                 text-align: center;
                             }
-                            .summary-card-title {
-                                font-size: 16px;
-                                color: #586069;
-                                margin: 0 0 10px 0;
-                            }
-                            .summary-card-value {
-                                font-size: 36px;
-                                font-weight: 700;
-                                margin: 0;
-                            }
+                            .summary-card-title { font-size: 16px; color: #586069; margin: 0 0 10px 0; }
+                            .summary-card-value { font-size: 36px; font-weight: 700; margin: 0; }
                             .summary-card-value.pass { color: #28a745; }
                             .summary-card-value.fail { color: #d73a49; }
                             .summary-card-value.total { color: #0366d6; }
                             .summary-card-value.percent { color: #24292e; }
                             .summary-card-value.percent .percent-sign { font-size: 20px; font-weight: 600; }
-
                             table {
                                 width: 100%;
                                 border-collapse: collapse;
@@ -325,14 +293,8 @@ pipeline {
                                 text-align: left;
                                 vertical-align: middle;
                             }
-                            th {
-                                background-color: #f6f8fa;
-                                font-weight: 600;
-                                color: #24292e;
-                            }
-                            tr:last-child td {
-                                border-bottom: none;
-                            }
+                            th { background-color: #f6f8fa; font-weight: 600; color: #24292e; }
+                            tr:last-child td { border-bottom: none; }
                             .status-pass {
                                 color: #28a745;
                                 font-weight: 700;
@@ -350,7 +312,7 @@ pipeline {
                                 display: inline-block;
                             }
 
-                            /* --- Log Button --- */
+                            /* --- Log Button (as a button) --- */
                             .log-button {
                                 background-color: #0366d6;
                                 color: white;
@@ -361,12 +323,88 @@ pipeline {
                                 font-size: 14px;
                                 transition: background-color 0.2s ease;
                                 display: inline-block;
+                                border: none;
+                                cursor: pointer;
                             }
                             .log-button:hover {
                                 background-color: #0056b3;
                                 color: white;
                             }
+
+                            /* --- Modal Styles --- */
+                            .modal {
+                                display: none;
+                                position: fixed;
+                                z-index: 100;
+                                left: 0;
+                                top: 0;
+                                width: 100%;
+                                height: 100%;
+                                overflow: auto;
+                                background-color: rgba(0,0,0,0.6);
+                            }
+                            .modal-content {
+                                background-color: #fefefe;
+                                margin: 5% auto;
+                                padding: 20px 30px;
+                                border: 1px solid #888;
+                                border-radius: 8px;
+                                width: 80%;
+                                max-width: 900px;
+                                box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+                                animation-name: animatetop;
+                                animation-duration: 0.4s
+                            }
+                            @keyframes animatetop {
+                                from {top: -300px; opacity: 0}
+                                to {top: 0; opacity: 1}
+                            }
+                            .modal-close {
+                                color: #aaa;
+                                float: right;
+                                font-size: 28px;
+                                font-weight: bold;
+                                cursor: pointer;
+                            }
+                            .modal-close:hover,
+                            .modal-close:focus {
+                                color: black;
+                                text-decoration: none;
+                            }
+                            .modal-content h2 {
+                                margin-top: 0;
+                                border-bottom: 2px solid #e1e4e8;
+                                padding-bottom: 10px;
+                            }
+                            #log-content-pre {
+                                background-color: #f6f8fa;
+                                border: 1px solid #e1e4e8;
+                                border-radius: 6px;
+                                padding: 15px;
+                                max-height: 60vh; /* Scrollable */
+                                overflow: auto;
+                                white-space: pre-wrap; /* Wrap long lines */
+                                word-wrap: break-word;
+                            }
                         </style>
+
+                        <script>
+                            function showLog(logDataId) {
+                                var logContent = document.getElementById(logDataId).innerHTML;
+                                document.getElementById('log-content-pre').innerHTML = logContent;
+                                document.getElementById('logModal').style.display = 'block';
+                            }
+                            function closeModal() {
+                                document.getElementById('logModal').style.display = 'none';
+                            }
+                            // Close modal if user clicks outside of the content
+                            window.onclick = function(event) {
+                                var modal = document.getElementById('logModal');
+                                if (event.target == modal) {
+                                    modal.style.display = 'none';
+                                }
+                            }
+                        </script>
                     </head>
                     <body>
                         <div class="container">
@@ -409,36 +447,66 @@ pipeline {
                                 <tr>
                                     <th>Iteration</th>
                                     <th>Status</th>
-                                    <th>Logs</th> </tr>
+                                    <th>Logs</th>
+                                </tr>
                     """
 
-                    // --- MODIFICATION: Updated Loop to add button ---
+                    // --- MODIFICATION: Read log files and build table rows + hidden log data ---
+                    def tableRows = ""
+                    def logDataBlocks = ""
+
                     if (jsonReport.iterations) {
                         jsonReport.iterations.each { result ->
                             def iteration = result.iteration ?: "-"
                             def status = result.status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
 
-                            // Create the link to the archived log file
                             def logFile = "test-${iteration}.log"
-                            // Use relative path for artifacts, which is more robust
-                            def logUrl = "artifact/${logFile}"
-                            def logButton = "<a href='${logUrl}' class='log-button' target='_blank'>See Logs</a>"
+                            def logDataId = "log-data-${iteration}"
+                            def logContent = ""
 
-                            htmlContent += """
+                            try {
+                                // Read the log file from the workspace
+                                logContent = readFile(file: logFile).encodeAsHTML()
+                            } catch (e) {
+                                echo "Could not read log file ${logFile}: ${e.message}"
+                                logContent = "ERROR: Log file not found (${logFile})."
+                            }
+
+                            // Create the button with an onclick JS event
+                            def logButton = "<button class='log-button' onclick=\"showLog('${logDataId}')\">See Logs</button>"
+
+                            // Add the table row
+                            tableRows += """
                                 <tr>
                                     <td>${iteration}</td>
                                     <td>${status}</td>
-                                    <td>${logButton}</td> </tr>
+                                    <td>${logButton}</td>
+                                </tr>
                             """
+
+                            // Add the log content to a hidden div
+                            logDataBlocks += "<div id='${logDataId}' style='display:none;'>${logContent}</div>\n"
                         }
                     } else {
-                         htmlContent += "<tr><td colspan='3' style='text-align:center;'>No iteration results found.</td></tr>"
+                         tableRows += "<tr><td colspan='3' style='text-align:center;'>No iteration results found.</td></tr>"
                     }
+
+                    htmlContent += tableRows // Add all rows to the table
                     // --- END MODIFICATION ---
 
                     htmlContent += """
                             </table>
-                        </div> </body>
+                        </div> <div id="logModal" class="modal">
+                          <div class="modal-content">
+                            <span class="modal-close" onclick="closeModal()">&times;</span>
+                            <h2>Iteration Log</h2>
+                            <pre id="log-content-pre"></pre>
+                          </div>
+                        </div>
+
+                        ${logDataBlocks}
+
+                    </body>
                     </html>
                     """
 
@@ -457,6 +525,12 @@ pipeline {
                 reportFiles: 'report.html',
                 reportName: 'Test Report'
             ])
+
+            // --- MODIFICATION ---
+            // Clean up the log files after all stages are complete
+            echo "Cleaning up test log files..."
+            sh 'rm -f test-*.log || true'
+
             echo "-----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
