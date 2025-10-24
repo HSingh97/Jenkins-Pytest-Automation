@@ -153,7 +153,6 @@ pipeline {
                         }
                     }
 
-                    // --- MODIFICATION ---
                     // Zip the logs for archival
                     sh 'zip fw_upgrade_test_results.zip test-*.log'
                     // Archive the zip file
@@ -216,7 +215,7 @@ pipeline {
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
 
-                    // --- MODIFICATION START: Added Modal CSS and updated button style ---
+
                     def htmlContent = """
                     <html>
                     <head>
@@ -466,10 +465,15 @@ pipeline {
 
                             try {
                                 // Read the log file from the workspace
-                                logContent = readFile(file: logFile).encodeAsHTML()
+                                logContent = readFile(file: logFile)
+                                // --- FIX: Manually escape HTML characters ---
+                                logContent = logContent.replace("&", "&amp;")
+                                                     .replace("<", "&lt;")
+                                                     .replace(">", "&gt;")
                             } catch (e) {
                                 echo "Could not read log file ${logFile}: ${e.message}"
-                                logContent = "ERROR: Log file not found (${logFile})."
+                                // Also include the exception message in the report for debugging
+                                logContent = "ERROR: Log file not found (${logFile}).\n${e.message}"
                             }
 
                             // Create the button with an onclick JS event
@@ -526,7 +530,6 @@ pipeline {
                 reportName: 'Test Report'
             ])
 
-            // --- MODIFICATION ---
             // Clean up the log files after all stages are complete
             echo "Cleaning up test log files..."
             sh 'rm -f test-*.log || true'
@@ -582,7 +585,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html,iteration_results.json' // Fixed comma placement
+                    attachmentsPattern: 'report.html,iteration_results.json'
                 )
             }
         }
