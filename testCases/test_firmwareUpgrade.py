@@ -97,9 +97,9 @@ def test_Upgrade(driver, local_ip, remote_ip,serialPort, iter):
         else:
             print("!!!! FW Upload Successful !!!!")
 
-        #up.clickProceed()
-        #time.sleep(180)
-        ssh_operations.ssh_get(local_ip, "cfg80211tool ath1 g_kwnpkt")
+        up.clickProceed()
+        time.sleep(180)
+        # ssh_operations.ssh_get(local_ip, "cfg80211tool ath1 g_kwnpkt")
 
         perform_ping_check(local_ip, remote_ip, test_iteration_result)
 
