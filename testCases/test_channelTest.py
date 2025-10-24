@@ -10,7 +10,6 @@ import sys
 import argparse
 import random
 
-from utilities.serial_Logging import *
 from preMadeFunctions import pingFunction
 from preMadeFunctions import get_linkstats
 from preMadeFunctions import fetch_ssh_values
