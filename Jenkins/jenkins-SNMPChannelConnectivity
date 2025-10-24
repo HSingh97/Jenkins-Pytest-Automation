@@ -76,7 +76,7 @@ pipeline {
                                 def pytest_output = sh(script: """
                                     python3.10 -m pytest -v -s testCases/test_channelTest.py::test_channelconnectivity \
                                     --local-ip '$localIP' --remote-ip '$remoteIP' \
-                                    --radio '$selectedRadio' --bandwidth '$bandwidth' --country '$country' \
+                                    --radio '$selectedRadio' --bandwidth '$bandwidth' --country '$country' --extra '0'\
                                     2>&1
                                 """, returnStdout: true).trim()
 
