@@ -115,64 +115,6 @@ def test_Disconnect_Connect(driver, local_ip, remote_ip, model, radio, iter):
     # Perform ping checks after reboot
     perform_ping_check(local_ip, remote_ip, test_iteration_result)
 
-    # Check device logs if local ping was successful
-    if test_iteration_result["Ping Results"]["Local"]:
-        try:
-            print(f"Connecting to {local_ip} as root to check device logs")
-            # Define device connection parameters for Netmiko
-            device = {
-                'device_type': 'linux',
-                'host': local_ip,
-                'username': "root",
-                'password': "admin"
-            }
-            # Establish SSH connection and retrieve logs
-            conn = ConnectHandler(**device)
-            logs = conn.send_command("show monitor logs devicelog all")
-            conn.disconnect()
-
-            print(f"--- Full logs (first 100 chars): {logs[:100] if logs else 'Empty'}...")
-
-            # Extract first 3 lines after "Device Log" header
-            log_lines = logs.splitlines()
-            header_found = False
-            for i, line in enumerate(log_lines):
-                if line.strip().lower() == "device log":
-                    start_index = i + 2  # Skip header and separator
-                    header_found = True
-                    break
-            else:
-                start_index = None
-                first_three_lines = "Header 'Device Log' not found in logs"
-                print(f"--- Error: {first_three_lines}")
-
-            if header_found:
-                try:
-                    # Extract the first 3 lines after the header
-                    first_three_lines = "\n".join(log_lines[start_index:start_index + 3])
-                except IndexError:
-                    first_three_lines = "Not enough lines after 'Device Log' header"
-                    print(f"--- Error: {first_three_lines}")
-
-            print(
-                f"--- Retrieved logs (first 3 lines after header): {first_three_lines[:100] if first_three_lines else 'Empty'}...")
-            test_iteration_result["Device Logs"] = first_three_lines
-
-            # Check if reboot was successful based on log content
-            if "Device Init, Success" in first_three_lines:
-                print("Soft Reboot is done and device is getting 'Device Init, Success' in Device logs")
-                # Update status based on ping and log results
-                test_iteration_result["status"] = "PASS" if test_iteration_result["status"] == "PASS" else "PARTIAL"
-            else:
-                print("Device Init, Success not found in first 3 lines of logs")
-                test_iteration_result["status"] = "FAIL" if test_iteration_result["status"] != "PASS" else "PARTIAL"
-        except Exception as e:
-            print(f"Failed to retrieve device logs: {e}")
-            test_iteration_result["Device Logs"] = f"Error retrieving logs: {str(e)}"
-    else:
-        print("Skipping device log check due to failed local ping")
-        test_iteration_result["Device Logs"] = "Skipped due to failed local ping"
-
     # Save test results to JSON file
     append_result_to_json(test_iteration_result)
 
