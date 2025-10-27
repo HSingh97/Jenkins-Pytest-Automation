@@ -6,6 +6,7 @@ from pageObjects.LinkStatsPage import StatsPage
 from testCases.configsetup import setup
 from preMadeFunctions import pingFunction
 from preMadeFunctions import accessWeb
+import json
 
 driver = setup
 
