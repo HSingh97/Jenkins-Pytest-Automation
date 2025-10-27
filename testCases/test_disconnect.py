@@ -21,6 +21,7 @@ def test_Disconnect_Connect(driver, local_ip, remote_ip, model, radio):
 
     hp = HomePage(driver)
     time.sleep(10)
+
     hp.clickMonitorSection()
     time.sleep(1)
 
@@ -54,17 +55,17 @@ def test_Disconnect_Connect(driver, local_ip, remote_ip, model, radio):
 
         else:
             print("Link Formed Back")
-            print("Now Disconnecting Again")
+            # print("Now Disconnecting Again")
             break
 
-    time.sleep(2)
-    hp.clickMonitorSection()
-    time.sleep(1)
-    if radio == "Radio1":
-        hp.clickRadio1Statistics()
-    else:
-        hp.clickRadio2Statistics()
-    time.sleep(1)
+    # time.sleep(2)
+    # hp.clickMonitorSection()
+    # time.sleep(1)
+    # if radio == "Radio1":
+    #     hp.clickRadio1Statistics()
+    # else:
+    #     hp.clickRadio2Statistics()
+    # time.sleep(1)
     uptime_output_1 = str(sp.getUptime())
     print("Link Uptime After Disconnection : {}".format(uptime_output_1))
     time.sleep(2)
