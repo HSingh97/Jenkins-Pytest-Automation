@@ -20,7 +20,7 @@ def test_Disconnect_Connect(driver, local_ip, remote_ip, model, radio):
     accessWeb.access_and_login(driver, URL, "root", "admin")
 
     hp = HomePage(driver)
-    time.sleep(2)
+    time.sleep(10)
     hp.clickMonitorSection()
 
     if radio == "Radio1":
@@ -33,14 +33,14 @@ def test_Disconnect_Connect(driver, local_ip, remote_ip, model, radio):
     sp = StatsPage(driver)
     uptime_output = str(sp.getUptime())
     print("Link Uptime Before Disconnection : {}".format(uptime_output))
-    time.sleep(2)
+    time.sleep(5)
     sp.clickDetailedStats()
-    time.sleep(3)
+    time.sleep(5)
     sp.clickDisconnect()
     time.sleep(2)
 
     print("Waiting for Link to form back")
-    time.sleep(15)
+    time.sleep(20)
     print("Checking Ping")
 
     wait = 0
