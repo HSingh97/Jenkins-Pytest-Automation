@@ -3,18 +3,11 @@ import warnings
 import pytest
 from pageObjects.HomePage import HomePage
 from pageObjects.LinkStatsPage import StatsPage
-from utilities.serial_logger import readConfig
 from testCases.configsetup import setup
-from utilities.serial_Logging import *
 from preMadeFunctions import pingFunction
 from preMadeFunctions import accessWeb
 
 
-# URL = "http://"+readConfig.getIPaddr()+"/cgi-bin/luci"
-username = readConfig.get_username()
-password = readConfig.get_passwd()
-# serial_port = readConfig.getSerialPortDevice()
-# serial_port_log = readConfig.getSerialLogsDevice()
 driver = setup
 
 
@@ -25,7 +18,7 @@ def test_Disconnect_Connect(driver, local_ip, remote_ip, model, radio):
     print(f"Radio : {radio}")
     URL = "http://" + local_ip + "/cgi-bin/luci"
 
-    accessWeb.access_and_login(driver, URL, username, password)
+    accessWeb.access_and_login(driver, URL, "root", "admin")
 
     hp = HomePage(driver)
     time.sleep(2)
