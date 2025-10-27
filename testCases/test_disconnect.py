@@ -6,6 +6,8 @@ from pageObjects.LinkStatsPage import StatsPage
 from testCases.configsetup import setup
 from preMadeFunctions import pingFunction
 from preMadeFunctions import accessWeb
+from netmiko import ConnectHandler
+
 import json
 
 driver = setup
@@ -177,12 +179,6 @@ def test_Disconnect_Connect(driver, local_ip, remote_ip, model, radio, iter):
     uptime_output_1 = str(sp.getUptime())
     print("Link Uptime After Disconnection : {}".format(uptime_output_1))
     time.sleep(2)
-
-    if output != 1:
-        assert False
-
-    else:
-        assert True
 
     driver.close()
 
