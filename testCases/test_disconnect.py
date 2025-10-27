@@ -16,29 +16,39 @@ def test_Disconnect_Connect(driver, local_ip, remote_ip, model, radio):
     print(f"Model : {model}")
     print(f"Radio : {radio}")
     URL = "http://" + local_ip + "/cgi-bin/luci"
+    print(f"Navigating to URL: {URL}", flush=True)
 
     accessWeb.access_and_login(driver, URL, "root", "admin")
+    print("Login successful", flush=True)
 
     hp = HomePage(driver)
-    time.sleep(10)
+    time.sleep(5)
+    print("Waited 5 seconds after login", flush=True)
 
     hp.clickMonitorSection()
+    print("Clicked 'Monitor' section", flush=True)
     time.sleep(1)
 
     if radio == "Radio1":
         hp.clickRadio1Statistics()
+        print("Selected 'Radio1 Statistics'", flush=True)
     else:
         hp.clickRadio2Statistics()
+        print("Selected 'Radio2 Statistics'", flush=True)
 
     time.sleep(1)
 
     sp = StatsPage(driver)
     uptime_output = str(sp.getUptime())
-    print("Link Uptime Before Disconnection : {}".format(uptime_output))
-    time.sleep(5)
+    print(f"Link Uptime Before Disconnect: {uptime_output}", flush=True)
+
+    time.sleep(3)
     sp.clickDetailedStats()
+    print("Clicked 'Detailed Stats'", flush=True)
     time.sleep(5)
+
     sp.clickDisconnect()
+    print("Clicked 'Disconnect' button", flush=True)
     time.sleep(2)
 
     print("Waiting for Link to form back")
@@ -84,3 +94,4 @@ def warn(*args, **kwargs):
 
 
 warnings.warn = warn
+
