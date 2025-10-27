@@ -115,13 +115,13 @@ def test_Disconnect_Connect(driver, local_ip, remote_ip, model, radio, iter):
     # Check device logs if local ping was successful
     if test_iteration_result["Ping Results"]["Local"]:
         try:
-            print(f"Connecting to {local_ip} as {ADMIN_USERNAME} to check device logs")
+            print(f"Connecting to {local_ip} as root to check device logs")
             # Define device connection parameters for Netmiko
             device = {
                 'device_type': 'linux',
                 'host': local_ip,
-                'username': ADMIN_USERNAME,
-                'password': ADMIN_PASSWORD
+                'username': "root",
+                'password': "admin"
             }
             # Establish SSH connection and retrieve logs
             conn = ConnectHandler(**device)
