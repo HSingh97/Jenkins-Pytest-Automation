@@ -42,7 +42,7 @@ def test_Disconnect_Connect(driver, local_ip, remote_ip, model, radio):
     uptime_output = str(sp.getUptime())
     print(f"Link Uptime Before Disconnect: {uptime_output}", flush=True)
 
-    time.sleep(3)
+    time.sleep(5)
     sp.clickDetailedStats()
     print("Clicked 'Detailed Stats'", flush=True)
     time.sleep(5)
