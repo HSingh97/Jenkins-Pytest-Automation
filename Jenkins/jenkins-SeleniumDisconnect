@@ -33,18 +33,23 @@ pipeline {
         stage('Disconnect & Connect') {
             steps {
                 script {
-                    def localIP = params['Local IP']
-                    def remoteIP = params['Remote IP']
+                    def localIP = params['Local IP Address'] ?: '192.168.1.240'
+                    def remoteIP = params['Remote IP Address'] ?: '192.168.1.241'
                     def model_name = params['Model']
                     def selected_radio = params['Select Radio']
 
                     echo "----------------------------------------"
                     echo "Disconnecting"
                     echo "----------------------------------------"
-                    for (int i = 1; i <= Iterations.toInteger() ; i++) {
-                        sh "pytest -v -s testCases/test_disconnect.py::test_Disconnect_Connect --local-ip '$localIP' --remote-ip '$remoteIP' --model '$model_name' --radio '$selected_radio' 2>&1"
-                    }
 
+                    sh """pytest -v -s \
+                            testCases/test_disconnect.py::test_Disconnect_Connect \
+                            --local-ip '$localIP' \
+                            --remote-ip '$remoteIP' \
+                            --model '$model_name' \
+                            --radio '$selected_radio' \
+                            --count=${Iterations} \
+                            --json-report --json-report-file=iteration_results.json"""
                 }
             }
         }
@@ -160,7 +165,7 @@ pipeline {
                     </head>
                     <body>
                         <div class="header">
-                            <img src="${companyLogoUrl}" alt="SenaoNetworks, Inc."/>
+                            <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
                             <div class="header-info">
                                 <h1>Automated Test Report</h1>
                                 <p><strong>Pipeline:</strong> ${pipelineName}</p>
@@ -263,7 +268,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html,iteration_results.json' // Fixed comma placement
+                    attachmentsPattern: 'report.html,iteration_results.json'
                 )
             }
         }
