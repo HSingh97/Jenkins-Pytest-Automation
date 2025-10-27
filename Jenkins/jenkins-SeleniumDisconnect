@@ -1,4 +1,3 @@
-
 // Functions
 
 def archiveArtifacts(pattern) {
@@ -49,8 +48,7 @@ pipeline {
                 }
             }
         }
-    }
-            stage('Generate Report') {
+        stage('Generate Report') {
             steps {
                 script {
                     def localIP = params['Local IP Address']
@@ -64,13 +62,13 @@ pipeline {
                     try {
                         local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
                     } catch (Exception e) {
-                        echo "⚠️ Failed to get local FW version from ${localIP}: ${e.message}"
+                        echo "Failed to get local FW version from ${localIP}: ${e.message}"
                     }
 
                     try {
                         remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
                     } catch (Exception e) {
-                        echo "⚠️ Failed to get remote FW version from ${remoteIP}: ${e.message}"
+                        echo "Failed to get remote FW version from ${remoteIP}: ${e.message}"
                     }
 
                     def jsonReport = readJSON file: 'iteration_results.json'
@@ -82,7 +80,7 @@ pipeline {
                     ]
 
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
-                    def istDate = Calendar.getInstance(istZone).getTime()
+                    def İstDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
 
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
@@ -162,7 +160,7 @@ pipeline {
                     </head>
                     <body>
                         <div class="header">
-                            <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
+                            <img src="${companyLogoUrl}" alt="SenaoNetworks, Inc."/>
                             <div class="header-info">
                                 <h1>Automated Test Report</h1>
                                 <p><strong>Pipeline:</strong> ${pipelineName}</p>
@@ -203,7 +201,7 @@ pipeline {
                 }
             }
         }
-    }
+    }  // ← This closes the `stages` block correctly
     post {
         always {
             publishHTML(target: [
