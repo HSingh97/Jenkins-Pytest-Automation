@@ -9,7 +9,7 @@ class StatsPage:
     index_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[1]"
     sysname_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[2]"
     ipaddr_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[3]"
-    uptime_xpath = "/tr/td[5]"
+    uptime_xpath = "//*[@id='linkstats5-tbl']/tbody/tr[3]/td[5]"
     distance_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[5]"
     localsnr_A1_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[6]"
     localsnr_A2_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[7]"
