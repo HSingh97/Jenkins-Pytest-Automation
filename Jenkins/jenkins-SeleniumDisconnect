@@ -54,7 +54,7 @@ pipeline {
                             sh """
                                 pytest -v -s testCases/test_disconnect.py::test_Disconnect_Connect \
                                 --local-ip '$localIP' --remote-ip '$remoteIP' \
-                                --model '$model_name' --radio '$selected_radio' 2>&1"
+                                --model '$model_name' --radio '$selected_radio' --iter ${i} 2>&1
                             """
                         } catch (Exception e) {
                             echo "Disconnect iteration ${i} failed: ${e.message}"
