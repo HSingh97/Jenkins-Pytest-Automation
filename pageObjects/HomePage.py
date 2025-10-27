@@ -19,6 +19,7 @@ class HomePage:
     managementSection_LinkText = "Management"
     monitorSection_xpath = "/html/body/header/div/div/div[1]/ul/li[5]/a"
 
+
     # ----------------------------- Sub - Sections -----------------------------------
     wireless_Radio1_xpath = "/html/body/header/div/div/div[1]/ul/li[2]/a"
     wireless_2_4Ghz_LinkText = "2.4 GHz Radio"
@@ -36,8 +37,8 @@ class HomePage:
     management_Services_LinkText = "Services"
     management_Upgrade_Reset_LinkText = "Upgrade / Reset"
 
-    monitor_Statistics_Radio1_xpath = "//*[@id='Monitor']/li[1]/a"
-    monitor_Statistics_Radio2_xpath = "//*[@id='Monitor']/li[2]/a"
+    monitor_Statistics_Radio1_xpath = "/html/body/header/div/div/div[1]/ul/li[5]/ul/li[1]/a"
+    monitor_Statistics_Radio2_xpath = "/html/body/header/div/div/div[1]/ul/li[5]/ul/li[2]/a"
     monitor_Statistics_2_4_ghz_xpath = "//*[@id='Monitor']/li[3]/a"
     monitor_LANTable_LinkText = "LAN Table"
     monitor_Logs_LinkText = "Logs"
