@@ -102,10 +102,34 @@ import json
 import warnings
 import pytest
 import re
-from preMadeFunctions import pingFunction, ssh_netmiko, fetch_ssh_values
-from preMadeFunctions import param_helpers
 from netmiko import ConnectHandler
 from preMadeFunctions.param_helpers import get_radio_index
+from preMadeFunctions import pingFunction
+
+# === SSH COMMAND FUNCTION (EMBEDDED) ===
+def runcommand(ip, cmd, return_output=False):
+    try:
+        connection = ConnectHandler(
+            device_type="linux",
+            host=ip,
+            username="root",
+            password="admin",
+            fast_cli=False
+        )
+        output = connection.send_command(cmd)
+        connection.disconnect()
+        if return_output:
+            return output
+        else:
+            print(output)
+            return None
+    except Exception as e:
+        print(f"SSH command failed: {e}")
+        if return_output:
+            return ""
+        raise
+
+# === END EMBEDDED FUNCTION ===
 
 USERNAME = "root"
 PASSWORD = "admin"
@@ -177,11 +201,20 @@ def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
         if 'intf' not in radio_index_dict or not radio_index_dict['intf']:
             raise ValueError("'intf' key missing or empty in get_radio_index()")
 
-        interface = radio_index_dict['intf']
-        remote_mac = fetch_ssh_values.fetch_cat_sys_value(local_ip, interface, "mac")
+        interface = radio_index_dict['intf']  # e.g., 'ath1'
 
-        if not remote_mac or len(remote_mac.split(':')) != 6:
-            raise ValueError(f"Invalid MAC format from device: '{remote_mac}'")
+        # Get connected client MAC using cfg80211tool
+        cmd = f"cfg80211tool {interface} get_stations"
+        output = runcommand(local_ip, cmd, return_output=True)
+        print(f"get_stations output: {output.strip()}")
+
+        # Extract MAC address
+        mac_match = re.search(r'([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}', output)
+        if not mac_match:
+            raise ValueError("No connected client MAC found in get_stations output")
+
+        remote_mac = mac_match.group(0).lower()
+        print(f"Remote MAC detected: {remote_mac}")
 
     except Exception as e:
         print(f"MAC fetch failed: {e}")
@@ -189,9 +222,10 @@ def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
         append_result_to_json(result)
         pytest.fail("Could not obtain remote MAC address")
 
+    # Kick the client
     kick_cmd = f"cfg80211tool {interface} kickmac {remote_mac}"
     try:
-        ssh_netmiko.runcommand(local_ip, kick_cmd)
+        runcommand(local_ip, kick_cmd)
         print(f"Kick command sent: {kick_cmd}")
         time.sleep(2)
     except Exception as e:
