@@ -99,14 +99,13 @@
 
 import time
 import json
-import warnings
 import pytest
 import re
 from netmiko import ConnectHandler
 from preMadeFunctions.param_helpers import get_radio_index
 from preMadeFunctions import pingFunction
 
-# === EMBEDDED SSH FUNCTION ===
+# === EMBEDDED SSH COMMAND FUNCTION ===
 def runcommand(ip, cmd, return_output=False):
     try:
         connection = ConnectHandler(
@@ -119,7 +118,7 @@ def runcommand(ip, cmd, return_output=False):
         output = connection.send_command(cmd)
         connection.disconnect()
         if return_output:
-            return output
+            return output.strip()
         else:
             print(output)
             return None
@@ -129,7 +128,7 @@ def runcommand(ip, cmd, return_output=False):
             return ""
         raise
 
-# === TEST SCRIPT ===
+# === HELPER FUNCTIONS ===
 def perform_ping_check(local_ip, remote_ip, result_dict):
     print(f"\n--- Pinging local IP: {local_ip}")
     if pingFunction.check_access(local_ip):
@@ -145,7 +144,6 @@ def perform_ping_check(local_ip, remote_ip, result_dict):
     else:
         result_dict["Ping Results"]["Local"] = False
 
-
 def append_result_to_json(result, filename="iteration_results.json"):
     try:
         with open(filename, "r") as f:
@@ -159,7 +157,6 @@ def append_result_to_json(result, filename="iteration_results.json"):
         json.dump(data, f, indent=4)
     print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}")
 
-
 def wait_for_ping(ip, timeout=15, interval=3):
     start = time.time()
     while time.time() - start < timeout:
@@ -171,7 +168,7 @@ def wait_for_ping(ip, timeout=15, interval=3):
     print(f"Timeout: {ip} not reachable after {timeout} seconds")
     return False
 
-
+# === MAIN TEST ===
 def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
     print("\n" + "*" * 52)
     print(f"Local IP Address : {local_ip}")
@@ -180,6 +177,7 @@ def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
     print(f"Radio : {radio}")
     print(f"Running Iteration: {iter}")
     print("*" * 52)
+
     result = {
         "iteration": iter,
         "test": "Test_Disconnect",
@@ -198,17 +196,21 @@ def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
 
         interface = radio_index_dict['intf']  # e.g., 'ath1'
 
-        # Use 'iw' to get connected station MAC
-        cmd = f"iw dev {interface} station dump"
-        output = runcommand(local_ip, cmd, return_output=True)
-        print(f"iw station dump output:\n{output}")
+        # Map interface to kwn interface
+        kwn_map = {"ath1": "sua1", "ath2": "sub1"}
+        kwn_intf = kwn_map.get(interface)
+        if not kwn_intf:
+            raise ValueError(f"Unknown kwn interface for {interface}")
 
-        # Extract MAC from "Station xx:xx:xx:xx:xx:xx"
-        mac_match = re.search(r'Station\s+([0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2})', output)
-        if not mac_match:
-            raise ValueError("No connected client found in 'iw dev station dump'")
+        # Get remote MAC from correct path
+        cmd = f"cat /sys/class/kwn/{kwn_intf}/statistics/mac"
+        remote_mac = runcommand(local_ip, cmd, return_output=True)
+        print(f"MAC from {cmd}: {remote_mac}")
 
-        remote_mac = mac_match.group(1).lower()
+        if not remote_mac or len(remote_mac.split(':')) != 6:
+            raise ValueError(f"Invalid MAC: '{remote_mac}'")
+
+        remote_mac = remote_mac.lower()
         print(f"Remote MAC detected: {remote_mac}")
 
     except Exception as e:
