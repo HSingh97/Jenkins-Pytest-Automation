@@ -78,7 +78,6 @@ def test_Disconnect_Connect(driver, local_ip, remote_ip, model, radio, iter):
             "Remote": False
         }
     }
-
     try:
         ssh_netmiko.runcommand(local_ip, "cfg80211tool ath0 kickmac 88:dc:97:40:92:bc")
         print("Network reload started in background")

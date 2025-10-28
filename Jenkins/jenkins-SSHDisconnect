@@ -47,7 +47,6 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Testing Reboot - SSH"
                     echo "----------------------------------------"
-
                     sh "echo [] > iteration_results.json"  // Initialize JSON array
 
                     for (int i = 1; i <= disconnectCount.toInteger() ; i++) {
