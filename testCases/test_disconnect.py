@@ -93,7 +93,7 @@ def test_Disconnect_Connect(driver, local_ip, remote_ip, model, radio, iter):
         hp.clickRadio2Statistics()
         print("Selected 'Radio2 Statistics'", flush=True)
 
-    time.sleep(1)
+    time.sleep(3)
 
     sp = StatsPage(driver)
     uptime_output = str(sp.getUptime())
