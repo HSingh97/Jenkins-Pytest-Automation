@@ -30,7 +30,7 @@ pipeline {
                 }
             }
         }
-        stage('Reboot') {
+        stage('Disconnect_Connect') {
             steps {
                 script {
                     def localIP = params['Local IP Address']
@@ -45,7 +45,7 @@ pipeline {
                     echo "✅ Cleared old workspace"
 
                     echo "----------------------------------------"
-                    echo "Testing Reboot - SSH"
+                    echo "Testing Disconnect_Connect - SSH"
                     echo "----------------------------------------"
                     sh "echo [] > iteration_results.json"  // Initialize JSON array
 
