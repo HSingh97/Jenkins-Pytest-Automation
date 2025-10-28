@@ -34,12 +34,8 @@ pipeline {
         stage('Disconnect & Connect') {
             steps {
                 script {
-                    def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
-
-                    echo "Local IP Address: ${localIP}"
-                    echo "Remote IP Address: ${remoteIP}"
-
+                    def localIP = params['Local IP']
+                    def remoteIP = params['Remote IP']
                     def model_name = params['Model']
                     def selected_radio = params['Select Radio']
                     def disconnectCount = params.Iterations ?: 1
