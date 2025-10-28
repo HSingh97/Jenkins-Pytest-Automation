@@ -105,7 +105,6 @@ import pytest
 import re
 from preMadeFunctions import pingFunction, ssh_netmiko, fetch_ssh_values
 from preMadeFunctions import param_helpers
-from netmiko import ConnectHandler
 from preMadeFunctions.param_helpers import get_radio_index
 USERNAME = "root"
 PASSWORD = "admin"
@@ -114,11 +113,11 @@ def perform_ping_check(local_ip, remote_ip, result_dict):
     print(f"\n--- Pinging local IP: {local_ip}")
     if pingFunction.check_access(local_ip):
         result_dict["Ping Results"]["Local"] = True
-        print("\n* Local Device is up after soft reset *")
+        print("\n* Local Device is up *")
         print(f"\n--- Pinging remote IP: {remote_ip}")
         if pingFunction.check_access(remote_ip):
             result_dict["Ping Results"]["Remote"] = True
-            print("\n* Remote Device is up after soft reset *")
+            print("\n* Remote Device is up *")
             result_dict["status"] = "PASS"
         else:
             result_dict["Ping Results"]["Remote"] = False
@@ -149,7 +148,7 @@ def wait_for_ping(ip, timeout=15, interval=3):
     print(f"Timeout: {ip} not reachable after {timeout} seconds")
     return False
 
-def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
+def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter, remote_interface):
     print("\n" + "*" * 52)
     print(f"Local IP Address : {local_ip}")
     print(f"Remote IP Address : {remote_ip}")
