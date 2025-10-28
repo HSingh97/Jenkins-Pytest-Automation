@@ -261,6 +261,7 @@ pipeline {
 
                 // Send email notification
 
+
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
                     body: """
