@@ -29,9 +29,8 @@ pipeline {
         stage('Disconnect & Connect') {
             steps {
                 script {
-                    def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
-
+                    def localIP = params['Local IP']
+                    def remoteIP = params['Remote IP']
                     def model_name = params['Model']
                     def selected_radio = params['Select Radio']
                     def disconnectCount = params.Iterations ?: 1
@@ -58,8 +57,9 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
+                    // FIXED: Use correct parameter names from pytest
+                    def localIP  = params['Local IP']
+                    def remoteIP = params['Remote IP']
 
                     sh "ssh-keygen -R ${localIP} || true"
                     sh "ssh-keygen -R ${remoteIP} || true"
@@ -80,10 +80,10 @@ pipeline {
                     def jsonReport = readJSON file: 'iteration_results.json'
                     echo "JSON Report: ${jsonReport}" // Debugging output
 
-                    // localIP/remoteIP variables in buildParams
+                    // FIXED: Use correct localIP/remoteIP variables in buildParams
                     def buildParams = [
-                        "Local IP Address": params['Local IP Address'],
-                        "Remote IP Address": params['Remote IP Address'],
+                        "Local IP Address": localIP,
+                        "Remote IP Address": remoteIP,
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
