@@ -1,10 +1,5 @@
 import jenkins.model.Jenkins
 
-// Functions
-def archiveArtifacts(pattern) {
-    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
-}
-
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
 
@@ -16,11 +11,12 @@ pipeline {
                     echo "--- TARGET STAND: ${TARGET_STAND}"
                     echo "----------------------------------------"
                     if (!params['Local IP Address'] || !params['Remote IP Address']) {
-                        error "Missing required parameters: Local IP Address or Remote IP Address"
+                        error "Missing required parameters"
                     }
                 }
             }
         }
+
         stage('Install Dependencies') {
             steps {
                 script {
@@ -30,78 +26,69 @@ pipeline {
                 }
             }
         }
+
         stage('Disconnect_Connect') {
             steps {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
+                    echo "Local IP: ${localIP}"
+                    echo "Remote IP: ${remoteIP}"
 
-                    echo "Local IP Address: ${localIP}"
-                    echo "Remote IP Address: ${remoteIP}"
+                    // FIXED: Use correct parameter name
+                    def disconnectCount = params.Disconnect_Count?.toString()?.isNumber() ? params.Disconnect_Count.toInteger() : 1
+                    echo "Running ${disconnectCount} iterations"
 
-                    def disconnectCount = params.Iterations ?: 1
-                    echo "Number of Disconnect iterations: ${disconnectCount}"
+                    sh "echo [] > iteration_results.json"
 
-                    echo "✅ Cleared old workspace"
-
-                    echo "----------------------------------------"
-                    echo "Testing Disconnect_Connect - SSH"
-                    echo "----------------------------------------"
-                    sh "echo [] > iteration_results.json"  // Initialize JSON array
-
-                    for (int i = 1; i <= disconnectCount.toInteger() ; i++) {
-                        echo "Running Disconnect test iteration ${i}"
+                    for (int i = 1; i <= disconnectCount; i++) {
+                        echo "Running iteration ${i}/${disconnectCount}"
                         try {
                             sh """
                                 pytest -v -s testCases/test_SSHDisconnect.py::test_Disconnect_Connect \
-                                --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                                --local-ip '${localIP}' \
+                                --remote-ip '${remoteIP}' \
+                                --model '${params.Model}' \
+                                --radio '${params.'Select Radio'}' \
                                 --iter ${i}
                             """
                         } catch (Exception e) {
-                            echo "Disconnect iteration ${i} failed: ${e.message}"
+                            echo "Iteration ${i} failed: ${e.message}"
                         }
                     }
                 }
             }
         }
+
         stage('Generate Report') {
             steps {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
+
                     sh "ssh-keygen -R ${localIP} || true"
                     sh "ssh-keygen -R ${remoteIP} || true"
 
-                    def local_fw_version = "N/A"
-                    def remote_fw_version = "N/A"
-
+                    def local_fw = "N/A"
+                    def remote_fw = "N/A"
                     try {
-                        local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (Exception e) {
-                        echo "⚠️ Failed to get local FW version from ${localIP}: ${e.message}"
-                    }
-
+                        local_fw = sh(script: "sshpass -p admin ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
+                    } catch (e) { echo "Local FW failed" }
                     try {
-                        remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (Exception e) {
-                        echo "⚠️ Failed to get remote FW version from ${remoteIP}: ${e.message}"
-                    }
+                        remote_fw = sh(script: "sshpass -p admin ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
+                    } catch (e) { echo "Remote FW failed" }
 
                     def jsonReport = readJSON file: 'iteration_results.json'
-                    echo "JSON Report: ${jsonReport}" // Debugging output
                     def buildParams = [
-                        "Local IP Address": params['Local IP Address'],
-                        "Remote IP Address": params['Remote IP Address'],
-                        "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
+                        "Local IP": localIP,
+                        "Remote IP": remoteIP,
+                        "Model": params.Model,
+                        "Radio": params.'Select Radio',
+                        "Iterations": params.Disconnect_Count,
+                        "FW (Local/Remote)": "${local_fw} / ${remote_fw}"
                     ]
 
-                    def istZone = TimeZone.getTimeZone("Asia/Kolkata")
-                    def istDate = Calendar.getInstance(istZone).getTime()
-                    def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
-
-                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
-                    def pipelineName = env.JOB_NAME
-
+                    def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
                     def htmlContent = """
                     <html>
                     <head>
@@ -221,77 +208,28 @@ pipeline {
     post {
         always {
             publishHTML(target: [
-                allowMissing: false,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
                 reportDir: '.',
                 reportFiles: 'report.html',
-                reportName: 'Test Report'
+                reportName: 'Test Report',
+                keepAll: true
             ])
-            echo "-----------------------------------------"
-            echo 'Script Done!'
-            echo "-----------------------------------------"
             script {
-                def buildCauses = currentBuild.getBuildCauses()
-                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
-
-                def buildUserName = userCause?.userName ?: "Unknown User"
-                def buildUserId = userCause?.userId ?: "unknown"
-
-                echo "Build started by: ${buildUserName} (${buildUserId})"
-
-                // Define a mapping of user IDs to emails (update as needed)
-                def userEmails = [
-                    "puneet": "puneet.sharma@senao.com",
-                    "harman": "harmanjot.singh@senao.com",
-                    "mahesh": "mahesh.battala@senao.com",
-                    "sandeep": "sandeep.manchikanti@senao.com",
-                    "sampath": "sampath.marella@senao.com",
-                    "jayanth": "jayanth.munnaluru@senao.com",
-                    "srilatha": "srilatha.tadiboina@senao.com",
-                    "phani": "phani.darla@senao.com",
-                    "dinesh": "dinesh.redddy@senao.com"
-                ]
-
-                // Get email from predefined mapping, else use default
-                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
-
-                echo "Sending email to: ${userEmail}"
-
-                // Send email notification
+                def userCause = currentBuild.getBuildCauses().find { it._class == 'hudson.model.Cause$UserIdCause' }
+                def userId = userCause?.userId ?: "unknown"
+                def userEmail = [
+                    "puneet": "puneet.sharma@senao.com"
+                ].get(userId, "puneet.sharma@senao.com")
 
                 emailext(
-                    subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
-                    body: """
-                        <html>
-                        <body>
-                            <h2 style="color:blue;">Jenkins Build Notification</h2>
-                            <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
-                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
-                                ${currentBuild.currentResult}</span></p>
-                            <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
-                            <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
-                            <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
-                            <br/>
-                            <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
-                        </body>
-                        </html>
-                    """,
+                    subject: "Jenkins: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    body: "<p>Build: <a href='${env.BUILD_URL}'>${env.BUILD_URL}</a></p><p>Status: ${currentBuild.currentResult}</p>",
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html,iteration_results.json' // Fixed comma placement
+                    attachmentsPattern: 'report.html,iteration_results.json'
                 )
             }
         }
-        success {
-            echo "-----------------------------------------"
-            echo 'Script Success'
-            echo "-----------------------------------------"
-        }
-        failure {
-            echo "-----------------------------------------"
-            echo 'Script Failure'
-            echo "-----------------------------------------"
-        }
+        success { echo "SUCCESS" }
+        failure { echo "FAILURE" }
     }
 }

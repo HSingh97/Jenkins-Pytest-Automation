@@ -105,7 +105,6 @@ from netmiko import ConnectHandler
 from preMadeFunctions.param_helpers import get_radio_index
 from preMadeFunctions import pingFunction
 
-# === EMBEDDED SSH COMMAND FUNCTION ===
 def runcommand(ip, cmd, return_output=False):
     try:
         connection = ConnectHandler(
@@ -128,7 +127,7 @@ def runcommand(ip, cmd, return_output=False):
             return ""
         raise
 
-# === HELPER FUNCTIONS ===
+
 def perform_ping_check(local_ip, remote_ip, result_dict):
     print(f"\n--- Pinging local IP: {local_ip}")
     if pingFunction.check_access(local_ip):
@@ -194,15 +193,13 @@ def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
         if 'intf' not in radio_index_dict or not radio_index_dict['intf']:
             raise ValueError("'intf' key missing or empty in get_radio_index()")
 
-        interface = radio_index_dict['intf']  # e.g., 'ath1'
+        interface = radio_index_dict['intf']
 
-        # Map interface to kwn interface
         kwn_map = {"ath1": "sua1", "ath2": "sub1"}
         kwn_intf = kwn_map.get(interface)
         if not kwn_intf:
             raise ValueError(f"Unknown kwn interface for {interface}")
 
-        # Get remote MAC from correct path
         cmd = f"cat /sys/class/kwn/{kwn_intf}/statistics/mac"
         remote_mac = runcommand(local_ip, cmd, return_output=True)
         print(f"MAC from {cmd}: {remote_mac}")
@@ -219,7 +216,6 @@ def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
         append_result_to_json(result)
         pytest.fail("Could not obtain remote MAC address")
 
-    # Kick the client
     kick_cmd = f"cfg80211tool {interface} kickmac {remote_mac}"
     try:
         runcommand(local_ip, kick_cmd)
