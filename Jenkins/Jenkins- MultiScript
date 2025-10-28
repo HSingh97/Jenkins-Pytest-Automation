@@ -45,6 +45,10 @@ pipeline {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
+
+                    echo "Local IP: ${localIP}"
+                    echo "Remote IP: ${remoteIP}"
+
                     def testTypes = params.TEST_TYPES.split(',').collect { it.trim() }
                     def iterationCounts
                     // Parse ITERATION_COUNTS as a String parameter
@@ -96,7 +100,7 @@ pipeline {
                             testScript = 'testCases/test_SSHReset.py'
                             testFunction = 'test_soft_reset'
                         } else if (testType == 'Disconnect and Connect') {
-                            testScript = 'testCases/test_disconnect.py'
+                            testScript = 'testCases/test_SSHDisconnect.py'
                             testFunction = 'test_Disconnect_Connect'
                             def model = params.Model ?: ""
                             def radio = params['Select Radio'] ?: ""
@@ -117,7 +121,7 @@ pipeline {
                                 python3 -c "import json; data = json.load(open('iteration_results.json')); data['iterations'].append({'test': '${testType.replaceAll(' ', '_').toLowerCase()}', 'iteration': ${i}, 'status': '${status}'}); json.dump(data, open('iteration_results.json', 'w'))" || true
                             """
                         }
-                        sh 'sleep 30'
+                        sh 'sleep 20'
                     }
                 }
             }
