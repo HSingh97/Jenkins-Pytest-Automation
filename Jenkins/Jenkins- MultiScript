@@ -31,6 +31,7 @@ pipeline {
                 }
             }
         }
+
         stage('Install Python Dependencies') {
             steps {
                 script {
@@ -38,9 +39,11 @@ pipeline {
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
                     sh 'pip install pytest'
+                    sh "sh utilities/requirements.txt"
                 }
             }
         }
+
         stage('Run Selected Tests') {
             steps {
                 script {
@@ -49,7 +52,7 @@ pipeline {
                     def testTypes = params.TEST_TYPES.split(',').collect { it.trim() }
                     def iterationCounts
 
-                    // Parse ITERATION_COUNTS as a String parameter
+                    // Parse ITERATION_COUNTS
                     if (params.ITERATION_COUNTS?.trim()) {
                         if (params.ITERATION_COUNTS ==~ /\d+(,\d+)*/) {
                             iterationCounts = params.ITERATION_COUNTS.split(',').collect { it.trim().toInteger() }
@@ -74,58 +77,61 @@ pipeline {
                     }
 
                     echo "Number of iterations: ${iterationCounts}"
-
-                    echo "✅ Cleared old workspace"
-
+                    echo "Cleared old workspace"
                     echo "----------------------------------------"
+
                     // Initialize JSON with proper structure
                     sh 'echo "{\"iterations\": []}" > iteration_results.json'
 
-                    // Debug: Check the type and value of TEST_TYPES
-                    echo "DEBUG: params.TEST_TYPES = ${params.TEST_TYPES}"
-                    echo "DEBUG: Type of params.TEST_TYPES = ${params.TEST_TYPES?.getClass()}"
-
-                    if (testTypes.isEmpty()) {
-                        error "No test types selected in TEST_TYPES"
-                    }
-
-                    // Run tests sequentially with 40-second delay between each
                     testTypes.eachWithIndex { testType, index ->
                         echo "DEBUG: Processing test type: ${testType}"
                         def testScript
                         def testFunction
+                        def extraArgs = ""
+                        def iterationCount = iterationCounts[index]
+
                         if (testType == 'SSH Reboot') {
                             testScript = 'testCases/test_SSHReboot.py'
                             testFunction = 'test_reboot'
                         } else if (testType == 'SSH Reset') {
                             testScript = 'testCases/test_SSHReset.py'
                             testFunction = 'test_soft_reset'
-                        } else if (testType == 'Firmware Upgrade') {
-                            testScript = 'testCases/test_firmwareUpgrade.py'
-                            testFunction = 'test_firmwareUpgrade'
+                        } else if (testType == 'Disconnect & Connect') {
+                            testScript = 'testCases/test_disconnect.py'
+                            testFunction = 'test_Disconnect_Connect'
+                            def model = params['Model'] ?: ""
+                            def radio = params['Select Radio'] ?: ""
+                            extraArgs = "--model '${model}' --radio '${radio}'"
                         } else {
                             error "Unknown test type: ${testType}"
                         }
 
-                        def iterationCount = iterationCounts[index]
                         echo "Running ${testType} sequentially with ${iterationCount} iterations"
                         echo "----------------------------------------"
+
                         for (int i = 1; i <= iterationCount; i++) {
                             def result = sh(script: """
-                                pytest -v -s ${testScript}::${testFunction} --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${i} | tee output.log
+                                pytest -v -s ${testScript}::${testFunction} \
+                                --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                                --iter ${i} ${extraArgs} | tee output.log
                             """, returnStatus: true)
                             def status = (result == 0) ? "PASS" : "FAIL"
                             echo "DEBUG: Test ${testType} Iteration ${i} Result: ${status}"
+
                             sh """
-                                python3 -c "import json; data = json.load(open('iteration_results.json')); data['iterations'].append({'test': '${testType.replaceAll(' ', '_').toLowerCase()}', 'iteration': ${i}, 'status': '${status}'}); json.dump(data, open('iteration_results.json', 'w'))" || true
+                                python3 -c "import json; data = json.load(open('iteration_results.json')); \
+                                data['iterations'].append({'test': '${testType.replaceAll(' ', '_').toLowerCase()}', \
+                                'iteration': ${i}, 'status': '${status}'}); \
+                                json.dump(data, open('iteration_results.json', 'w'))" || true
                             """
                         }
-                        // Add 40-second delay before next test
+                        // 40-second delay between test types
                         sh 'sleep 40'
                     }
                 }
             }
         }
+
         stage('Generate Report') {
             steps {
                 script {
@@ -133,20 +139,17 @@ pipeline {
                     def remoteIP = params['Remote IP Address']
                     sh "ssh-keygen -R ${localIP} || true"
                     sh "ssh-keygen -R ${remoteIP} || true"
-
                     def local_fw_version = "N/A"
                     def remote_fw_version = "N/A"
-
                     try {
                         local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
                     } catch (Exception e) {
-                        echo "⚠️ Failed to get local FW version from ${localIP}: ${e.message}"
+                        echo "Failed to get local FW version from ${localIP}: ${e.message}"
                     }
-
                     try {
                         remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
                     } catch (Exception e) {
-                        echo "⚠️ Failed to get remote FW version from ${remoteIP}: ${e.message}"
+                        echo "Failed to get remote FW version from ${remoteIP}: ${e.message}"
                     }
 
                     def jsonReport = readJSON file: 'iteration_results.json'
@@ -158,11 +161,9 @@ pipeline {
                         "Remote IP Address": params['Remote IP Address'],
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
-
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
-
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
 
@@ -298,7 +299,6 @@ pipeline {
                     </body>
                     </html>
                     """
-
                     writeFile file: 'report.html', text: htmlContent
                 }
             }
@@ -320,13 +320,10 @@ pipeline {
             script {
                 def buildCauses = currentBuild.getBuildCauses()
                 def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
-
                 def buildUserName = userCause?.userName ?: "Unknown User"
                 def buildUserId = userCause?.userId ?: "unknown"
-
                 echo "Build started by: ${buildUserName} (${buildUserId})"
 
-                // Define a mapping of user IDs to emails (update as needed)
                 def userEmails = [
                     "puneet": "puneet.sharma@senao.com",
                     "harman": "harmanjot.singh@senao.com",
@@ -338,13 +335,9 @@ pipeline {
                     "phani": "phani.darla@senao.com",
                     "dinesh": "dinesh.redddy@senao.com"
                 ]
-
-                // Get email from predefined mapping, else use default
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
-
                 echo "Sending email to: ${userEmail}"
 
-                // Send email notification
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
                     body: """
