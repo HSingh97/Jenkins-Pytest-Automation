@@ -95,7 +95,7 @@ pipeline {
                         } else if (testType == 'SSH Reset') {
                             testScript = 'testCases/test_SSHReset.py'
                             testFunction = 'test_soft_reset'
-                        } else if (testType == 'Disconnect & Connect') {
+                        } else if (testType == 'Disconnect and Connect') {
                             testScript = 'testCases/test_disconnect.py'
                             testFunction = 'test_Disconnect_Connect'
                             def model = params.Model ?: ""
