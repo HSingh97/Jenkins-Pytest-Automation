@@ -15,12 +15,11 @@
 #     print(f"\n--- Pinging local IP: {local_ip}")
 #     if pingFunction.check_access(local_ip):
 #         result_dict["Ping Results"]["Local"] = True
-#         print("\n* Local Device is up after soft reset *")
-#
+#         print("\n* Local Device is up *")
 #         print(f"\n--- Pinging remote IP: {remote_ip}")
 #         if pingFunction.check_access(remote_ip):
 #             result_dict["Ping Results"]["Remote"] = True
-#             print("\n* Remote Device is up after soft reset *")
+#             print("\n* Remote Device is up *")
 #             result_dict["status"] = "PASS"
 #         else:
 #             result_dict["Ping Results"]["Remote"] = False
