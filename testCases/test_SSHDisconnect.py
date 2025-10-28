@@ -104,9 +104,12 @@ import pytest
 import re
 from preMadeFunctions import pingFunction, ssh_netmiko, fetch_ssh_values
 from preMadeFunctions import param_helpers
+from netmiko import ConnectHandler
 from preMadeFunctions.param_helpers import get_radio_index
+
 USERNAME = "root"
 PASSWORD = "admin"
+
 
 def perform_ping_check(local_ip, remote_ip, result_dict):
     print(f"\n--- Pinging local IP: {local_ip}")
@@ -123,6 +126,7 @@ def perform_ping_check(local_ip, remote_ip, result_dict):
     else:
         result_dict["Ping Results"]["Local"] = False
 
+
 def append_result_to_json(result, filename="iteration_results.json"):
     try:
         with open(filename, "r") as f:
@@ -136,6 +140,7 @@ def append_result_to_json(result, filename="iteration_results.json"):
         json.dump(data, f, indent=4)
     print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}")
 
+
 def wait_for_ping(ip, timeout=15, interval=3):
     start = time.time()
     while time.time() - start < timeout:
@@ -147,7 +152,8 @@ def wait_for_ping(ip, timeout=15, interval=3):
     print(f"Timeout: {ip} not reachable after {timeout} seconds")
     return False
 
-def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter, remote_interface):
+
+def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
     print("\n" + "*" * 52)
     print(f"Local IP Address : {local_ip}")
     print(f"Remote IP Address : {remote_ip}")
@@ -163,25 +169,37 @@ def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter, remote_inte
         "Remote IP": remote_ip,
         "Ping Results": {"Local": False, "Remote": False},
     }
+
+    # Debug: Show what get_radio_index returns
     print(f"get_radio_index('{radio}') returned: {get_radio_index(radio)}")
+
     try:
         radio_index_dict = get_radio_index(radio)
         if 'intf' not in radio_index_dict or not radio_index_dict['intf']:
-            raise ValueError("intf not found or empty in get_radio_index result")
-        remote_interface = radio_index_dict['intf']
-        remote_mac = fetch_ssh_values.fetch_cat_sys_value(local_ip, remote_interface, "mac")
+            raise ValueError("'intf' key missing or empty in get_radio_index()")
+
+        interface = radio_index_dict['intf']  # e.g., 'ath1'
+        remote_mac = fetch_ssh_values.fetch_cat_sys_value(local_ip, interface, "mac")
+
+        # Validate MAC format
+        if not remote_mac or len(remote_mac.split(':')) != 6:
+            raise ValueError(f"Invalid MAC format from device: '{remote_mac}'")
+
     except Exception as e:
         print(f"MAC fetch failed: {e}")
         result["notes"] = f"Failed to get remote MAC: {str(e)}"
         append_result_to_json(result)
         pytest.fail("Could not obtain remote MAC address")
-    kick_cmd = f"cfg80211tool {radio_index_dict['intf']} kickmac {remote_mac}"
+
+    # Build and send kick command
+    kick_cmd = f"cfg80211tool {interface} kickmac {remote_mac}"
     try:
         ssh_netmiko.runcommand(local_ip, kick_cmd)
         print(f"Kick command sent: {kick_cmd}")
         time.sleep(2)
     except Exception as e:
         print(f"SSH broke (expected): {e}")
+
     print("Waiting for local services to reload")
     wait_for_ping(local_ip, timeout=15)
     perform_ping_check(local_ip, remote_ip, result)
