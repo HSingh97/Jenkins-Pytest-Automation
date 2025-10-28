@@ -106,7 +106,7 @@ from netmiko import ConnectHandler
 from preMadeFunctions.param_helpers import get_radio_index
 from preMadeFunctions import pingFunction
 
-# === SSH COMMAND FUNCTION (EMBEDDED) ===
+# === EMBEDDED SSH FUNCTION ===
 def runcommand(ip, cmd, return_output=False):
     try:
         connection = ConnectHandler(
@@ -129,12 +129,7 @@ def runcommand(ip, cmd, return_output=False):
             return ""
         raise
 
-# === END EMBEDDED FUNCTION ===
-
-USERNAME = "root"
-PASSWORD = "admin"
-
-
+# === TEST SCRIPT ===
 def perform_ping_check(local_ip, remote_ip, result_dict):
     print(f"\n--- Pinging local IP: {local_ip}")
     if pingFunction.check_access(local_ip):
@@ -203,17 +198,17 @@ def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
 
         interface = radio_index_dict['intf']  # e.g., 'ath1'
 
-        # Get connected client MAC using cfg80211tool
-        cmd = f"cfg80211tool {interface} get_stations"
+        # Use 'iw' to get connected station MAC
+        cmd = f"iw dev {interface} station dump"
         output = runcommand(local_ip, cmd, return_output=True)
-        print(f"get_stations output: {output.strip()}")
+        print(f"iw station dump output:\n{output}")
 
-        # Extract MAC address
-        mac_match = re.search(r'([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}', output)
+        # Extract MAC from "Station xx:xx:xx:xx:xx:xx"
+        mac_match = re.search(r'Station\s+([0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2})', output)
         if not mac_match:
-            raise ValueError("No connected client MAC found in get_stations output")
+            raise ValueError("No connected client found in 'iw dev station dump'")
 
-        remote_mac = mac_match.group(0).lower()
+        remote_mac = mac_match.group(1).lower()
         print(f"Remote MAC detected: {remote_mac}")
 
     except Exception as e:
