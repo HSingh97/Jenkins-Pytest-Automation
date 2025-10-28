@@ -170,7 +170,6 @@ def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
         "Ping Results": {"Local": False, "Remote": False},
     }
 
-    # Debug: Show what get_radio_index returns
     print(f"get_radio_index('{radio}') returned: {get_radio_index(radio)}")
 
     try:
@@ -178,10 +177,9 @@ def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
         if 'intf' not in radio_index_dict or not radio_index_dict['intf']:
             raise ValueError("'intf' key missing or empty in get_radio_index()")
 
-        interface = radio_index_dict['intf']  # e.g., 'ath1'
+        interface = radio_index_dict['intf']
         remote_mac = fetch_ssh_values.fetch_cat_sys_value(local_ip, interface, "mac")
 
-        # Validate MAC format
         if not remote_mac or len(remote_mac.split(':')) != 6:
             raise ValueError(f"Invalid MAC format from device: '{remote_mac}'")
 
@@ -191,7 +189,6 @@ def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
         append_result_to_json(result)
         pytest.fail("Could not obtain remote MAC address")
 
-    # Build and send kick command
     kick_cmd = f"cfg80211tool {interface} kickmac {remote_mac}"
     try:
         ssh_netmiko.runcommand(local_ip, kick_cmd)
