@@ -84,7 +84,7 @@ def test_Disconnect_Connect(driver, local_ip, remote_ip, model, radio, iter):
 
     hp.clickMonitorSection()
     print("Clicked 'Monitor' section", flush=True)
-    time.sleep(1)
+    time.sleep(2)
 
     if radio == "Radio1":
         hp.clickRadio1Statistics()
