@@ -1,16 +1,11 @@
-
 // Functions
-
 def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
-
 // Main Pipeline
-
 pipeline {
     agent { node { label "${TARGET_STAND}"} }
-
     stages {
         stage('Prepare tests') {
             steps {
@@ -18,8 +13,8 @@ pipeline {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${TARGET_STAND}"
                     echo "----------------------------------------"
-      	        }
-      	    }
+               }
+           }
         }
         stage('Install Python Dependencies') {
             steps {
@@ -40,15 +35,11 @@ pipeline {
                     def selected_radio = params['Select Radio']
                     def disconnectCount = params.Iterations ?: 1
                     echo "Number of Disconnect iterations: ${disconnectCount}"
-
                     echo "----------------------------------------"
                     echo "Testing Link Connect/Disconnect"
                     echo "----------------------------------------"
-
-                    sh "echo [] > iteration_results.json"  // Initialize JSON array
-
+                    sh "echo [] > iteration_results.json" // Initialize JSON array
                     for (int i = 1; i <= disconnectCount.toInteger() ; i++) {
-
                         echo "Running Disconnect test iteration ${i}"
                         try {
                             sh """
@@ -59,50 +50,47 @@ pipeline {
                         } catch (Exception e) {
                             echo "Disconnect iteration ${i} failed: ${e.message}"
                         }
-
                     }
-
                 }
             }
         }
         stage('Generate Report') {
             steps {
                 script {
-                    def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
+                    def localIP  = params['Local IP']
+                    def remoteIP = params['Remote IP']
+
                     sh "ssh-keygen -R ${localIP} || true"
                     sh "ssh-keygen -R ${remoteIP} || true"
 
                     def local_fw_version = "N/A"
                     def remote_fw_version = "N/A"
-
                     try {
                         local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
                     } catch (Exception e) {
-                        echo "⚠️ Failed to get local FW version from ${localIP}: ${e.message}"
+                        echo "Failed to get local FW version from ${localIP}: ${e.message}"
                     }
-
                     try {
                         remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
                     } catch (Exception e) {
-                        echo "⚠️ Failed to get remote FW version from ${remoteIP}: ${e.message}"
+                        echo "Failed to get remote FW version from ${remoteIP}: ${e.message}"
                     }
 
                     def jsonReport = readJSON file: 'iteration_results.json'
                     echo "JSON Report: ${jsonReport}" // Debugging output
+
+                    // localIP/remoteIP variables in buildParams
                     def buildParams = [
-                        "Local IP Address": params['Local IP Address'],
-                        "Remote IP Address": params['Remote IP Address'],
+                        "Local IP Address": localIP,
+                        "Remote IP Address": remoteIP,
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
-
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
-
                     def htmlContent = """
                     <html>
                     <head>
@@ -195,11 +183,9 @@ pipeline {
                                 <th>Status</th>
                             </tr>
                     """
-
                     jsonReport.iterations.each { result ->
                         def iteration = result.iteration ?: "-"
                         def status = result.status == "PASS" ? "<span class='pass'>PASS</span>" : "<span class='fail'>FAIL</span>"
-
                         htmlContent += """
                             <tr>
                                 <td>${iteration}</td>
@@ -207,13 +193,11 @@ pipeline {
                             </tr>
                         """
                     }
-
                     htmlContent += """
                         </table>
                     </body>
                     </html>
                     """
-
                     writeFile file: 'report.html', text: htmlContent
                 }
             }
@@ -235,12 +219,9 @@ pipeline {
             script {
                 def buildCauses = currentBuild.getBuildCauses()
                 def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
-
                 def buildUserName = userCause?.userName ?: "Unknown User"
                 def buildUserId = userCause?.userId ?: "unknown"
-
                 echo "Build started by: ${buildUserName} (${buildUserId})"
-
                 // Define a mapping of user IDs to emails (update as needed)
                 def userEmails = [
                     "puneet": "puneet.sharma@senao.com",
@@ -253,15 +234,10 @@ pipeline {
                     "phani": "phani.darla@senao.com",
                     "dinesh": "dinesh.redddy@senao.com"
                 ]
-
                 // Get email from predefined mapping, else use default
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
-
                 echo "Sending email to: ${userEmail}"
-
                 // Send email notification
-
-
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
                     body: """
@@ -281,7 +257,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html,iteration_results.json' // Fixed comma placement
+                    attachmentsPattern: 'report.html,iteration_results.json'
                 )
             }
         }
