@@ -82,7 +82,9 @@ pipeline {
                         error "No test types selected in TEST_TYPES"
                     }
                     // Run tests sequentially with 30-second delay between each
-                    testTypes.eachWithIndex { testType, index ->
+                    testTypes.eachWithIndex { testTypeRaw, index ->
+                        // Fix: Decode &amp; → &
+                        def testType = testTypeRaw.replaceAll('&amp;', '&')
                         echo "DEBUG: Processing test type: ${testType}"
                         def testScript
                         def testFunction
@@ -243,7 +245,8 @@ pipeline {
                         params.TEST_TYPES.split(',').collect { it.trim() } :
                         (params.TEST_TYPES ?: [])
                     // Generate table for each test type
-                    testTypes.each { testType ->
+                    testTypes.each { testTypeRaw ->
+                        def testType = testTypeRaw.replaceAll('&amp;', '&')
                         def normalizedTestType = testType.replaceAll(' ', '_').toLowerCase()
                         def testResults = jsonReport.iterations.findAll { it.test == normalizedTestType }
                         htmlContent += """
