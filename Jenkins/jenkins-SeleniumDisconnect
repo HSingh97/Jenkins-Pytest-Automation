@@ -29,8 +29,9 @@ pipeline {
         stage('Disconnect & Connect') {
             steps {
                 script {
-                    def localIP = params['Local IP']
-                    def remoteIP = params['Remote IP']
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
+
                     def model_name = params['Model']
                     def selected_radio = params['Select Radio']
                     def disconnectCount = params.Iterations ?: 1
@@ -57,8 +58,8 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def localIP  = params['Local IP']
-                    def remoteIP = params['Remote IP']
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
 
                     sh "ssh-keygen -R ${localIP} || true"
                     sh "ssh-keygen -R ${remoteIP} || true"
@@ -81,8 +82,8 @@ pipeline {
 
                     // localIP/remoteIP variables in buildParams
                     def buildParams = [
-                        "Local IP Address": localIP,
-                        "Remote IP Address": remoteIP,
+                        "Local IP Address": params['Local IP Address'],
+                        "Remote IP Address": params['Remote IP Address'],
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
