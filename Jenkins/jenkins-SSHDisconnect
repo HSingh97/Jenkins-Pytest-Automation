@@ -35,7 +35,6 @@ pipeline {
                     echo "Local IP: ${localIP}"
                     echo "Remote IP: ${remoteIP}"
 
-                    // FIXED: Use correct parameter name
                     def disconnectCount = params.Disconnect_Count?.toString()?.isNumber() ? params.Disconnect_Count.toInteger() : 1
                     echo "Running ${disconnectCount} iterations"
 
@@ -89,6 +88,11 @@ pipeline {
                     ]
 
                     def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
+
+                    // === FIXED: Use direct URL instead of undefined variable ===
+                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+                    def pipelineName = env.JOB_NAME
+
                     def htmlContent = """
                     <html>
                     <head>
@@ -205,6 +209,7 @@ pipeline {
             }
         }
     }
+
     post {
         always {
             publishHTML(target: [
@@ -229,7 +234,15 @@ pipeline {
                 )
             }
         }
-        success { echo "SUCCESS" }
-        failure { echo "FAILURE" }
+        success {
+            echo "-----------------------------------------"
+            echo 'Script Success'
+            echo "-----------------------------------------"
+        }
+        failure {
+            echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
+        }
     }
 }
