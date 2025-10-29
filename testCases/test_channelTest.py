@@ -67,7 +67,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
     channel_list = fetch_ssh_values.fetch_channel_list(local_ip, radio_ind, country_code, new_bandwidth)
     time.sleep(2)
 
-    if extra == "1":
+    if int(extra) == int(1):
         channel_groups = {}
         for channel in channel_list:
             frequency = (int(channel) * 5) + 5000
