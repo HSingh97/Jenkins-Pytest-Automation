@@ -1,4 +1,4 @@
-# This is my SSH Reset Script
+#This is my SSH Reset Script
 import time
 import warnings
 import pytest
@@ -6,9 +6,12 @@ import json
 import os
 from testCases.conftest import local_ip
 from preMadeFunctions import pingFunction, ssh_netmiko
+from testCases.test_SSHReboot import ADMIN_USERNAME, ADMIN_PASSWORD
 
 USERNAME = "root"
 PASSWORD = "admin"
+ADMIN_USERNAME="admin"
+ADMIN_PASSWORD="admin"
 
 
 def perform_ping_check(local_ip, remote_ip, result_dict):
@@ -23,14 +26,22 @@ def perform_ping_check(local_ip, remote_ip, result_dict):
 
             print(f"\nRunning 'dmesg' on {local_ip}...", flush=True)
             try:
-                dmesg_output = ssh_netmiko.runcommand(local_ip, "dmesg")
-                result_dict["dmesg_output"] = dmesg_output.strip().splitlines()
-                print(f"dmesg captured ({len(dmesg_output)} bytes)", flush=True)
-            except Exception as e:
-                error_msg = f"Failed to run dmesg: {str(e)}"
-                result_dict["dmesg_output"] = ["ERROR", error_msg]
-                print(error_msg, flush=True)
+                # 1. Try the original helper (kept for backward compatibility)
+                raw = ssh_netmiko.runcommand(local_ip, "dmesg")
+                if raw is None or raw == "":
+                    raise ValueError("runcommand returned None/empty")
+                dmesg_str = str(raw)
+            except Exception:
+                print("runcommand failed – using connect_handler fallback", flush=True)
+                dmesg_str = _get_dmesg_with_handler(local_ip, timeout=12)
 
+            if dmesg_str.startswith("[DMESG ERROR]"):
+                result_dict["dmesg_output"] = ["ERROR", dmesg_str]
+                print(dmesg_str, flush=True)
+            else:
+                lines = dmesg_str.strip().splitlines()
+                result_dict["dmesg_output"] = lines if lines else ["<empty output>"]
+                print(f"dmesg captured ({len(lines)} lines)", flush=True)
             result_dict["status"] = "PASS"
         else:
             result_dict["Ping Results"]["Remote"] = False
@@ -64,6 +75,27 @@ def wait_for_ping(ip, timeout=15, interval=3):
     print(f"Timeout: {ip} not reachable after {timeout}s", flush=True)
     return False
 
+def _get_dmesg_with_handler(ip, timeout=10):
+
+    from netmiko import ConnectHandler, NetmikoTimeoutException, NetmikoAuthenticationException
+
+    device = {
+        "device_type": "linux",
+        "host": ip,
+        "username": ADMIN_USERNAME,
+        "password": ADMIN_PASSWORD,
+        "session_timeout": timeout,
+        "timeout": timeout,
+        "fast_cli": False,
+    }
+
+    try:
+        conn = ConnectHandler(**device)
+        output = conn.send_command("dmesg", use_textfsm=False, read_timeout=timeout)
+        conn.disconnect()
+        return str(output) if output is not None else ""
+    except (NetmikoTimeoutException, NetmikoAuthenticationException, Exception) as e:
+        return f"[DMESG ERROR] {type(e).__name__}: {str(e)}"
 
 def test_soft_reset(local_ip, remote_ip, iter, local_ping=None, remote_ping=None):
     print("\n****************************************************", flush=True)
@@ -82,7 +114,7 @@ def test_soft_reset(local_ip, remote_ip, iter, local_ping=None, remote_ping=None
             "Local": False,
             "Remote": False
         },
-        "dmesg_output": []
+        "dmesg_output": []          # always present
     }
 
     try:
