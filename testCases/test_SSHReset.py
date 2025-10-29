@@ -1,6 +1,3 @@
-# =============================================
-# SSH SOFT-RESET + FULL DMESG LOG (SINGLE FILE)
-# =============================================
 import time
 import json
 import os
