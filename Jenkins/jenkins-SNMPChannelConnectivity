@@ -347,7 +347,7 @@ pipeline {
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
                 reportDir: '.',
-                reportFiles: "${reportFilename}",
+                reportFiles: 'report.html',
                 reportName: "Channel Test Report - Build ${env.BUILD_NUMBER}"
             ])
             echo "-----------------------------------------"
@@ -364,6 +364,7 @@ pipeline {
 
                 // Define a mapping of user IDs to emails (update as needed)
                 def userEmails = [
+                    "puneet": "puneet.sharma@senao.com",
                     "harman": "harmanjot.singh@senao.com",
                     "mahesh": "mahesh.battala@senao.com",
                     "sandeep": "sandeep.manchikanti@senao.com",
@@ -375,7 +376,7 @@ pipeline {
                 ]
 
                 // Get email from predefined mapping, else use default
-                def userEmail = userEmails.get(buildUserId, "harmanjot.singh@senao.com")
+                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
 
                 echo "Sending email to: ${userEmail}"
 
