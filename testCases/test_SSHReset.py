@@ -1,17 +1,40 @@
-#This is my SSH Reset Script
+# =============================================
+# SSH SOFT-RESET + FULL DMESG LOG (SINGLE FILE)
+# =============================================
 import time
-import warnings
-import pytest
 import json
 import os
+import pytest
 from testCases.conftest import local_ip
 from preMadeFunctions import pingFunction, ssh_netmiko
-from testCases.test_SSHReboot import ADMIN_USERNAME, ADMIN_PASSWORD
 
-USERNAME = "root"
+USERNAME = "admin"
 PASSWORD = "admin"
-ADMIN_USERNAME="admin"
-ADMIN_PASSWORD="admin"
+
+def rundmesg(ip, timeout=20):
+
+    from netmiko import ConnectHandler, NetmikoTimeoutException, NetmikoAuthenticationException
+
+    device = {
+        "device_type": "linux",
+        "host": ip,
+        "username": USERNAME,
+        "password": PASSWORD,
+        "session_timeout": timeout,
+        "timeout": timeout,
+        "fast_cli": False,
+    }
+
+    try:
+        print(f"   [ConnectHandler] Connecting to {ip} for dmesg...", flush=True)
+        conn = ConnectHandler(**device)
+        output = conn.send_command("dmesg", read_timeout=timeout)
+        conn.disconnect()
+        return str(output) if output is not None else ""
+    except Exception as e:
+        error = f"[DMESG ERROR] {type(e).__name__}: {str(e)}"
+        print(error, flush=True)
+        return error
 
 
 def perform_ping_check(local_ip, remote_ip, result_dict):
@@ -19,29 +42,36 @@ def perform_ping_check(local_ip, remote_ip, result_dict):
     if pingFunction.check_access(local_ip):
         result_dict["Ping Results"]["Local"] = True
         print(f"\n* Local Device is up after soft reset *", flush=True)
-        print(f"\n--- Pinging remote IP: {remote_ip}")
+
+        print(f"\n--- Pinging remote IP: {remote_ip}", flush=True)
         if pingFunction.check_access(remote_ip):
             result_dict["Ping Results"]["Remote"] = True
             print(f"\n* Remote Device is up after soft reset *", flush=True)
 
             print(f"\nRunning 'dmesg' on {local_ip}...", flush=True)
-            try:
-                # 1. Try the original helper (kept for backward compatibility)
-                raw = ssh_netmiko.runcommand(local_ip, "dmesg")
-                if raw is None or raw == "":
-                    raise ValueError("runcommand returned None/empty")
-                dmesg_str = str(raw)
-            except Exception:
-                print("runcommand failed – using connect_handler fallback", flush=True)
-                dmesg_str = _get_dmesg_with_handler(local_ip, timeout=12)
+            dmesg_output = ""
 
-            if dmesg_str.startswith("[DMESG ERROR]"):
-                result_dict["dmesg_output"] = ["ERROR", dmesg_str]
-                print(dmesg_str, flush=True)
+            try:
+                print(f"--- Executing : dmesg on {local_ip} ---", flush=True)
+                raw = ssh_netmiko.runcommand(local_ip, "dmesg")
+                if raw and str(raw).strip():
+                    dmesg_output = str(raw)
+                    print(f"   dmesg via runcommand: {len(dmesg_output)} chars", flush=True)
+                else:
+                    print("   runcommand returned empty/None → using fallback", flush=True)
+            except Exception as e:
+                print(f"   runcommand failed: {e} → using fallback", flush=True)
+
+            if not dmesg_output.strip():
+                dmesg_output = rundmesg(local_ip, timeout=20)
+
+            if dmesg_output.startswith("[DMESG ERROR]"):
+                result_dict["dmesg_output"] = ["ERROR", dmesg_output]
             else:
-                lines = dmesg_str.strip().splitlines()
-                result_dict["dmesg_output"] = lines if lines else ["<empty output>"]
-                print(f"dmesg captured ({len(lines)} lines)", flush=True)
+                lines = [line.rstrip() for line in dmesg_output.strip().splitlines() if line.strip()]
+                result_dict["dmesg_output"] = lines
+                print(f"   dmesg captured: {len(lines)} lines", flush=True)
+
             result_dict["status"] = "PASS"
         else:
             result_dict["Ping Results"]["Remote"] = False
@@ -52,82 +82,61 @@ def perform_ping_check(local_ip, remote_ip, result_dict):
 def append_result_to_json(result, filename="iteration_results.json"):
     try:
         with open(filename, "r") as f:
-            json_data = json.load(f)
-        if not isinstance(json_data, dict) or "iterations" not in json_data:
-            json_data = {"iterations": []}
+            data = json.load(f)
+        if not isinstance(data, dict) or "iterations" not in data:
+            data = {"iterations": []}
     except (FileNotFoundError, json.JSONDecodeError):
-        json_data = {"iterations": []}
-    json_data["iterations"].append(result)
+        data = {"iterations": []}
+
+    data["iterations"].append(result)
     with open(filename, "w") as f:
-        json.dump(json_data, f, indent=4)
+        json.dump(data, f, indent=4)
     print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}", flush=True)
 
 
-def wait_for_ping(ip, timeout=15, interval=3):
-    """Retry ping until success or timeout (instead of fixed sleep)."""
+def wait_for_ping(ip, timeout=30, interval=3):
+    """Wait longer – devices can be slow after network reload"""
     start = time.time()
     while time.time() - start < timeout:
         if pingFunction.check_access(ip):
             print(f"{ip} is reachable", flush=True)
             return True
-        print(f"Waiting for {ip} to respond...", flush=True)
+        print(f"Waiting for {ip}... ({int(time.time()-start)}s)", flush=True)
         time.sleep(interval)
     print(f"Timeout: {ip} not reachable after {timeout}s", flush=True)
     return False
 
-def _get_dmesg_with_handler(ip, timeout=10):
-
-    from netmiko import ConnectHandler, NetmikoTimeoutException, NetmikoAuthenticationException
-
-    device = {
-        "device_type": "linux",
-        "host": ip,
-        "username": ADMIN_USERNAME,
-        "password": ADMIN_PASSWORD,
-        "session_timeout": timeout,
-        "timeout": timeout,
-        "fast_cli": False,
-    }
-
-    try:
-        conn = ConnectHandler(**device)
-        output = conn.send_command("dmesg", use_textfsm=False, read_timeout=timeout)
-        conn.disconnect()
-        return str(output) if output is not None else ""
-    except (NetmikoTimeoutException, NetmikoAuthenticationException, Exception) as e:
-        return f"[DMESG ERROR] {type(e).__name__}: {str(e)}"
 
 def test_soft_reset(local_ip, remote_ip, iter, local_ping=None, remote_ping=None):
-    print("\n****************************************************", flush=True)
-    print(f"\nLocal IP Address: {local_ip}", flush=True)
-    print(f"Remote IP Address: {remote_ip}", flush=True)
-    print(f"Running Iteration: {iter}", flush=True)
-    print("****************************************************", flush=True)
+    print("\n" + "="*60, flush=True)
+    print(f"Local IP : {local_ip}", flush=True)
+    print(f"Remote IP: {remote_ip}", flush=True)
+    print(f"Iteration: {iter}", flush=True)
+    print("="*60, flush=True)
 
-    test_iteration_result = {
+    result = {
         "iteration": iter,
         "test": "test_reset",
         "status": "FAIL",
         "Local IP": local_ip,
         "Remote IP": remote_ip,
-        "Ping Results": {
-            "Local": False,
-            "Remote": False
-        },
-        "dmesg_output": []          # always present
+        "Ping Results": {"Local": False, "Remote": False},
+        "dmesg_output": []
     }
 
     try:
         ssh_netmiko.runcommand(local_ip, "/etc/init.d/network reload &")
         print("Network reload started in background", flush=True)
-        time.sleep(2)
+        time.sleep(3)
     except Exception as e:
-        print(f"SSH connection broke as expected: {e}", flush=True)
+        print(f"SSH broke (expected): {e}", flush=True)
 
-    print("Waiting for network services to reload (up to 15s)...", flush=True)
-    wait_for_ping(local_ip, timeout=15)
-    perform_ping_check(local_ip, remote_ip, test_iteration_result)
-    append_result_to_json(test_iteration_result)
+    # --- Wait for device to come back ---
+    print("Waiting for network services (up to 30s)...", flush=True)
+    wait_for_ping(local_ip, timeout=30)
+
+    perform_ping_check(local_ip, remote_ip, result)
+    append_result_to_json(result)
 
 
 # ---------------- Pytest Fixtures ----------------
