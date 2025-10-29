@@ -3,13 +3,13 @@ import time
 
 
 class StatsPage:
-    detailed_stats_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[2]"
+    detailed_stats_xpath = "/html/body/div/div/div/fieldset/table/tbody/tr[3]/td[7]"
 
     # ************************ Link Stats *************************************
     index_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[1]"
     sysname_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[2]"
     ipaddr_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[3]"
-    uptime_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[4]"
+    uptime_xpath = "//*[@id='linkstats5-tbl']/tbody/tr[3]/td[5]"
     distance_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[5]"
     localsnr_A1_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[6]"
     localsnr_A2_xpath = "//*[@id='iw-assoclist']/tbody/tr[3]/td[7]"
@@ -22,7 +22,7 @@ class StatsPage:
 
 
     # ************************ Detailed Link Stats ******************************
-    disconnect_xpath = "//*[@id='maincontent']/div/div[1]/input[2]"
+    disconnect_xpath = "/html/body/div/div/div[1]/div[2]/table[1]/tbody/tr[1]/td[3]/input"
     clear_xpath = "//*[@id='clear]"
 
     local_ip_xpath = "//*[@id='l_ip']"

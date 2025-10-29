@@ -70,3 +70,18 @@ def fetch_datarate(host, interface, dir):
 
     ssh_client.close()
     return output
+
+def fetch_cat_sys_value(host, interface, param):
+    ssh_client = paramiko.SSHClient()
+    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh_client.connect(hostname=host, username="root", password="admin")
+
+    command = 'cat /sys/class/kwn/{}/statistics/{}'.format(interface, param)
+
+    stdin, stdout, stderr = ssh_client.exec_command(command)
+
+    # Read the output of the command
+    output = stdout.read().decode('utf-8')
+
+    ssh_client.close()
+    return output
