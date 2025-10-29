@@ -1,3 +1,4 @@
+# This is my SSH Reset Script
 import time
 import warnings
 import pytest
@@ -5,21 +6,31 @@ import json
 import os
 from testCases.conftest import local_ip
 from preMadeFunctions import pingFunction, ssh_netmiko
-from testCases.test_SSHReboot import ADMIN_USERNAME, ADMIN_PASSWORD
 
 USERNAME = "root"
 PASSWORD = "admin"
+
 
 def perform_ping_check(local_ip, remote_ip, result_dict):
     print(f"--- Pinging local IP: {local_ip}", flush=True)
     if pingFunction.check_access(local_ip):
         result_dict["Ping Results"]["Local"] = True
         print(f"\n* Local Device is up after soft reset *", flush=True)
-
         print(f"\n--- Pinging remote IP: {remote_ip}")
         if pingFunction.check_access(remote_ip):
             result_dict["Ping Results"]["Remote"] = True
             print(f"\n* Remote Device is up after soft reset *", flush=True)
+
+            print(f"\nRunning 'dmesg' on {local_ip}...", flush=True)
+            try:
+                dmesg_output = ssh_netmiko.runcommand(local_ip, "dmesg")
+                result_dict["dmesg_output"] = dmesg_output.strip().splitlines()
+                print(f"dmesg captured ({len(dmesg_output)} bytes)", flush=True)
+            except Exception as e:
+                error_msg = f"Failed to run dmesg: {str(e)}"
+                result_dict["dmesg_output"] = ["ERROR", error_msg]
+                print(error_msg, flush=True)
+
             result_dict["status"] = "PASS"
         else:
             result_dict["Ping Results"]["Remote"] = False
@@ -28,7 +39,6 @@ def perform_ping_check(local_ip, remote_ip, result_dict):
 
 
 def append_result_to_json(result, filename="iteration_results.json"):
-
     try:
         with open(filename, "r") as f:
             json_data = json.load(f)
@@ -36,12 +46,9 @@ def append_result_to_json(result, filename="iteration_results.json"):
             json_data = {"iterations": []}
     except (FileNotFoundError, json.JSONDecodeError):
         json_data = {"iterations": []}
-
     json_data["iterations"].append(result)
-
     with open(filename, "w") as f:
         json.dump(json_data, f, indent=4)
-
     print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}", flush=True)
 
 
@@ -74,7 +81,8 @@ def test_soft_reset(local_ip, remote_ip, iter, local_ping=None, remote_ping=None
         "Ping Results": {
             "Local": False,
             "Remote": False
-        }
+        },
+        "dmesg_output": []
     }
 
     try:
@@ -86,7 +94,6 @@ def test_soft_reset(local_ip, remote_ip, iter, local_ping=None, remote_ping=None
 
     print("Waiting for network services to reload (up to 15s)...", flush=True)
     wait_for_ping(local_ip, timeout=15)
-
     perform_ping_check(local_ip, remote_ip, test_iteration_result)
     append_result_to_json(test_iteration_result)
 
