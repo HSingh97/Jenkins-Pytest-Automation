@@ -25,13 +25,15 @@ def get_radio_index(radio):
         return {
             "radio_ind": 2,
             "intf": "ath1",
-            "wifi_intf": "wifi1"
+            "wifi_intf": "wifi1",
+            "remote_index":"sua1"
         }
     elif radio == "Radio2":
         return {
             "radio_ind": 3,
             "intf": "ath2",
-            "wifi_intf": "wifi2"
+            "wifi_intf": "wifi2",
+            "remote_index": "sub1"
         }
     else:
         raise ValueError("Invalid radio")

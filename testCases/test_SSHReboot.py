@@ -15,11 +15,11 @@ ADMIN_PASSWORD = "admin"
 
 # Function to perform ping checks on local and remote IPs
 def perform_ping_check(local_ip, remote_ip, result_dict):
-    print(f"--- Pinging local IP: {local_ip}")
+    print(f"--- Pinging local IP: {local_ip}", flush=True)
     # Check if local IP is reachable
     if pingFunction.check_access(local_ip):
         result_dict["Ping Results"]["Local"] = True
-        print(f"--- Pinging remote IP: {remote_ip}")
+        print(f"--- Pinging remote IP: {remote_ip}", flush=True)
         # Check if remote IP is reachable
         if pingFunction.check_access(remote_ip):
             result_dict["Ping Results"]["Remote"] = True
@@ -48,16 +48,16 @@ def append_result_to_json(result, filename="iteration_results.json"):
         json.dump(json_data, f, indent=4)
 
     # Print the result for debugging
-    print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}")
+    print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}", flush=True)
 
 # Test function to perform device reboot and verify functionality
 def test_reboot(local_ip, remote_ip, iter):
     # Print test iteration details
-    print("\n****************************************************")
-    print(f"\nLocal IP Address: {local_ip}")
-    print(f"Remote IP Address: {remote_ip}")
-    print(f"Running Iteration: {iter}")
-    print("****************************************************")
+    print("\n****************************************************", flush=True)
+    print(f"Local IP Address: {local_ip}", flush=True)
+    print(f"Remote IP Address: {remote_ip}", flush=True)
+    print(f"Running Iteration: {iter}", flush=True)
+    print("\n****************************************************", flush=True)
 
     # Initialize result dictionary for this test iteration
     test_iteration_result = {
@@ -77,7 +77,7 @@ def test_reboot(local_ip, remote_ip, iter):
     ssh_netmiko.runcommand(local_ip, "reboot &")
 
     # Wait for device to complete reboot
-    print("Waiting for device to reboot...")
+    print("Waiting for device to reboot...", flush=True)
     time.sleep(180)
 
     # Perform ping checks after reboot
@@ -86,7 +86,7 @@ def test_reboot(local_ip, remote_ip, iter):
     # Check device logs if local ping was successful
     if test_iteration_result["Ping Results"]["Local"]:
         try:
-            print(f"Connecting to {local_ip} as {ADMIN_USERNAME} to check device logs")
+            print(f"Connecting to {local_ip} as {ADMIN_USERNAME} to check device logs", flush=True)
             # Define device connection parameters for Netmiko
             device = {
                 'device_type': 'linux',
@@ -99,7 +99,7 @@ def test_reboot(local_ip, remote_ip, iter):
             logs = conn.send_command("show monitor logs devicelog all")
             conn.disconnect()
 
-            print(f"--- Full logs (first 100 chars): {logs[:100] if logs else 'Empty'}...")
+            print(f"--- Full logs (first 100 chars): {logs[:100] if logs else 'Empty'}...", flush=True)
 
             # Extract first 3 lines after "Device Log" header
             log_lines = logs.splitlines()
@@ -112,7 +112,7 @@ def test_reboot(local_ip, remote_ip, iter):
             else:
                 start_index = None
                 first_three_lines = "Header 'Device Log' not found in logs"
-                print(f"--- Error: {first_three_lines}")
+                print(f"--- Error: {first_three_lines}", flush=True)
 
             if header_found:
                 try:
@@ -120,24 +120,24 @@ def test_reboot(local_ip, remote_ip, iter):
                     first_three_lines = "\n".join(log_lines[start_index:start_index + 3])
                 except IndexError:
                     first_three_lines = "Not enough lines after 'Device Log' header"
-                    print(f"--- Error: {first_three_lines}")
+                    print(f"--- Error: {first_three_lines}", flush=True)
 
-            print(f"--- Retrieved logs (first 3 lines after header): {first_three_lines[:100] if first_three_lines else 'Empty'}...")
+            print(f"--- Retrieved logs (first 3 lines after header): {first_three_lines[:100] if first_three_lines else 'Empty'}...", flush=True)
             test_iteration_result["Device Logs"] = first_three_lines
 
             # Check if reboot was successful based on log content
             if "Device Init, Success" in first_three_lines:
-                print("Soft Reboot is done and device is getting 'Device Init, Success' in Device logs")
+                print("Soft Reboot is done and device is getting 'Device Init, Success' in Device logs", flush=True)
                 # Update status based on ping and log results
                 test_iteration_result["status"] = "PASS" if test_iteration_result["status"] == "PASS" else "PARTIAL"
             else:
-                print("Device Init, Success not found in first 3 lines of logs")
+                print("Device Init, Success not found in first 3 lines of logs", flush=True)
                 test_iteration_result["status"] = "FAIL" if test_iteration_result["status"] != "PASS" else "PARTIAL"
         except Exception as e:
-            print(f"Failed to retrieve device logs: {e}")
+            print(f"Failed to retrieve device logs: {e}", flush=True)
             test_iteration_result["Device Logs"] = f"Error retrieving logs: {str(e)}"
     else:
-        print("Skipping device log check due to failed local ping")
+        print("Skipping device log check due to failed local ping", flush=True)
         test_iteration_result["Device Logs"] = "Skipped due to failed local ping"
 
     # Save test results to JSON file

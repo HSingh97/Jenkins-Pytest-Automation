@@ -29,7 +29,7 @@ def safe_snmp_get(oid_cmd):
     except subprocess.CalledProcessError:
         return "-"
     except Exception as e:
-        print(f"Error running SNMP command: {oid_cmd}\n{e}")
+        print(f"Error running SNMP command: {oid_cmd}\n{e}", flush=True)
         return "-"
 
 
@@ -61,20 +61,20 @@ def get_linkstats(host, radio_ind):
         }
 
         # Print nicely
-        print("\n----------------------------------------------------------------")
-        print("Remote IP\t\tLocal SNR \tRemote SNR\tTx Rate\tRx Rate\tLink Uptime")
-        print("----------------------------------------------------------------")
-        print("\t\t\t\tA1\t   A2 \tA1\t   A2")
-        print("----------------------------------------------------------------")
+        print("\n----------------------------------------------------------------", flush=True)
+        print("Remote IP\t\tLocal SNR \tRemote SNR\tTx Rate\tRx Rate\tLink Uptime", flush=True)
+        print("----------------------------------------------------------------", flush=True)
+        print("\t\t\t\tA1\t   A2 \tA1\t   A2", flush=True)
+        print("----------------------------------------------------------------", flush=True)
         print(
             "{}\t{}\t   {} \t{}\t   {}\t  {}\t  {}  \t{}".format(
                 stats["ip_address"],
                 stats["local_SNR_A1"], stats["local_SNR_A2"],
                 stats["remote_SNR_A1"], stats["remote_SNR_A2"],
-                stats["tx_rate"], stats["rx_rate"], stats["link_uptime"]
+                stats["tx_rate"], stats["rx_rate"], stats["link_uptime"], flush=True
             )
         )
-        print("----------------------------------------------------------------\n")
+        print("----------------------------------------------------------------\n", flush=True)
 
         return stats
 

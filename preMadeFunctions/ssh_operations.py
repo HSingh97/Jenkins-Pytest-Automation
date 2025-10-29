@@ -5,6 +5,7 @@ import subprocess
 import paramiko
 import time
 
+
 def ssh_get(ip, command):
     ssh_client = paramiko.SSHClient()
     ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -14,7 +15,7 @@ def ssh_get(ip, command):
 
     # Read the output of the command
     output = stdout.read().decode('utf-8')
-    print("[DEBUG] SSH GET Command :  {}  ||  Output : {} ".format(command, output))
+    print("[DEBUG] SSH GET Command :  {}  ||  Output : {} ".format(command, output), flush=True)
     ssh_client.close()
     output = output.strip()
 
@@ -42,7 +43,7 @@ def ucidyn_set(ip, command, value):
 
     # make the command syntax
     finalcommand = 'ucidyn set {} {}'.format(command, value)
-    print("[DEBUG] %%%%%% Executing : {} %%%%%%".format(finalcommand))
+    print("[DEBUG] %%%%%% Executing : {} %%%%%%".format(finalcommand), flush=True)
     # execute the final command
     ssh_client.exec_command(finalcommand)
     time.sleep(1)

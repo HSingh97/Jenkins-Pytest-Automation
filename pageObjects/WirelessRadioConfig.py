@@ -86,7 +86,7 @@ class Wireless:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Radio Status
@@ -97,7 +97,7 @@ class Wireless:
             elem.select_by_visible_text(R_radiostatus)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Radio Link Type
@@ -108,7 +108,7 @@ class Wireless:
             elem.select_by_visible_text(R_linktype)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Radio mode
@@ -119,7 +119,7 @@ class Wireless:
             elem.select_by_visible_text(R_radiomode)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Radio SSID
@@ -131,7 +131,7 @@ class Wireless:
             elem.send_keys(R_ssid)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Radio Bandwidth
@@ -142,7 +142,7 @@ class Wireless:
             elem.select_by_visible_text(R_bandwidth)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Enable 6GHz
@@ -152,7 +152,7 @@ class Wireless:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Configuration channel
@@ -163,7 +163,7 @@ class Wireless:
             elem.select_by_visible_text(R_configurechannel)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Active channel
@@ -173,7 +173,7 @@ class Wireless:
             elem = self.driver.find_element_by_xpath(self.radioActiveChannel_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Encryption
@@ -184,7 +184,7 @@ class Wireless:
             elem.select_by_visible_text(R_enc_status)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Key
@@ -196,7 +196,7 @@ class Wireless:
             elem.send_keys(R_enckey)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Network Secret
@@ -208,7 +208,7 @@ class Wireless:
             elem.send_keys(R_encnetsecret)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Distance
@@ -220,7 +220,7 @@ class Wireless:
             elem.send_keys(R_distance)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Maximum SU's
@@ -232,7 +232,7 @@ class Wireless:
             elem.send_keys(R_MaxSUs)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Intra Cell Blocking
@@ -243,7 +243,7 @@ class Wireless:
             elem.select_by_visible_text(R_icb)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # save
@@ -253,7 +253,7 @@ class Wireless:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # note message
@@ -265,7 +265,7 @@ class Wireless:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Tx. Antenna Chain Mask
@@ -276,7 +276,7 @@ class Wireless:
             elem.select_by_visible_text(R_TxChainMask)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Rx. Antenna Chain mask
@@ -287,7 +287,7 @@ class Wireless:
             elem.select_by_visible_text(R_RxChainMask)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Guard Interval
@@ -298,7 +298,7 @@ class Wireless:
             elem.select_by_visible_text(R_GI)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # save
@@ -308,7 +308,7 @@ class Wireless:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Note message
@@ -320,7 +320,7 @@ class Wireless:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # DDRS Status
@@ -331,7 +331,7 @@ class Wireless:
             elem.select_by_visible_text(R_ddrs_status)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Spatial stream
@@ -342,7 +342,7 @@ class Wireless:
             elem.select_by_visible_text(R_spatialstream)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Data Rate
@@ -353,7 +353,7 @@ class Wireless:
             elem.select_by_visible_text(R_datarate)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Transmit Power
@@ -365,7 +365,7 @@ class Wireless:
             elem.send_keys(R_TxPower)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Maximum EIRP
@@ -377,7 +377,7 @@ class Wireless:
             elem.send_keys(R_EIRP)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Integrated Antenna Gain
@@ -387,7 +387,7 @@ class Wireless:
             elem = self.driver.find_element_by_xpath(self.radioIntegratedAntennaGain_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Save
@@ -397,7 +397,7 @@ class Wireless:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # view receive sensitivity table
@@ -409,7 +409,7 @@ class Wireless:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # MACACL status
@@ -420,7 +420,7 @@ class Wireless:
             elem.select_by_visible_text(R_MACACL_status)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # MAC Address
@@ -432,7 +432,7 @@ class Wireless:
             elem.send_keys(R_MACACL_MACaddress)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Add
@@ -442,7 +442,7 @@ class Wireless:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
 
@@ -453,7 +453,7 @@ class Wireless:
             elem = self.driver.find_element_by_xpath(self.radioMACACLtableSN_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # MAC Address
@@ -463,7 +463,7 @@ class Wireless:
             elem = self.driver.find_element_by_xpath(self.radioMACACLtableMACaddress_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Delete
@@ -473,7 +473,7 @@ class Wireless:
             elem = self.driver.find_element_by_xpath(self.radioMACACLtableDelete_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Save
@@ -483,7 +483,7 @@ class Wireless:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # note message
@@ -495,7 +495,7 @@ class Wireless:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # DCS Status
@@ -506,7 +506,7 @@ class Wireless:
             elem.select_by_visible_text(R_DCS_status)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # RTx Threshold
@@ -518,7 +518,7 @@ class Wireless:
             elem.send_keys(R_RTxThreshold)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Background scan
@@ -529,7 +529,7 @@ class Wireless:
             elem.select_by_visible_text(R_BGscanstatus)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Save
@@ -539,7 +539,7 @@ class Wireless:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Shaping
@@ -549,7 +549,7 @@ class Wireless:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Traffic shaping
@@ -560,7 +560,7 @@ class Wireless:
             elem.select_by_visible_text(R_TS_status)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Incoming Traffic Limit
@@ -572,7 +572,7 @@ class Wireless:
             elem.send_keys(R_ITL)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Outgoing Traffic Limit
@@ -584,7 +584,7 @@ class Wireless:
             elem.send_keys(R_OTL)
             time.sleep(2)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # Save
@@ -594,5 +594,5 @@ class Wireless:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass

@@ -16,11 +16,11 @@ driver = setup
 
 # Function to perform ping checks on local and remote IPs
 def perform_ping_check(local_ip, remote_ip, result_dict):
-    print(f"--- Pinging local IP: {local_ip}")
+    print(f"--- Pinging local IP: {local_ip}", flush = True)
     # Check if local IP is reachable
     if pingFunction.check_access(local_ip):
         result_dict["Ping Results"]["Local"] = True
-        print(f"--- Pinging remote IP: {remote_ip}")
+        print(f"--- Pinging remote IP: {remote_ip}", flush = True)
         # Check if remote IP is reachable
         if pingFunction.check_access(remote_ip):
             result_dict["Ping Results"]["Remote"] = True
@@ -49,14 +49,14 @@ def append_result_to_json(result, filename="iteration_results.json"):
         json.dump(json_data, f, indent=4)
 
     # Print the result for debugging
-    print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}")
+    print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}", flush = True)
 
 def test_Upgrade(driver, local_ip, remote_ip,serialPort, iter):
-    print("************************\n")
-    print(f"Local IP    : {local_ip}")
-    print(f"Serial Port : {serialPort}")
-    print(f"Iteration   : {iter}")
-    print("\n************************\n")
+    print("************************\n", flush = True)
+    print(f"Local IP    : {local_ip}", flush = True)
+    print(f"Serial Port : {serialPort}", flush = True)
+    print(f"Iteration   : {iter}", flush = True)
+    print("\n************************\n", flush = True)
 
     # Initialize result dictionary for this test iteration
     test_iteration_result = {
@@ -75,7 +75,7 @@ def test_Upgrade(driver, local_ip, remote_ip,serialPort, iter):
     URL = "http://" + local_ip + "/cgi-bin/luci"
 
     # Start Serial Console logging
-    print(f"--- Starting serial logger on {serialPort} ---")
+    print(f"--- Starting serial logger on {serialPort} ---", flush = True)
     serial_logger.start_logger(serialPort, f"test-{iter}.log")
 
     try:
@@ -93,9 +93,9 @@ def test_Upgrade(driver, local_ip, remote_ip,serialPort, iter):
         output = ssh_operations.ssh_get(local_ip, "ls -ltr /tmp/firmware.bin")
 
         if output == "ls: /tmp/firmware.bin: No such file or directory":
-            print("!!!! FW Upload Failed !!!!")
+            print("!!!! FW Upload Failed !!!!", flush = True)
         else:
-            print("!!!! FW Upload Successful !!!!")
+            print("!!!! FW Upload Successful !!!!", flush = True)
 
         up.clickProceed()
         time.sleep(250)
@@ -107,17 +107,17 @@ def test_Upgrade(driver, local_ip, remote_ip,serialPort, iter):
             if test_iteration_result["Ping Results"]["Remote"]:
                 test_iteration_result["status"] = "PASS"
             else:
-                print("Skipping device log check due to failed remote ping")
+                print("Skipping device log check due to failed remote ping", flush = True)
                 test_iteration_result["Device Logs"] = "Skipped due to failed remote ping"
 
         else:
-            print("Skipping device log check due to failed local ping")
+            print("Skipping device log check due to failed local ping", flush = True)
             test_iteration_result["Device Logs"] = "Skipped due to failed local ping"
 
 
     finally:
         # Stop Serial logging
-        print(f"--- Stopping serial logger on {serialPort} ---")
+        print(f"--- Stopping serial logger on {serialPort} ---", flush = True)
         serial_logger.stop_logger(serialPort)
         # Close the driver window
         append_result_to_json(test_iteration_result)
