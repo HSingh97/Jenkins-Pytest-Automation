@@ -83,7 +83,6 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
     bandwidth_param = "wireless.{}.htmode".format(wifi_intf)
     print("\nConfiguring Bandwidth : {} for Local Device ".format(new_bandwidth))
     snmp_operations.change_bandwidth(local_ip, radio_ind, new_bandwidth)
-    # ssh_operations.ucidyn_set(local_ip, bandwidth_param, new_bandwidth)
 
     if pingFunction.check_access(local_ip):
         print("Able to Access Local Device")
@@ -97,8 +96,6 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
     channel_results = []
     i = 0
     for i, channels in enumerate(channel_list):
-        #if i >= 2:
-        # break
 
         snmp_operations.change_channel(local_ip, radio_ind, channels)
         frequency = (int(channels)*5)+5000
@@ -114,13 +111,13 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
             local_active_channel = int(local_active_raw)
             local_htmode = fetch_ssh_values.fetch_htmode(local_ip, intf)
         except ValueError:
-            print(f"[WARN] Remote active channel fetch failed. Retrying once...")
+            print(f"[WARN] Local active channel fetch failed. Retrying once...")
             local_active_raw = get_snmp_values.fetch_active_channel(local_ip, radio_ind)
             try:
                 local_active_channel = int(local_active_raw)
                 local_htmode = fetch_ssh_values.fetch_htmode(local_ip, intf)
             except ValueError:
-                print(f"[ERROR] Remote active channel invalid: '{local_active_raw}'")
+                print(f"[ERROR] Local active channel invalid: '{local_active_raw}'")
                 local_active_channel = "Null"
                 local_htmode = "Null"
                 print(f"Invalid Local active channel for {formatted_channel}")
@@ -128,8 +125,11 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
         configured_htmode = ssh_operations.ssh_get(local_ip, f"uci get wireless.{wifi_intf}.htmode")
         device_uptime = (param_helpers.get_time("uptime", ssh_operations.ssh_get(local_ip, "cat /proc/uptime | cut -d ' ' -f 1 | cut -d '.' -f 1")))
 
+        # === FIXED: ROBUST REMOTE FETCH ===
         remote_active_channel = "Null"
         remote_htmode = "Null"
+
+        # SNMP: Try once, retry on failure
         try:
             remote_active_raw = get_snmp_values.fetch_active_channel(remote_ip, radio_ind)
             if remote_active_raw.strip() == "":
@@ -149,7 +149,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
                 print(f"[ERROR] Remote SNMP failed permanently: {e2}")
                 remote_active_channel = "Null"
 
-        # Only attempt SSH if pingable
+        # SSH: ONLY if pingable
         if pingFunction.check_access(remote_ip):
             try:
                 remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, intf)
@@ -160,6 +160,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
         else:
             print(f"[INFO] Remote IP {remote_ip} not pingable. Skipping SSH HTMODE fetch.")
             remote_htmode = "Null"
+        # === END FIXED BLOCK ===
 
         status = "PASS" if (expected_channel == local_active_channel == remote_active_channel) else "FAIL"
         print(f"[DEBUG] Expected: {expected_channel}, Local: {local_active_channel}, Remote: {remote_active_channel}")
@@ -195,7 +196,6 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
     else:
         overall_status = "PARTIAL"
 
-    # Compose test result summary
     test_result = {
         "test": "test_channelconnectivity",
         "status": overall_status,
@@ -213,7 +213,6 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
     print("Test Result to append to JSON:")
     print(test_result)
 
-    # Log to custom_results.json
     json_report_file = "custom_results.json"
     try:
         with open(json_report_file, "r") as f:
@@ -232,11 +231,8 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
 
     print("Updated JSON Report")
 
-    # assert test_result["status"] == "PASS"
-
 
 def test_changecountry(local_ip, remote_ip, radio, country):
-    # Assigning country codes for diff Countries
     if country == "US 5GHz All":
         country_code = 5012
     elif country == "US 5GHz Non-DFS":
@@ -253,7 +249,6 @@ def test_changecountry(local_ip, remote_ip, radio, country):
         print("No Country Selected")
         assert False
 
-    # Assigning Index for Radio1 or Radio2
     if radio == "Radio1":
         radio_ind = 2
         intf = "ath1"
