@@ -125,7 +125,6 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
         configured_htmode = ssh_operations.ssh_get(local_ip, f"uci get wireless.{wifi_intf}.htmode")
         device_uptime = (param_helpers.get_time("uptime", ssh_operations.ssh_get(local_ip, "cat /proc/uptime | cut -d ' ' -f 1 | cut -d '.' -f 1")))
 
-        # === FIXED: ROBUST REMOTE FETCH ===
         remote_active_channel = "Null"
         remote_htmode = "Null"
 
@@ -160,7 +159,6 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
         else:
             print(f"[INFO] Remote IP {remote_ip} not pingable. Skipping SSH HTMODE fetch.")
             remote_htmode = "Null"
-        # === END FIXED BLOCK ===
 
         status = "PASS" if (expected_channel == local_active_channel == remote_active_channel) else "FAIL"
         print(f"[DEBUG] Expected: {expected_channel}, Local: {local_active_channel}, Remote: {remote_active_channel}")
