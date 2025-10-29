@@ -106,7 +106,7 @@ def test_reboot(local_ip, remote_ip, iter):
             header_found = False
             for i, line in enumerate(log_lines):
                 if line.strip().lower() == "device log":
-                    start_index = i + 2  # Skip header and separator
+                    start_index = i + 2
                     header_found = True
                     break
             else:
@@ -116,7 +116,6 @@ def test_reboot(local_ip, remote_ip, iter):
 
             if header_found:
                 try:
-                    # Extract the first 3 lines after the header
                     first_three_lines = "\n".join(log_lines[start_index:start_index + 3])
                 except IndexError:
                     first_three_lines = "Not enough lines after 'Device Log' header"

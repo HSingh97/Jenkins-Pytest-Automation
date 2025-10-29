@@ -1,4 +1,3 @@
-# ---------- SSH Reset Script (updated) ----------
 import time
 import warnings
 import pytest
@@ -6,21 +5,18 @@ import json
 import os
 from testCases.conftest import local_ip
 from preMadeFunctions import pingFunction, ssh_netmiko
-from netmiko import ConnectHandler
+from testCases.test_SSHReboot import ADMIN_USERNAME, ADMIN_PASSWORD
 
 USERNAME = "root"
 PASSWORD = "admin"
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "admin"
 
 def perform_ping_check(local_ip, remote_ip, result_dict):
-    """Ping local → remote and fill the result dict."""
     print(f"--- Pinging local IP: {local_ip}", flush=True)
     if pingFunction.check_access(local_ip):
         result_dict["Ping Results"]["Local"] = True
         print(f"\n* Local Device is up after soft reset *", flush=True)
 
-        print(f"\n--- Pinging remote IP: {remote_ip}", flush=True)
+        print(f"\n--- Pinging remote IP: {remote_ip}")
         if pingFunction.check_access(remote_ip):
             result_dict["Ping Results"]["Remote"] = True
             print(f"\n* Remote Device is up after soft reset *", flush=True)
@@ -32,7 +28,7 @@ def perform_ping_check(local_ip, remote_ip, result_dict):
 
 
 def append_result_to_json(result, filename="iteration_results.json"):
-    """Append a single iteration result to the JSON report."""
+
     try:
         with open(filename, "r") as f:
             json_data = json.load(f)
@@ -42,6 +38,7 @@ def append_result_to_json(result, filename="iteration_results.json"):
         json_data = {"iterations": []}
 
     json_data["iterations"].append(result)
+
     with open(filename, "w") as f:
         json.dump(json_data, f, indent=4)
 
@@ -49,7 +46,7 @@ def append_result_to_json(result, filename="iteration_results.json"):
 
 
 def wait_for_ping(ip, timeout=15, interval=3):
-    """Retry ping until success or timeout."""
+    """Retry ping until success or timeout (instead of fixed sleep)."""
     start = time.time()
     while time.time() - start < timeout:
         if pingFunction.check_access(ip):
@@ -61,13 +58,12 @@ def wait_for_ping(ip, timeout=15, interval=3):
     return False
 
 
-def test_soft_reset(local_ip, remote_ip, iter):
+def test_soft_reset(local_ip, remote_ip, iter, local_ping=None, remote_ping=None):
     print("\n****************************************************", flush=True)
-    print(f"Local IP Address: {local_ip}", flush=True)
+    print(f"\nLocal IP Address: {local_ip}", flush=True)
     print(f"Remote IP Address: {remote_ip}", flush=True)
     print(f"Running Iteration: {iter}", flush=True)
     print("****************************************************", flush=True)
-
 
     test_iteration_result = {
         "iteration": iter,
@@ -75,10 +71,11 @@ def test_soft_reset(local_ip, remote_ip, iter):
         "status": "FAIL",
         "Local IP": local_ip,
         "Remote IP": remote_ip,
-        "Ping Results": {"Local": False, "Remote": False},
-        "dmesg": ""
+        "Ping Results": {
+            "Local": False,
+            "Remote": False
+        }
     }
-
 
     try:
         ssh_netmiko.runcommand(local_ip, "/etc/init.d/network reload &")
@@ -91,39 +88,9 @@ def test_soft_reset(local_ip, remote_ip, iter):
     wait_for_ping(local_ip, timeout=15)
 
     perform_ping_check(local_ip, remote_ip, test_iteration_result)
-
-    if test_iteration_result["Ping Results"]["Local"]:
-        try:
-            print(f"Connecting to {local_ip} as {ADMIN_USERNAME} to fetch dmesg", flush=True)
-
-            device = {
-                'device_type': 'linux',
-                'host': local_ip,
-                'username': ADMIN_USERNAME,
-                'password': ADMIN_PASSWORD
-            }
-            conn = ConnectHandler(**device)
-            dmesg_output = conn.send_command("dmesg")
-            conn.disconnect()
-
-            test_iteration_result["dmesg"] = dmesg_output
-            print(f"--- dmesg captured ({len(dmesg_output)} chars)", flush=True)
-
-        except Exception as e:
-            err_msg = f"Error retrieving dmesg: {str(e)}"
-            print(err_msg, flush=True)
-            test_iteration_result["dmesg"] = err_msg
-    else:
-        print("Skipping dmesg because local ping failed", flush=True)
-        test_iteration_result["dmesg"] = "Skipped – local ping failed"
-
-    if test_iteration_result["Ping Results"]["Local"] and test_iteration_result["Ping Results"]["Remote"]:
-        test_iteration_result["status"] = "PASS"
-    elif test_iteration_result["Ping Results"]["Local"]:
-        test_iteration_result["status"] = "PARTIAL"
-
     append_result_to_json(test_iteration_result)
 
+
+# ---------------- Pytest Fixtures ----------------
 def warn(*args, **kwargs):
     pass
-warnings.warn = warn
