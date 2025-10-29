@@ -5,7 +5,7 @@ import pytest
 from testCases.conftest import local_ip
 from preMadeFunctions import pingFunction, ssh_netmiko
 
-USERNAME = "admin"
+USERNAME = "root"
 PASSWORD = "admin"
 
 def rundmesg(ip, timeout=20):
