@@ -7,20 +7,19 @@ import random
 
 
 def perform_ping_check(local_ip, remote_ip, result_dict):
-
-    print(f"--- Pinging local tagged IP: {local_ip}")
+    print(f"--- Pinging local tagged IP: {local_ip}", flush=True)
     if pingFunction.check_access(local_ip):
         result_dict["Tagged Ping Results"]["Local"] = True
-        print(f"--- Pinging remote tagged IP: {remote_ip}")
+        print(f"--- Pinging remote tagged IP: {remote_ip}", flush=True)
         if pingFunction.check_access(remote_ip):
-            print(f"!!! VLAN Mode '{result_dict['vlan']}' Successful !!!")
+            print(f"!!! VLAN Mode '{result_dict['vlan']}' Successful !!!", flush=True)
             result_dict["Tagged Ping Results"]["Remote"] = True
             result_dict["status"] = "PASS"
         else:
-            print(f"!!!### VLAN Mode '{result_dict['vlan']}' FAILED: Remote ping failed ###!!!")
+            print(f"!!!### VLAN Mode '{result_dict['vlan']}' FAILED: Remote ping failed ###!!!", flush=True)
             result_dict["Tagged Ping Results"]["Remote"] = False
     else:
-        print(f"!!!### VLAN Mode '{result_dict['vlan']}' FAILED: Local ping failed ###!!!")
+        print(f"!!!### VLAN Mode '{result_dict['vlan']}' FAILED: Local ping failed ###!!!", flush=True)
         result_dict["Tagged Ping Results"]["Local"] = False
 
 
@@ -41,27 +40,27 @@ def append_result_to_json(result, filename="iteration_results.json"):
     with open(filename, "w") as f:
         json.dump(json_data, f, indent=4)
 
-    print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}")
+    print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}", flush=True)
 
 
 def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remote_interface, local_interface,
               local_pc_mgmt_ip, remote_pc_mgmt_ip):
 
-    print("\n****************************************************")
-    print(f"Local IP Address      : {local_ip}")
-    print(f"Remote IP Address     : {remote_ip}")
-    print(f"Remote PC IP Address  : {remote_pc_ip}")
-    print(f"Local PC IP Address   : {local_pc_ip}")
-    print(f"Radio                 : {radio}")
-    print(f"VLAN Mode             : {vlan}")
-    print(f"Local PC Interface    : {local_interface}")
-    print(f"Remote PC Interface   : {remote_interface}")
-    print(f"Local PC Mgmt IP      : {local_pc_mgmt_ip}")
-    print(f"Remote PC Mgmt IP     : {remote_pc_mgmt_ip}")
-    print("****************************************************")
+    print("\n****************************************************", flush=True)
+    print(f"Local IP Address      : {local_ip}", flush=True)
+    print(f"Remote IP Address     : {remote_ip}", flush=True)
+    print(f"Remote PC IP Address  : {remote_pc_ip}", flush=True)
+    print(f"Local PC IP Address   : {local_pc_ip}", flush=True)
+    print(f"Radio                 : {radio}", flush=True)
+    print(f"VLAN Mode             : {vlan}", flush=True)
+    print(f"Local PC Interface    : {local_interface}", flush=True)
+    print(f"Remote PC Interface   : {remote_interface}", flush=True)
+    print(f"Local PC Mgmt IP      : {local_pc_mgmt_ip}", flush=True)
+    print(f"Remote PC Mgmt IP     : {remote_pc_mgmt_ip}", flush=True)
+    print("****************************************************", flush=True)
 
     for i in range(3):
-        print(f"\n=============== STARTING ITERATION {i + 1}/3 for VLAN Mode: {vlan} ===============")
+        print(f"\n=============== STARTING ITERATION {i + 1}/3 for VLAN Mode: {vlan} ===============", flush=True)
 
         # --- Variables generated for each iteration ---
         ip_subnet = random.randint(5, 254)
@@ -88,9 +87,9 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
         try:
             if vlan == "Transparent":
                 vlan_code = 0
-                print(f"Configuring VLAN Transparent mode on {remote_ip}...")
+                print(f"Configuring VLAN Transparent mode on {remote_ip}...", flush=True)
                 vlan_operations.configureVLAN(vlan_code, remote_ip, 0)
-                print(f"Creating tagged interfaces with VLAN ID {vlan_id}...")
+                print(f"Creating tagged interfaces with VLAN ID {vlan_id}...", flush=True)
                 vlan_operations.createTaggedInterface(remote_pc_mgmt_ip, remote_interface, vlan_id, tagged_remote_IP)
                 vlan_operations.createTaggedInterface(local_pc_mgmt_ip, local_interface, vlan_id, tagged_local_IP)
 
@@ -98,11 +97,11 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
 
             elif vlan == "Access":
                 vlan_code = 1
-                print(f"Configuring VLAN Access mode on {remote_ip} with VLAN ID {vlan_id}...")
+                print(f"Configuring VLAN Access mode on {remote_ip} with VLAN ID {vlan_id}...", flush=True)
                 vlan_operations.configureVLAN(vlan_code, remote_ip, vlan_id)
-                print(f"Assigning untagged IP {tagged_remote_IP} to remote interface...")
+                print(f"Assigning untagged IP {tagged_remote_IP} to remote interface...", flush=True)
                 vlan_operations.ifconfig(remote_pc_mgmt_ip, remote_interface, tagged_remote_IP)
-                print(f"Creating tagged interface on local PC with VLAN ID {vlan_id}...")
+                print(f"Creating tagged interface on local PC with VLAN ID {vlan_id}...", flush=True)
                 vlan_operations.createTaggedInterface(local_pc_mgmt_ip, local_interface, vlan_id, tagged_local_IP)
 
                 perform_ping_check(tagged_local_IP, tagged_remote_IP, test_iteration_result)
@@ -110,9 +109,9 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
             elif vlan == "Trunk":
                 vlan_code = 2
                 test_iteration_result["vlan"] = "Trunk - All"
-                print(f"Configuring VLAN Trunk mode on {remote_ip} allowing VLAN ID {vlan_id}...")
+                print(f"Configuring VLAN Trunk mode on {remote_ip} allowing VLAN ID {vlan_id}...", flush=True)
                 vlan_operations.configureVLAN(vlan_code, remote_ip, vlan_id)
-                print(f"Creating tagged interfaces with VLAN ID {vlan_id}...")
+                print(f"Creating tagged interfaces with VLAN ID {vlan_id}...", flush=True)
                 vlan_operations.createTaggedInterface(remote_pc_mgmt_ip, remote_interface, vlan_id, tagged_remote_IP)
                 vlan_operations.createTaggedInterface(local_pc_mgmt_ip, local_interface, vlan_id, tagged_local_IP)
 
@@ -127,11 +126,11 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
                 test_iteration_result["vlan"] = "Q-in-Q"
                 test_iteration_result["vlanID"] = f"SVLAN: {svlan}, CVLAN: {cvlan}"
 
-                print(f"Configuring VLAN Q-in-Q mode on {remote_ip} with S-VLAN {svlan}...")
+                print(f"Configuring VLAN Q-in-Q mode on {remote_ip} with S-VLAN {svlan}...", flush=True)
                 vlan_operations.configureVLAN(vlan_code, remote_ip, svlan)
-                print(f"Creating C-VLAN tagged interface on remote PC with ID {cvlan}...")
+                print(f"Creating C-VLAN tagged interface on remote PC with ID {cvlan}...", flush=True)
                 vlan_operations.createTaggedInterface(remote_pc_mgmt_ip, remote_interface, cvlan, tagged_remote_IP)
-                print(f"Creating double tagged interface on local PC with S-VLAN {svlan} and C-VLAN {cvlan}...")
+                print(f"Creating double tagged interface on local PC with S-VLAN {svlan} and C-VLAN {cvlan}...", flush=True)
                 vlan_operations.createDoubleTaggedInterface(local_pc_mgmt_ip, local_interface, svlan, cvlan,
                                                             tagged_local_IP)
                 perform_ping_check(tagged_local_IP, tagged_remote_IP, test_iteration_result)
@@ -142,7 +141,7 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
                 vlan_operations.configureVLAN("0", remote_ip, "0")
 
         finally:
-            print("--- Starting cleanup for this iteration ---")
+            print("--- Starting cleanup for this iteration ---", flush=True)
             if vlan == "Transparent":
                 vlan_operations.removeTaggedInterface(remote_pc_mgmt_ip, remote_interface, vlan_id)
                 vlan_operations.removeTaggedInterface(local_pc_mgmt_ip, local_interface, vlan_id)
@@ -155,7 +154,8 @@ def test_vlan(local_ip, remote_ip, radio, vlan, remote_pc_ip, local_pc_ip, remot
                 vlan_operations.removeTaggedInterface(local_pc_mgmt_ip, local_interface, vlan_id)
                 vlan_operations.configureVLAN("0", remote_ip, "0")  # Reset DUT VLAN
 
-            print(f"=============== FINISHED ITERATION {i + 1}/3 ===============\n")
+            print(f"=============== FINISHED ITERATION {i + 1}/3 ===============", flush=True)
+            print("", flush=True)  # Empty line for spacing
 
             append_result_to_json(test_iteration_result)
 

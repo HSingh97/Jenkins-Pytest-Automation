@@ -3,12 +3,9 @@ import warnings
 import pytest
 from pageObjects.HomePage import HomePage
 from testCases.conftest import local_ip
-from utilities.serial_logger import readConfig
 from testCases.configsetup import setup
-from utilities.serial_Logging import *
 from preMadeFunctions import pingFunction
 from preMadeFunctions import accessWeb
-
 
 
 username = "root"
@@ -20,8 +17,8 @@ driver = setup
 
 def test_Reboot(driver, local_ip, remote_ip):
     # serial_logging_start(serial_port, serial_port_log)
-    print(f"Local IP Address: {local_ip}")
-    print(f"Remote IP Address: {remote_ip}")
+    print(f"Local IP Address: {local_ip}", flush=True)
+    print(f"Remote IP Address: {remote_ip}", flush=True)
     URL = "http://" + local_ip + "/cgi-bin/luci"
 
     accessWeb.access_and_login(driver, URL, "root", "admin")
@@ -40,13 +37,11 @@ def test_Reboot(driver, local_ip, remote_ip):
             time.sleep(3)
 
         else:
-            print("Reachable")
+            print("Reachable", flush=True)
             break
-
 
     if output != 1:
         assert False
-
     else:
         assert True
 

@@ -11,26 +11,24 @@ import subprocess
 import json
 
 from preMadeFunctions.param_helpers import get_radio_index
-from utilities.serial_logger import readConfig
-from utilities.serial_Logging import *
-from preMadeFunctions import pingFunction, get_linkstats, snmp_operations, ssh_operations,execute_ssh_command
+from preMadeFunctions import pingFunction, get_linkstats, snmp_operations, ssh_operations, execute_ssh_command
 from preMadeFunctions import param_helpers
 
 
 def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traffic_dir, remote_pc_ip, bandwidth, sleep):
 
-    print("**************** Input Params **********************\n")
+    print("**************** Input Params **********************\n", flush=True)
 
-    print(f"Selected Radio          : {radio}")
-    print(f"Local IP Address        : {local_ip}")
-    print(f"Remote IP Address       : {remote_ip}")
-    print(f"Remote PC IP Address    : {remote_pc_ip}")
-    print(f"Selected Traffic Type   : {traffic_type}")
-    print(f"Selected Direction      : {traffic_dir}")
-    print(f"Selected Bandwidth      : {bandwidth}")
-    print(f"Selected Data Rate      : {mcs_rate}")
+    print(f"Selected Radio          : {radio}", flush=True)
+    print(f"Local IP Address        : {local_ip}", flush=True)
+    print(f"Remote IP Address       : {remote_ip}", flush=True)
+    print(f"Remote PC IP Address    : {remote_pc_ip}", flush=True)
+    print(f"Selected Traffic Type   : {traffic_type}", flush=True)
+    print(f"Selected Direction      : {traffic_dir}", flush=True)
+    print(f"Selected Bandwidth      : {bandwidth}", flush=True)
+    print(f"Selected Data Rate      : {mcs_rate}", flush=True)
 
-    print("\n****************************************************")
+    print("\n****************************************************", flush=True)
 
     local_ping = pingFunction.check_access(local_ip)
     remote_ping = pingFunction.check_access(remote_ip) if local_ping else False
@@ -55,11 +53,11 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
         execute_ssh_command.perform_operation(remote_pc_ip, "root", "senao1234#", "iperf3 -s -i0 &")
         time.sleep(1)
     else:
-        print("[DEBUG] !!!! Unable to SSH remote devive !!!!")
+        print("[DEBUG] !!!! Unable to SSH remote device !!!!", flush=True)
 
     for direction in traffic_dir.split(','):
 
-        print("Direction : ".format(direction))
+        print("Direction : {}".format(direction), flush=True)
         if pingFunction.check_access(local_ip):
             if pingFunction.check_access(remote_ip):
                 direction_argument = None
@@ -73,17 +71,17 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
                 elif direction == "downlink":
                     direction_argument = "-R"
                 else:
-                    print("❌ Invalid direction selected. Choose from: uplink, downlink, bi-di")
+                    print("Invalid direction selected. Choose from: uplink, downlink, bi-di", flush=True)
                     sys.exit(1)
 
                 cmd = f"iperf3 -c {remote_pc_ip} -i0 {direction_argument} {traffic_type_argument} -t {sleep} -f m -b 0".strip()
-                print("iPerf3 Command : {}".format(cmd))
+                print("iPerf3 Command : {}".format(cmd), flush=True)
 
                 try:
                     if direction == "bi-di":
-                        print("[DEBUG] ---- Testing Bi-Di ----")
+                        print("[DEBUG] ---- Testing Bi-Di ----", flush=True)
                         output = subprocess.check_output(cmd, shell=True, universal_newlines=True)
-                        print(output)
+                        print(output, flush=True)
 
                         tx_throughput = 0.0
                         rx_throughput = 0.0
@@ -102,14 +100,14 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
                             if throughput_mbps > 0:
                                 status = "PASS"
                         except Exception as e:
-                            print(f"❌ Exception while parsing BiDi throughput: {e}")
+                            print(f"Exception while parsing BiDi throughput: {e}", flush=True)
                             throughput_mbps = 0.0
                             status = "FAIL"
 
                     else:
-                        print(f"[DEBUG] ---- Testing {direction} ----")
+                        print(f"[DEBUG] ---- Testing {direction} ----", flush=True)
                         output = subprocess.check_output(cmd, shell=True, universal_newlines=True)
-                        print(output)
+                        print(output, flush=True)
 
                         throughput_mbps = 0.0
                         for line in output.splitlines():
@@ -118,17 +116,17 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
                                     throughput_mbps = float(line.split()[6])
                                     break
                                 except (IndexError, ValueError):
-                                    print("❌ Failed to parse throughput")
+                                    print("Failed to parse throughput", flush=True)
                                     throughput_mbps = 0.0
                                     break
                         status = "PASS" if throughput_mbps > 0 else "FAIL"
 
                 except subprocess.CalledProcessError as e:
-                    print(f"❌ iPerf3 command failed:\n{e.output}")
+                    print(f"iPerf3 command failed:\n{e.output}", flush=True)
                     throughput_mbps = 0.0
                     status = "FAIL"
 
-                # ✅ Append properly parsed values to result
+                # Append properly parsed values to result
                 result = {
                     "LocalPing": local_ping,
                     "RemotePing": remote_ping,
@@ -146,17 +144,17 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
                     result["tx_value"] = round(tx_throughput, 2)
                     result["rx_value"] = round(rx_throughput, 2)
 
-                print(result)
+                print(result, flush=True)
 
                 throughput_results.append(result)
 
             else:
-                print("Unable to access {}".format(remote_ip))
+                print("Unable to access {}".format(remote_ip), flush=True)
 
         else:
-            print("Unable to access {}".format(local_ip))
+            print("Unable to access {}".format(local_ip), flush=True)
 
-    print("Final Throughput Results:")
+    print("Final Throughput Results:", flush=True)
 
     if all(c["status"] == "PASS" for c in throughput_results):
         overall_status = "PASS"
@@ -172,15 +170,15 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
         "Radio": radio,
         "Local IP": local_ip,
         "Remote IP": remote_ip,
-        "results_direction" : throughput_results,
+        "results_direction": throughput_results,
         "Ping Results": {
             "Local": pingFunction.check_access(local_ip),
             "Remote": pingFunction.check_access(remote_ip)
         }
     }
 
-    print("Test Result to append to JSON:")
-    print(test_result)
+    print("Test Result to append to JSON:", flush=True)
+    print(test_result, flush=True)
 
     get_linkstats.get_linkstats(local_ip, get_radio_index(radio)["radio_ind"])
     # Log to iteration_results.json
@@ -201,7 +199,7 @@ def test_throughputtest(radio, local_ip, remote_ip, mcs_rate, traffic_type, traf
     with open(json_report_file, "w") as f:
         json.dump(json_data, f, indent=4)
 
-    print("Updated JSON Report")
+    print("Updated JSON Report", flush=True)
 
     # kill server
     execute_ssh_command.perform_operation(remote_pc_ip, "root", "senao1234#", "killall iperf3")
@@ -217,14 +215,14 @@ def test_changebandwidth(local_ip, remote_ip, radio, bandwidth):
         new_bandwidth = bandwidth
 
     if pingFunction.check_access(local_ip):
-        print("\nConfiguring Bandwidth : {} for {} ".format(new_bandwidth, local_ip))
+        print("\nConfiguring Bandwidth : {} for {} ".format(new_bandwidth, local_ip), flush=True)
         snmp_operations.change_bandwidth(local_ip, get_radio_index(radio)["radio_ind"], new_bandwidth)
 
-        print("\nSetting Channel : {} for {} ".format('124', local_ip))
+        print("\nSetting Channel : {} for {} ".format('124', local_ip), flush=True)
         snmp_operations.change_channel(local_ip, get_radio_index(radio)["radio_ind"], "124")
 
     else:
-        print("!!!! Device : {} Not Reachable !!!!".format(local_ip))
+        print("!!!! Device : {} Not Reachable !!!!".format(local_ip), flush=True)
 
 
 def test_changemcs(local_ip, remote_ip, radio, mcs_rate):
@@ -236,35 +234,35 @@ def test_changemcs(local_ip, remote_ip, radio, mcs_rate):
 
     if pingFunction.check_access(local_ip):
         if pingFunction.check_access(remote_ip):
-            print("\nConfiguring Data Rate : {} for {} ".format(mcs, remote_ip))
+            print("\nConfiguring Data Rate : {} for {} ".format(mcs, remote_ip), flush=True)
             snmp_operations.change_ddrs_rate(remote_ip, get_radio_index(radio)["radio_ind"], mcs)
 
-            print("\nConfiguring Data Rate : {} for {} ".format(mcs, local_ip))
+            print("\nConfiguring Data Rate : {} for {} ".format(mcs, local_ip), flush=True)
             snmp_operations.change_ddrs_rate(local_ip, get_radio_index(radio)["radio_ind"], mcs)
         else:
-            print("!!!! Device : {} Not Reachable !!!!".format(remote_ip))
+            print("!!!! Device : {} Not Reachable !!!!".format(remote_ip), flush=True)
     else:
-        print("!!!! Device : {} Not Reachable !!!!".format(local_ip))
+        print("!!!! Device : {} Not Reachable !!!!".format(local_ip), flush=True)
+
 
 def test_changelinktype(local_ip, remote_ip, radio, link_type):
 
     link_type = str(link_type)
-    print(link_type)
+    print(link_type, flush=True)
     if pingFunction.check_access(local_ip):
         if pingFunction.check_access(remote_ip):
-            print("\nConfiguring Link Type : {} for {} ".format(link_type, remote_ip))
+            print("\nConfiguring Link Type : {} for {} ".format(link_type, remote_ip), flush=True)
             snmp_operations.change_linktype(remote_ip, get_radio_index(radio)["radio_ind"], link_type)
 
-            print("\nConfiguring Link Type : {} for {} ".format(link_type, local_ip))
+            print("\nConfiguring Link Type : {} for {} ".format(link_type, local_ip), flush=True)
             snmp_operations.change_linktype(local_ip, get_radio_index(radio)["radio_ind"], link_type)
         else:
-            print("!!!! Device : {} Not Reachable !!!!".format(remote_ip))
+            print("!!!! Device : {} Not Reachable !!!!".format(remote_ip), flush=True)
     else:
-        print("!!!! Device : {} Not Reachable !!!!".format(local_ip))
+        print("!!!! Device : {} Not Reachable !!!!".format(local_ip), flush=True)
 
 
 def warn(*args, **kwargs):
     pass
-
 
 warnings.warn = warn

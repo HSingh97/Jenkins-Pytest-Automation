@@ -20,7 +20,7 @@ class UpgradePage:
     def __init__(self, driver):
         self.driver = driver
         self.wait = WebDriverWait(self.driver, 20)
-        print(f"Using firmware file: {self.firmware_path}")
+        print(f"Using firmware file: {self.firmware_path}", flush=True)
 
     def selectImageFile(self):
         try:
@@ -30,7 +30,7 @@ class UpgradePage:
             elem.send_keys(self.firmware_path)
             time.sleep(1)
         except (NoSuchElementException, TimeoutException):
-            print("No Such Element 'Choose File' or it timed out.")
+            print("No Such Element 'Choose File' or it timed out.", flush=True)
             pass
 
     def clickUpgrade(self):
@@ -41,7 +41,7 @@ class UpgradePage:
             elem.click()
             time.sleep(1)
         except (NoSuchElementException, TimeoutException):
-            print("No Such Element 'Upgrade Button' or it timed out.")
+            print("No Such Element 'Upgrade Button' or it timed out.", flush=True)
             self.driver.save_screenshot("debug_upgrade_button_fail.png")
             raise
 
@@ -54,5 +54,5 @@ class UpgradePage:
             elem.click()
             time.sleep(1)
         except (NoSuchElementException, TimeoutException):
-            print("No Such Element 'Proceed Button' or it timed out.")
+            print("No Such Element 'Proceed Button' or it timed out.", flush=True)
             pass

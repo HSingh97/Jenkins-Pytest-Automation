@@ -17,7 +17,7 @@ def perform_operation(ip, username, password, cmd):
 
     if command.startswith("/etc/init.d"):
         time.sleep(60)
-        print("Reloading Configuration")
+        print("Reloading Configuration", flush=True)
     else:
         time.sleep(3)
 

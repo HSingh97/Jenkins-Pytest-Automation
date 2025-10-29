@@ -11,12 +11,12 @@ def test_command(local_ip, remote_ip, command, username, password, sleep, radio,
     check_bw = str(check_bw).lower() == "true"
     check_rates = str(check_rates).lower() == "true"
 
-    print(f"Local IP Address: {local_ip}")
-    print(f"Remote IP Address: {remote_ip}")
-    print(f"Command: {command}")
-    print(f"Radio: {radio}")
-    print(f"Username: {username}")
-    print(f"Password: {password}")
+    print(f"Local IP Address: {local_ip}", flush=True)
+    print(f"Remote IP Address: {remote_ip}", flush=True)
+    print(f"Command: {command}", flush=True)
+    print(f"Radio: {radio}", flush=True)
+    print(f"Username: {username}", flush=True)
+    print(f"Password: {password}", flush=True)
 
     # Execute SSH Command
     execute_ssh_command.perform_operation(local_ip, username, password, command)
@@ -44,7 +44,7 @@ def test_command(local_ip, remote_ip, command, username, password, sleep, radio,
 
         if pingFunction.check_access(remote_ip):
             test_iteration_result["Ping Results"]["Remote"] = True
-            print("Able to Access Remote Device")
+            print("Able to Access Remote Device", flush=True)
 
             if radio == "Radio1":
                 intf = "ath1"
@@ -56,19 +56,19 @@ def test_command(local_ip, remote_ip, command, username, password, sleep, radio,
                 local_htmode = fetch_ssh_values.fetch_htmode(local_ip, intf)
                 remote_htmode = fetch_ssh_values.fetch_htmode(remote_ip, intf)
 
-                print("@@@@@@@@@@@@@@@@@@@@@@@@@@@\n")
-                print(f"Local HT Mode  : {local_htmode}\n")
-                print(f"Remote HT Mode : {remote_htmode}\n")
-                print("@@@@@@@@@@@@@@@@@@@@@@@@@@@\n")
+                print("@@@@@@@@@@@@@@@@@@@@@@@@@@@", flush=True)
+                print(f"Local HT Mode  : {local_htmode}", flush=True)
+                print(f"Remote HT Mode : {remote_htmode}", flush=True)
+                print("@@@@@@@@@@@@@@@@@@@@@@@@@@@", flush=True)
 
                 test_iteration_result["HT Mode"]["Local"] = local_htmode
                 test_iteration_result["HT Mode"]["Remote"] = remote_htmode
 
                 if local_htmode == remote_htmode:
-                    print("HT MODE matching\n")
+                    print("HT MODE matching", flush=True)
                     test_iteration_result["HT Mode"]["Match"] = True
                 else:
-                    print("HT MODE not matching\n")
+                    print("HT MODE not matching", flush=True)
                     test_iteration_result["HT Mode"]["Match"] = False
 
             # Fetch Data Rate if check_rates is enabled
@@ -76,25 +76,25 @@ def test_command(local_ip, remote_ip, command, username, password, sleep, radio,
                 local_rate = fetch_ssh_values.fetch_datarate(local_ip, intf, "tx")
                 remote_rate = fetch_ssh_values.fetch_datarate(remote_ip, intf, "rx")
 
-                print(f"Local Data Rate: {local_rate}")
-                print(f"Remote Data Rate: {remote_rate}")
+                print(f"Local Data Rate: {local_rate}", flush=True)
+                print(f"Remote Data Rate: {remote_rate}", flush=True)
 
                 test_iteration_result["Data Rate"]["Local"] = local_rate
                 test_iteration_result["Data Rate"]["Remote"] = remote_rate
 
                 if local_rate == remote_rate:
-                    print("Data Rate matching\n")
+                    print("Data Rate matching", flush=True)
                     test_iteration_result["Data Rate"]["Match"] = True
                 else:
-                    print("Data Rate not matching\n")
+                    print("Data Rate not matching", flush=True)
                     test_iteration_result["Data Rate"]["Match"] = False
 
             test_iteration_result["status"] = "PASS"
         else:
-            print("Unable to access Remote Device")
+            print("Unable to access Remote Device", flush=True)
 
     else:
-        print("Unable to access Local Device")
+        print("Unable to access Local Device", flush=True)
 
     json_report_file = "iteration_results.json"
 
@@ -119,7 +119,7 @@ def test_command(local_ip, remote_ip, command, username, password, sleep, radio,
     with open(json_report_file, "w") as f:
         json.dump(json_data, f, indent=4)
 
-    print(f"Updated JSON Report: {json_data}")
+    print(f"Updated JSON Report: {json_data}", flush=True)
 
     # Assert test result
     assert test_iteration_result["status"] == "PASS"

@@ -20,7 +20,7 @@ class ResetPage:
             self.driver.find_element_by_xpath(self.resetPage_xpath).click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
 
     def clickProceed(self):
         try:
@@ -28,7 +28,7 @@ class ResetPage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
 
     def clickSystem(self):
         try:
@@ -36,7 +36,7 @@ class ResetPage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
 
     def clickNetwork(self):
         try:
@@ -44,7 +44,7 @@ class ResetPage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
 
     def clickR1(self):
         try:
@@ -52,7 +52,7 @@ class ResetPage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
 
     def clickR2(self):
         try:
@@ -60,7 +60,7 @@ class ResetPage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
 
     def acceptPopUp(self):
         try:

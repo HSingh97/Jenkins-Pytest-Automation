@@ -62,7 +62,7 @@ class StatsPage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickDisconnect(self):
@@ -71,7 +71,7 @@ class StatsPage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getIndex(self):
@@ -81,7 +81,7 @@ class StatsPage:
             output = elem.text
             return output
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getSysname(self):
@@ -91,7 +91,7 @@ class StatsPage:
             output = elem.text
             return output
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getIPaddr(self):
@@ -101,7 +101,7 @@ class StatsPage:
             output = elem.text
             return output
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getUptime(self):
@@ -111,7 +111,7 @@ class StatsPage:
             output = elem.text
             return output
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getDistance(self):
@@ -121,7 +121,7 @@ class StatsPage:
             output = elem.text
             return output
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getLocalSNRA1(self):
@@ -131,7 +131,7 @@ class StatsPage:
             output = elem.text
             return output
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getLocalSNRA2(self):
@@ -141,7 +141,7 @@ class StatsPage:
             output = elem.text
             return output
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getRemoteSNRA1(self):
@@ -151,7 +151,7 @@ class StatsPage:
             output = elem.text
             return output
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getRemoteSNRA2(self):
@@ -161,7 +161,7 @@ class StatsPage:
             output = elem.text
             return output
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getTxRate(self):
@@ -171,7 +171,7 @@ class StatsPage:
             output = elem.text
             return output
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getRxRate(self):
@@ -181,7 +181,7 @@ class StatsPage:
             output = elem.text
             return output
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getTxStats(self):
@@ -191,7 +191,7 @@ class StatsPage:
             output = elem.text
             return output
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getRxStats(self):
@@ -201,7 +201,7 @@ class StatsPage:
             output = elem.text
             return output
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
 
@@ -212,7 +212,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.local_ip_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getRemoteIP(self):
@@ -221,7 +221,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.remote_ip_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
 
@@ -231,7 +231,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.local_mac_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
 
@@ -242,7 +242,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.remote_mac_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
 
@@ -252,7 +252,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.local_sysname_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getRemoteSysname(self):
@@ -261,7 +261,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.remote_sysname_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getLocalGPS(self):
@@ -270,7 +270,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.local_gps_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getRemoteGPS(self):
@@ -279,7 +279,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.remote_gps_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getLocalSignalA1(self):
@@ -288,7 +288,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.local_signal_A1_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getRemoteSignalA1(self):
@@ -297,7 +297,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.remote_signal_A1_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getLocalSignalA2(self):
@@ -306,7 +306,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.local_signal_A2_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getRemoteSignalA2(self):
@@ -315,7 +315,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.remote_signal_A2_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getLocalNoise(self):
@@ -324,7 +324,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.local_noise_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getRemoteNoise(self):
@@ -333,7 +333,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.remote_noise_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getLocalTxPower(self):
@@ -342,7 +342,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.local_txpower_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getRemoteTxPower(self):
@@ -351,7 +351,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.remote_txpower_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getLocalTotalTxPackets(self):
@@ -360,7 +360,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.local_total_txpackets_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getRemoteTotalTxPackets(self):
@@ -369,7 +369,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.remote_total_txpackets_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getLocalTotalRxPackets(self):
@@ -378,7 +378,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.local_total_rxpackets_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getRemoteTotalRxPackets(self):
@@ -387,7 +387,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.remote_total_rxpackets_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getLocalRetries(self):
@@ -396,7 +396,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.local_retries_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getRemoteRetries(self):
@@ -405,7 +405,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.remote_retries_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getLocalDropped(self):
@@ -414,7 +414,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.local_dropped_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getRemoteDropped(self):
@@ -423,7 +423,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.remote_dropped_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getLocalRTx(self):
@@ -432,7 +432,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.local_rtx_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getRemoteRTx(self):
@@ -441,7 +441,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.remote_rtx_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def ClickClear(self):
@@ -451,7 +451,7 @@ class StatsPage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
 
@@ -461,7 +461,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.macaddress_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def getlinkID(self):
@@ -470,7 +470,7 @@ class StatsPage:
             elem = self.driver.find_element_by_xpath(self.linkid_xpath)
             return elem.text
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # def getLocalA1(self):
@@ -479,7 +479,7 @@ class StatsPage:
     #         elem = self.driver.find_element_by_xpath(self.localsignal_A1_xpath)
     #         return elem.text
     #     except NoSuchElementException:
-    #         print("No Such Element Found")
+    #         print("No Such Element Found", flush=True)
     #         pass
     #
     # def getLocalA2(self):
@@ -488,7 +488,7 @@ class StatsPage:
     #         elem = self.driver.find_element_by_xpath(self.localsignal_A2_xpath)
     #         return elem.text
     #     except NoSuchElementException:
-    #         print("No Such Element Found")
+    #         print("No Such Element Found", flush=True)
     #         pass
     #
     # def getRemoteA1(self):
@@ -497,7 +497,7 @@ class StatsPage:
     #         elem = self.driver.find_element_by_xpath(self.remotesignal_A1_xpath)
     #         return elem.text
     #     except NoSuchElementException:
-    #         print("No Such Element Found")
+    #         print("No Such Element Found", flush=True)
     #         pass
     #
     # def getRemoteA2(self):
@@ -506,7 +506,7 @@ class StatsPage:
     #         elem = self.driver.find_element_by_xpath(self.remotesignal_A2_xpath)
     #         return elem.text
     #     except NoSuchElementException:
-    #         print("No Such Element Found")
+    #         print("No Such Element Found", flush=True)
     #         pass
     #
     # def getLocalRTX(self):
@@ -515,7 +515,7 @@ class StatsPage:
     #         elem = self.driver.find_element_by_xpath(self.local_rtx_xpath)
     #         return elem.text
     #     except NoSuchElementException:
-    #         print("No Such Element Found")
+    #         print("No Such Element Found", flush=True)
     #         pass
     #
     # def getRemoteRTX(self):
@@ -524,7 +524,7 @@ class StatsPage:
     #         elem = self.driver.find_element_by_xpath(self.remote_rtx_xpath)
     #         return elem.text
     #     except NoSuchElementException:
-    #         print("No Such Element Found")
+    #         print("No Such Element Found", flush=True)
     #         pass
     #
     # def getLocalDropped(self):
@@ -533,7 +533,7 @@ class StatsPage:
     #         elem = self.driver.find_element_by_xpath(self.dropped_local_xpath)
     #         return elem.text
     #     except NoSuchElementException:
-    #         print("No Such Element Found")
+    #         print("No Such Element Found", flush=True)
     #         pass
     #
     # def getRemoteDropped(self):
@@ -542,7 +542,7 @@ class StatsPage:
     #         elem = self.driver.find_element_by_xpath(self.dropped_remote_xpath)
     #         return elem.text
     #     except NoSuchElementException:
-    #         print("No Such Element Found")
+    #         print("No Such Element Found", flush=True)
     #         pass
     #
     # def getLocalRetries(self):
@@ -551,7 +551,7 @@ class StatsPage:
     #         elem = self.driver.find_element_by_xpath(self.local_retries_xpath)
     #         return elem.text
     #     except NoSuchElementException:
-    #         print("No Such Element Found")
+    #         print("No Such Element Found", flush=True)
     #         pass
     #
     # def getRemoteRetries(self):
@@ -560,5 +560,5 @@ class StatsPage:
     #         elem = self.driver.find_element_by_xpath(self.remote_retries_xpath)
     #         return elem.text
     #     except NoSuchElementException:
-    #         print("No Such Element Found")
+    #         print("No Such Element Found", flush=True)
     #         pass

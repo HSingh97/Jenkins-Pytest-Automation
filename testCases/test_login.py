@@ -16,7 +16,7 @@ driver = setup
 
 def test_HomePageTitle(driver, local_ip):
 
-    print(f"Local IP Address: {local_ip}")
+    print(f"Local IP Address: {local_ip}", flush=True)
 
     URL = "http://" + local_ip + "/cgi-bin/luci"
 
@@ -29,15 +29,15 @@ def test_HomePageTitle(driver, local_ip):
         driver.save_screenshot("Screenshots\\" + current_title + ".png")
 
     else:
-        driver.save_screenshot("Screenshots\\"+"test_homePageTitle.png")
+        driver.save_screenshot("Screenshots\\" + "test_homePageTitle.png", flush=True)
         driver.close()
         assert False
 
 
 def test_Login(driver, local_ip, remote_ip):
 
-    print(f"Local IP Address: {local_ip}")
-    print(f"Remote IP Address: {remote_ip}")
+    print(f"Local IP Address: {local_ip}", flush=True)
+    print(f"Remote IP Address: {remote_ip}", flush=True)
     URL = "http://" + local_ip + "/cgi-bin/luci"
 
     accessWeb.access_and_login(driver, URL, username, password)
@@ -48,12 +48,12 @@ def test_Login(driver, local_ip, remote_ip):
         time.sleep(2)
         driver.save_screenshot("Screenshots\\" + current_title + ".png")
         driver.close()
-        print("hi")
+        print("hi", flush=True)
 
     else:
         driver.save_screenshot("Screenshots\\" + "test_homePageTitle.png")
         driver.close()
-        print("bye")
+        print("bye", flush=True)
         assert False
 
 

@@ -6,6 +6,7 @@ from netmiko import ConnectHandler
 from preMadeFunctions.param_helpers import get_radio_index
 from preMadeFunctions import pingFunction
 
+
 def runcommand(ip, cmd, return_output=False):
     try:
         connection = ConnectHandler(
@@ -20,29 +21,30 @@ def runcommand(ip, cmd, return_output=False):
         if return_output:
             return output.strip()
         else:
-            print(output)
+            print(output, flush=True)
             return None
     except Exception as e:
-        print(f"SSH command failed: {e}")
+        print(f"SSH command failed: {e}", flush=True)
         if return_output:
             return ""
         raise
 
 
 def perform_ping_check(local_ip, remote_ip, result_dict):
-    print(f"\n--- Pinging local IP: {local_ip}")
+    print(f"\n--- Pinging local IP: {local_ip}", flush=True)
     if pingFunction.check_access(local_ip):
         result_dict["Ping Results"]["Local"] = True
-        print("\n* Local Device is up *")
-        print(f"\n--- Pinging remote IP: {remote_ip}")
+        print("\n* Local Device is up *", flush=True)
+        print(f"\n--- Pinging remote IP: {remote_ip}", flush=True)
         if pingFunction.check_access(remote_ip):
             result_dict["Ping Results"]["Remote"] = True
-            print("\n* Remote Device is up *")
+            print("\n* Remote Device is up *", flush=True)
             result_dict["status"] = "PASS"
         else:
             result_dict["Ping Results"]["Remote"] = False
     else:
         result_dict["Ping Results"]["Local"] = False
+
 
 def append_result_to_json(result, filename="iteration_results.json"):
     try:
@@ -55,27 +57,29 @@ def append_result_to_json(result, filename="iteration_results.json"):
     data["iterations"].append(result)
     with open(filename, "w") as f:
         json.dump(data, f, indent=4)
-    print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}")
+    print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}", flush=True)
+
 
 def wait_for_ping(ip, timeout=15, interval=3):
     start = time.time()
     while time.time() - start < timeout:
         if pingFunction.check_access(ip):
-            print(f"{ip} is reachable")
+            print(f"{ip} is reachable", flush=True)
             return True
-        print(f"Waiting for {ip} to respond...")
+        print(f"Waiting for {ip} to respond...", flush=True)
         time.sleep(interval)
-    print(f"Timeout: {ip} not reachable after {timeout} seconds")
+    print(f"Timeout: {ip} not reachable after {timeout} seconds", flush=True)
     return False
 
+
 def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
-    print("\n" + "*" * 52)
-    print(f"Local IP Address : {local_ip}")
-    print(f"Remote IP Address : {remote_ip}")
-    print(f"Model : {model}")
-    print(f"Radio : {radio}")
-    print(f"Running Iteration: {iter}")
-    print("*" * 52)
+    print("\n" + "*" * 52, flush=True)
+    print(f"Local IP Address : {local_ip}", flush=True)
+    print(f"Remote IP Address : {remote_ip}", flush=True)
+    print(f"Model : {model}", flush=True)
+    print(f"Radio : {radio}", flush=True)
+    print(f"Running Iteration: {iter}", flush=True)
+    print("*" * 52, flush=True)
 
     result = {
         "iteration": iter,
@@ -86,7 +90,7 @@ def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
         "Ping Results": {"Local": False, "Remote": False},
     }
 
-    print(f"get_radio_index('{radio}') returned: {get_radio_index(radio)}")
+    print(f"get_radio_index('{radio}') returned: {get_radio_index(radio)}", flush=True)
 
     try:
         radio_index_dict = get_radio_index(radio)
@@ -102,16 +106,16 @@ def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
 
         cmd = f"cat /sys/class/kwn/{kwn_intf}/statistics/mac"
         remote_mac = runcommand(local_ip, cmd, return_output=True)
-        print(f"MAC from {cmd}: {remote_mac}")
+        print(f"MAC from {cmd}: {remote_mac}", flush=True)
 
         if not remote_mac or len(remote_mac.split(':')) != 6:
             raise ValueError(f"Invalid MAC: '{remote_mac}'")
 
         remote_mac = remote_mac.lower()
-        print(f"Remote MAC detected: {remote_mac}")
+        print(f"Remote MAC detected: {remote_mac}", flush=True)
 
     except Exception as e:
-        print(f"MAC fetch failed: {e}")
+        print(f"MAC fetch failed: {e}", flush=True)
         result["notes"] = f"Failed to get remote MAC: {str(e)}"
         append_result_to_json(result)
         pytest.fail("Could not obtain remote MAC address")
@@ -119,12 +123,12 @@ def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
     kick_cmd = f"cfg80211tool {interface} kickmac {remote_mac}"
     try:
         runcommand(local_ip, kick_cmd)
-        print(f"Kick command sent: {kick_cmd}")
+        print(f"Kick command sent: {kick_cmd}", flush=True)
         time.sleep(2)
     except Exception as e:
-        print(f"SSH broke (expected): {e}")
+        print(f"SSH broke (expected): {e}", flush=True)
 
-    print("Waiting for local services to reload")
+    print("Waiting for local services to reload", flush=True)
     wait_for_ping(local_ip, timeout=15)
     perform_ping_check(local_ip, remote_ip, result)
     append_result_to_json(result)

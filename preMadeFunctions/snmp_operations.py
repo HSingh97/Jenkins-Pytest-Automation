@@ -47,7 +47,7 @@ def get_snmp_value(host, oid):
 
 
 def change_ddrs_rate(host, radio_ind, mcs_rate):
-    print("[DEBUG] MCS Rate : {}".format(mcs_rate))
+    print("[DEBUG] MCS Rate : {}".format(mcs_rate), flush=True)
 
     # OIDs
     ddrs_status_oid = f".1.3.6.1.4.1.52619.1.1.1.2.1.3.{radio_ind}.1"
@@ -61,12 +61,12 @@ def change_ddrs_rate(host, radio_ind, mcs_rate):
     current_mcs_rate = get_snmp_value(host, mcs_rate_oid)
 
     if mcs_rate == 24:
-        print("[DEBUG] Configuring DDRS Status : Enable")
+        print("[DEBUG] Configuring DDRS Status : Enable", flush=True)
         os.system(f"snmpset -v 2c -c private {host} {ddrs_status_oid} i 1")
         time.sleep(1)
 
         if current_ddrs_status != 1 :
-            print("[DEBUG] Applying Configuration")
+            print("[DEBUG] Applying Configuration", flush=True)
             os.system(f"snmpset -v 2c -c private {host} {apply_config_oid} i 1")
             time.sleep(30)
     else:
@@ -75,23 +75,23 @@ def change_ddrs_rate(host, radio_ind, mcs_rate):
 
         # Set only if needed
         if current_ddrs_status != 0:
-            print("[DEBUG] Configuring DDRS Status : Disable")
+            print("[DEBUG] Configuring DDRS Status : Disable", flush=True)
             os.system(f"snmpset -v 2c -c private {host} {ddrs_status_oid} i 0")
             time.sleep(1)
 
         if current_spatial_stream != spatial_stream:
-            print("[DEBUG] Configuring Spatial Stream : {}".format(spatial_stream))
+            print("[DEBUG] Configuring Spatial Stream : {}".format(spatial_stream), flush=True)
             os.system(f"snmpset -v 2c -c private {host} {spatial_stream_oid} i {spatial_stream}")
             time.sleep(1)
 
         if current_mcs_rate != mcs_rate:
-            print("[DEBUG] Configuring Modulation Rate : {}".format(mcs_rate))
+            print("[DEBUG] Configuring Modulation Rate : {}".format(mcs_rate), flush=True)
             os.system(f"snmpset -v 2c -c private {host} {mcs_rate_oid} i {mcs_rate}")
             time.sleep(1)
 
         # Apply config only if any change was made
         if current_ddrs_status != 0 or current_spatial_stream != spatial_stream or current_mcs_rate != mcs_rate:
-            print("[DEBUG] Applying Configuration")
+            print("[DEBUG] Applying Configuration", flush=True)
             os.system(f"snmpset -v 2c -c private {host} {apply_config_oid} i 1")
             time.sleep(30)
 

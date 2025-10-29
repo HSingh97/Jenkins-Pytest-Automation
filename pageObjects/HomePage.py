@@ -69,7 +69,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickHomeSify(self):
@@ -78,7 +78,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickHomeKW(self):
@@ -87,7 +87,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickApply(self):
@@ -96,7 +96,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickSuperReboot(self):
@@ -105,7 +105,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # -------------------------------- Sections --------------------------------------
@@ -116,7 +116,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickNetworkSection(self):
@@ -125,7 +125,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickManagementSection(self):
@@ -134,7 +134,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickMonitorSection(self):
@@ -143,7 +143,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickQuickStart(self):
@@ -152,7 +152,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # ----------------------------- Sub - Sections -----------------------------------
@@ -167,7 +167,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickWireless24Ghz(self):
@@ -176,7 +176,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickQOS(self):
@@ -185,7 +185,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
 
@@ -198,7 +198,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickVLAN(self):
@@ -207,7 +207,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickEthernet(self):
@@ -216,7 +216,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickDHCPServer(self):
@@ -225,7 +225,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickRadius(self):
@@ -234,7 +234,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickFiltering(self):
@@ -243,7 +243,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickSOAM(self):
@@ -252,7 +252,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
 
@@ -265,7 +265,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickServices(self):
@@ -274,7 +274,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickUpgradeReset(self):
@@ -283,7 +283,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
 
@@ -296,7 +296,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickRadio2Statistics(self):
@@ -305,7 +305,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def click2_4GhzStatistics(self):
@@ -314,7 +314,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
 
@@ -324,7 +324,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickLogs(self):
@@ -333,7 +333,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickLiveTraffic(self):
@@ -342,7 +342,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     def clickTools(self):
@@ -351,7 +351,7 @@ class HomePage:
             elem.click()
             time.sleep(1)
         except NoSuchElementException:
-            print("No Such Element Found")
+            print("No Such Element Found", flush=True)
             pass
 
     # ---------- Home Page Details ------------

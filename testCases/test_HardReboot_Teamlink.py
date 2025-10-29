@@ -2,9 +2,7 @@ import time
 import warnings
 import pytest
 from testCases.conftest import local_ip
-from utilities.serial_logger import readConfig
 from testCases.configsetup import setup
-from utilities.serial_Logging import *
 from preMadeFunctions import pingFunction
 from preMadeFunctions import accessWeb
 from preMadeFunctions import oldPDU
@@ -14,14 +12,14 @@ driver = setup
 
 def test_DyingGasp(driver, local_ip, remote_ip,reset_type, pdu_port, pdu_ip):
 
-    print(f"Local IP Address: {local_ip}")
-    print(f"Remote IP Address: {remote_ip}")
-    print(f"PDU IP : {pdu_ip}")
-    print(f"PDU Port : {pdu_port}")
-    print(f"Reset Type : {reset_type}")
+    print(f"Local IP Address: {local_ip}", flush = True)
+    print(f"Remote IP Address: {remote_ip}", flush = True)
+    print(f"PDU IP : {pdu_ip}", flush = True)
+    print(f"PDU Port : {pdu_port}", flush = True)
+    print(f"Reset Type : {reset_type}", flush = True)
 
     output = oldPDU.pdu_reset(reset_type, pdu_ip, pdu_port)
-    print("Return Code : ".format(output))
+    print("Return Code : ".format(output), flush = True)
 
     time.sleep(120)
 
@@ -34,7 +32,7 @@ def test_DyingGasp(driver, local_ip, remote_ip,reset_type, pdu_port, pdu_ip):
             time.sleep(3)
 
         else:
-            print("Reachable")
+            print("Reachable", flush = True)
             break
 
     if output != 1:

@@ -31,27 +31,27 @@ def qos_config_generator(name, args):
     ]
 
     if args.qos_type == "Protocol":
-        print("QOS : Protocol")
+        print("QOS : Protocol", flush=True)
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].qostyp 1')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].pktsize {args.pktsize}')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].protocol {args.protocol}')
 
     elif args.qos_type == "IP":
-        print("QOS : IP")
+        print("QOS : IP", flush=True)
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].qostyp 2')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].typ {args.type}')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].srcip {args.srcIP}')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].dstip {args.dstIP}')
 
     elif args.qos_type == "MAC":
-        print("QOS : MAC")
+        print("QOS : MAC", flush=True)
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].qostyp 3')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].typ {args.type}')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].srcmac {args.srcMAC}')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].dstmac {args.dstMAC}')
 
     elif args.qos_type == "Port":
-        print("QOS : Port")
+        print("QOS : Port", flush=True)
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].qostyp 4')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].porttyp {args.portType}')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].typ {args.type}')
@@ -59,24 +59,24 @@ def qos_config_generator(name, args):
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].endport {args.endPort}')
 
     elif args.qos_type == "TOS Rule":
-        print("QOS : TOS Rule")
+        print("QOS : TOS Rule", flush=True)
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].qostyp 5')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].toslow {args.tosLow}')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].toshigh {args.tosHigh}')
 
     elif args.qos_type == "802.1P":
-        print("QOS : 802.1P")
+        print("QOS : 802.1P", flush=True)
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].qostyp 6')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].vlanprio {args.vlanPriority}')
 
     elif args.qos_type == "DSCP":
-        print("QOS : DSCP")
+        print("QOS : DSCP", flush=True)
         print(f"Current DSCP : {args.dscp}")
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].qostyp 7')
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].dscp {args.dscp}')
 
     else:  # Default case
-        print("QOS : NULL")
+        print("QOS : NULL", flush=True)
         qos_config_commands.append(f'ucidyn set ath1qos.@pirlist[-1].qostyp 0')
 
     return qos_config_commands
@@ -93,7 +93,7 @@ def qos_config_commit(ip, qos_list):
     connection = ConnectHandler(**pc_details)
 
     for command in qos_list:
-        print(f"Sending: {command}")
+        print(f"Sending: {command}", flush=True)
         connection.send_command(command)
 
 
@@ -109,7 +109,7 @@ def qos_apply(ip):
 
     connection = ConnectHandler(**pc_details)
     connection.send_command("ucidyn apply", read_timeout=100)
-    print("QoS configuration successfully sent.")
+    print("QoS configuration successfully sent.", flush=True)
 
 def qos_sfc_clear(ip):
     command_list = [
@@ -133,12 +133,12 @@ def qos_sfc_clear(ip):
     connection = ConnectHandler(**pc_details)
 
     for command in command_list:
-        print(f"Sending: {command}")
+        print(f"Sending: {command}", flush=True)
         connection.send_command(command)
 
     connection = ConnectHandler(**pc_details)
     connection.send_command("ucidyn apply", read_timeout=300)
-    print("SFC Clear QoS configuration sent.")
+    print("SFC Clear QoS configuration sent.", flush=True)
 
 def qos_sfc_config(ip):
     command_list = [
@@ -163,12 +163,12 @@ def qos_sfc_config(ip):
     connection = ConnectHandler(**pc_details)
 
     for command in command_list:
-        print(f"Sending: {command}")
+        print(f"Sending: {command}", flush=True)
         connection.send_command(command)
 
     connection = ConnectHandler(**pc_details)
     connection.send_command("ucidyn apply", read_timeout=300)
-    print("SFC QoS configuration sent.")
+    print("SFC QoS configuration sent.", flush=True)
 
 def qos_config_delete(ip):
     # Device connection details
@@ -183,14 +183,14 @@ def qos_config_delete(ip):
 
     for i in range(7, 0, -1):
         connection.send_command(f"ucidyn delete ath1qos.@pirlist {i} >&/dev/null", read_timeout=60)
-        print(f"------ Deleting : {i} ------")
+        print(f"------ Deleting : {i} ------", flush=True)
 
     qos_apply(ip)
-    print("QoS configuration deleted successfully.")
+    print("QoS configuration deleted successfully.", flush=True)
 
 def pass_dscp_traffic(ip, dscp):
-    print(f"*** DSCP ID : {dscp} ***")
-    print(f"TOS : {int(dscp*4)}")
+    print(f"*** DSCP ID : {dscp} ***", flush=True)
+    print(f"TOS : {int(dscp*4)}", flush=True)
     os.system(f"ping -Q {int(dscp*4)} {ip} -c 10 &")
 
 def check_traffic_priority(ip, priority):
@@ -204,14 +204,14 @@ def check_traffic_priority(ip, priority):
     try:
         connection = ConnectHandler(**pc_details)
 
-        print("Clearing logs with dmesg -c")
+        print("Clearing logs with dmesg -c", flush=True)
         connection.send_command("dmesg -c", read_timeout=30)
 
         command = "cfg80211tool ath1 g_kwnpkt"
-        print(f"Executing command: {command}")
+        print(f"Executing command: {command}", flush=True)
         connection.send_command(command, read_timeout=30)
 
-        print("Capturing output with dmesg -c")
+        print("Capturing output with dmesg -c", flush=True)
         output = connection.send_command("dmesg -c", read_timeout=30)
         connection.disconnect()
         result = {}
@@ -233,12 +233,12 @@ def check_traffic_priority(ip, priority):
                 }
         kbps_data = result
         if kbps_data:
-            print("Extracted kbps data:")
+            print("Extracted kbps data:", flush=True)
             print(kbps_data)
             return kbps_data[str(priority)]['TxKbps'], kbps_data[str(priority)]['RxKbps']
         else:
-            print("No TxKbps or RxKbps data found")
-            print(f"Raw output (first 200 chars): {output[:200] + '...' if len(output) > 200 else output}")
+            print("No TxKbps or RxKbps data found", flush=True)
+            print(f"Raw output (first 200 chars): {output[:200] + '...' if len(output) > 200 else output}", flush=True)
 
     except Exception as e:
         print(f"Error: {e}")
@@ -292,6 +292,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    print("Arguments parsed:", args)
+    print("Arguments parsed:", args, flush=True)
 
 
