@@ -2,6 +2,9 @@ import time
 import json
 import os
 import pytest
+from netmiko import ConnectHandler, NetmikoTimeoutException, NetmikoAuthenticationException
+from serial.serialjava import device
+
 from testCases.conftest import local_ip
 from preMadeFunctions import pingFunction, ssh_netmiko
 
@@ -104,7 +107,7 @@ def wait_for_ping(ip, timeout=30, interval=3):
     return False
 
 
-def test_soft_reset(local_ip, remote_ip, iter, local_ping=None, remote_ping=None):
+def test_soft_reset(local_ip, remote_ip, iter, local_ping=None, remote_ping=None, timeout=20):
     print("\n" + "="*60, flush=True)
     print(f"Local IP : {local_ip}", flush=True)
     print(f"Remote IP: {remote_ip}", flush=True)
@@ -120,6 +123,11 @@ def test_soft_reset(local_ip, remote_ip, iter, local_ping=None, remote_ping=None
         "Ping Results": {"Local": False, "Remote": False},
         "dmesg_output": []
     }
+
+    conn = ConnectHandler(**device)
+    output = conn.send_command("dmesg -c", read_timeout=timeout)
+    conn.disconnect()
+    print("Clear background logs dmesg -c", flush=True)
 
     try:
         ssh_netmiko.runcommand(local_ip, "/etc/init.d/network reload &")
