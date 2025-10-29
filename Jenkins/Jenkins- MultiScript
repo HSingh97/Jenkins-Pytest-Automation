@@ -1,10 +1,8 @@
 import jenkins.model.Jenkins
-
 // Functions
 def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
-
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
     stages {
@@ -38,6 +36,7 @@ pipeline {
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
                     sh 'pip install pytest'
+                    sh "sh utilities/requirements.txt"
                 }
             }
         }
@@ -46,9 +45,12 @@ pipeline {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
+
+                    echo "Local IP: ${localIP}"
+                    echo "Remote IP: ${remoteIP}"
+
                     def testTypes = params.TEST_TYPES.split(',').collect { it.trim() }
                     def iterationCounts
-
                     // Parse ITERATION_COUNTS as a String parameter
                     if (params.ITERATION_COUNTS?.trim()) {
                         if (params.ITERATION_COUNTS ==~ /\d+(,\d+)*/) {
@@ -72,47 +74,46 @@ pipeline {
                         iterationCounts = [1] * testTypes.size()
                         echo "Using default iteration count: 1 for all tests"
                     }
-
                     echo "Number of iterations: ${iterationCounts}"
-
-                    echo "✅ Cleared old workspace"
-
+                    echo "Cleared old workspace"
                     echo "----------------------------------------"
                     // Initialize JSON with proper structure
                     sh 'echo "{\"iterations\": []}" > iteration_results.json'
-
                     // Debug: Check the type and value of TEST_TYPES
                     echo "DEBUG: params.TEST_TYPES = ${params.TEST_TYPES}"
                     echo "DEBUG: Type of params.TEST_TYPES = ${params.TEST_TYPES?.getClass()}"
-
                     if (testTypes.isEmpty()) {
                         error "No test types selected in TEST_TYPES"
                     }
-
-                    // Run tests sequentially with 40-second delay between each
-                    testTypes.eachWithIndex { testType, index ->
+                    // Run tests sequentially with 30-second delay between each
+                    testTypes.eachWithIndex { testTypeRaw, index ->
+                        // Fix: Decode &amp; → &
+                        def testType = testTypeRaw.replaceAll('&amp;', '&')
                         echo "DEBUG: Processing test type: ${testType}"
                         def testScript
                         def testFunction
+                        def extraArgs = ""
                         if (testType == 'SSH Reboot') {
                             testScript = 'testCases/test_SSHReboot.py'
                             testFunction = 'test_reboot'
                         } else if (testType == 'SSH Reset') {
                             testScript = 'testCases/test_SSHReset.py'
                             testFunction = 'test_soft_reset'
-                        } else if (testType == 'New Test 1') {
-                            testScript = 'testCases/new_test1.py'
-                            testFunction = 'test_function1'
+                        } else if (testType == 'Disconnect and Connect') {
+                            testScript = 'testCases/test_SSHDisconnect.py'
+                            testFunction = 'test_Disconnect_Connect'
+                            def model = params.Model ?: ""
+                            def radio = params['Select Radio'] ?: ""
+                            extraArgs = "--model '${model}' --radio '${radio}'"
                         } else {
                             error "Unknown test type: ${testType}"
                         }
-
                         def iterationCount = iterationCounts[index]
                         echo "Running ${testType} sequentially with ${iterationCount} iterations"
                         echo "----------------------------------------"
                         for (int i = 1; i <= iterationCount; i++) {
                             def result = sh(script: """
-                                pytest -v -s ${testScript}::${testFunction} --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${i} | tee output.log
+                                pytest -v -s ${testScript}::${testFunction} --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${i} ${extraArgs} | tee output.log
                             """, returnStatus: true)
                             def status = (result == 0) ? "PASS" : "FAIL"
                             echo "DEBUG: Test ${testType} Iteration ${i} Result: ${status}"
@@ -120,8 +121,7 @@ pipeline {
                                 python3 -c "import json; data = json.load(open('iteration_results.json')); data['iterations'].append({'test': '${testType.replaceAll(' ', '_').toLowerCase()}', 'iteration': ${i}, 'status': '${status}'}); json.dump(data, open('iteration_results.json', 'w'))" || true
                             """
                         }
-                        // Add 40-second delay before next test
-                        sh 'sleep 40'
+                        sh 'sleep 20'
                     }
                 }
             }
@@ -133,39 +133,31 @@ pipeline {
                     def remoteIP = params['Remote IP Address']
                     sh "ssh-keygen -R ${localIP} || true"
                     sh "ssh-keygen -R ${remoteIP} || true"
-
                     def local_fw_version = "N/A"
                     def remote_fw_version = "N/A"
-
                     try {
                         local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
                     } catch (Exception e) {
-                        echo "⚠️ Failed to get local FW version from ${localIP}: ${e.message}"
+                        echo "Failed to get local FW version from ${localIP}: ${e.message}"
                     }
-
                     try {
                         remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
                     } catch (Exception e) {
-                        echo "⚠️ Failed to get remote FW version from ${remoteIP}: ${e.message}"
+                        echo "Failed to get remote FW version from ${remoteIP}: ${e.message}"
                     }
-
                     def jsonReport = readJSON file: 'iteration_results.json'
                     echo "DEBUG: Full JSON Report: ${jsonReport}"
                     echo "DEBUG: Iterations content: ${jsonReport.iterations}"
-
                     def buildParams = [
                         "Local IP Address": params['Local IP Address'],
                         "Remote IP Address": params['Remote IP Address'],
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
-
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
-
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
-
                     def htmlContent = """
                     <html>
                     <head>
@@ -252,14 +244,13 @@ pipeline {
                             ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
                         </table>
                     """
-
                     // Derive test types dynamically from params.TEST_TYPES
                     def testTypes = params.TEST_TYPES instanceof String ?
                         params.TEST_TYPES.split(',').collect { it.trim() } :
                         (params.TEST_TYPES ?: [])
-
                     // Generate table for each test type
-                    testTypes.each { testType ->
+                    testTypes.each { testTypeRaw ->
+                        def testType = testTypeRaw.replaceAll('&amp;', '&')
                         def normalizedTestType = testType.replaceAll(' ', '_').toLowerCase()
                         def testResults = jsonReport.iterations.findAll { it.test == normalizedTestType }
                         htmlContent += """
@@ -293,12 +284,10 @@ pipeline {
                             <hr/>
                         """
                     }
-
                     htmlContent += """
                     </body>
                     </html>
                     """
-
                     writeFile file: 'report.html', text: htmlContent
                 }
             }
@@ -320,12 +309,9 @@ pipeline {
             script {
                 def buildCauses = currentBuild.getBuildCauses()
                 def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
-
                 def buildUserName = userCause?.userName ?: "Unknown User"
                 def buildUserId = userCause?.userId ?: "unknown"
-
                 echo "Build started by: ${buildUserName} (${buildUserId})"
-
                 // Define a mapping of user IDs to emails (update as needed)
                 def userEmails = [
                     "puneet": "puneet.sharma@senao.com",
@@ -338,12 +324,9 @@ pipeline {
                     "phani": "phani.darla@senao.com",
                     "dinesh": "dinesh.redddy@senao.com"
                 ]
-
                 // Get email from predefined mapping, else use default
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
-
                 echo "Sending email to: ${userEmail}"
-
                 // Send email notification
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",

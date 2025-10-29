@@ -10,10 +10,10 @@ from selenium.webdriver.support import expected_conditions as EC
 class UpgradePage:
 
     chooseImage_xpath = "//*[@id='image']"
-    upgradeButton_xpath = "//*[@id='fw_submit']"  # <-- This is from your error log
+    upgradeButton_xpath = "//*[@id='fw_submit']"
     proceedButton_xpath = "//input[@value='Proceed']"
 
-    firmware_name = os.getenv('FW_PATH', 'fw.img.enc')  # Default for local testing
+    firmware_name = os.getenv('FW_PATH', 'fw.img.enc')
     firmwareLocation = Path(firmware_name).resolve()
     firmware_path = str(firmwareLocation)
 
