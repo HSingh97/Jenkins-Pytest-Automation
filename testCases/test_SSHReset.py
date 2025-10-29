@@ -5,9 +5,12 @@ import json
 import os
 from testCases.conftest import local_ip
 from preMadeFunctions import pingFunction, ssh_netmiko
+from netmiko import ConnectHandler
 
 USERNAME = "root"
 PASSWORD = "admin"
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "admin"
 
 
 def perform_ping_check(local_ip, remote_ip, result_dict):
@@ -78,20 +81,81 @@ def test_soft_reset(local_ip, remote_ip, iter, local_ping=None, remote_ping=None
         }
     }
 
-    try:
-        ssh_netmiko.runcommand(local_ip, "/etc/init.d/network reload &")
-        print("Network reload started in background", flush=True)
-        time.sleep(2)
-    except Exception as e:
-        print(f"SSH connection broke as expected: {e}", flush=True)
+    ssh_netmiko.runcommand(local_ip, "/etc/init.d/network reload &")
+    print("Network reload started in background", flush=True)
+    time.sleep(2)
 
     print("Waiting for network services to reload (up to 15s)...", flush=True)
     wait_for_ping(local_ip, timeout=15)
 
     perform_ping_check(local_ip, remote_ip, test_iteration_result)
+
+    # Check device logs if local ping was successful
+    if test_iteration_result["Ping Results"]["Local"]:
+        try:
+            print(f"Connecting to {local_ip} as {ADMIN_USERNAME} to check device logs", flush=True)
+            # Define device connection parameters for Netmiko
+            device = {
+                'device_type': 'linux',
+                'host': local_ip,
+                'username': ADMIN_USERNAME,
+                'password': ADMIN_PASSWORD
+            }
+            # Establish SSH connection and retrieve logs
+            conn = ConnectHandler(**device)
+            logs = conn.send_command("show monitor logs devicelog all")
+            conn.disconnect()
+
+            print(f"--- Full logs (first 100 chars): {logs[:100] if logs else 'Empty'}...", flush=True)
+
+            # Extract first 3 lines after "Device Log" header
+            log_lines = logs.splitlines()
+            header_found = False
+            for i, line in enumerate(log_lines):
+                if line.strip().lower() == "device log":
+                    start_index = i + 2  # Skip header and separator
+                    header_found = True
+                    break
+            else:
+                start_index = None
+                first_three_lines = "Header 'Device Log' not found in logs"
+                print(f"--- Error: {first_three_lines}", flush=True)
+
+            if header_found:
+                try:
+                    # Extract the first 3 lines after the header
+                    first_three_lines = "\n".join(log_lines[start_index:start_index + 3])
+                except IndexError:
+                    first_three_lines = "Not enough lines after 'Device Log' header"
+                    print(f"--- Error: {first_three_lines}", flush=True)
+
+            print(
+                f"--- Retrieved logs (first 3 lines after header): {first_three_lines[:100] if first_three_lines else 'Empty'}...",
+                flush=True)
+            test_iteration_result["Device Logs"] = first_three_lines
+
+            # Check if reboot was successful based on log content
+            if "Device Init, Success" in first_three_lines:
+                print("Soft Reboot is done and device is getting 'Device Init, Success' in Device logs", flush=True)
+                # Update status based on ping and log results
+                test_iteration_result["status"] = "PASS" if test_iteration_result["status"] == "PASS" else "PARTIAL"
+            else:
+                print("Device Init, Success not found in first 3 lines of logs", flush=True)
+                test_iteration_result["status"] = "FAIL" if test_iteration_result["status"] != "PASS" else "PARTIAL"
+        except Exception as e:
+            print(f"Failed to retrieve device logs: {e}", flush=True)
+            test_iteration_result["Device Logs"] = f"Error retrieving logs: {str(e)}"
+    else:
+        print("Skipping device log check due to failed local ping", flush=True)
+        test_iteration_result["Device Logs"] = "Skipped due to failed local ping"
+
+    # Save test results to JSON file
     append_result_to_json(test_iteration_result)
 
 
-# ---------------- Pytest Fixtures ----------------
+# Suppress warnings to keep console output clean
 def warn(*args, **kwargs):
     pass
+
+
+warnings.warn = warn
