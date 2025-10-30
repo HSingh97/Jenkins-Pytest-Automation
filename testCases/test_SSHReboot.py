@@ -73,8 +73,13 @@ def test_reboot(local_ip, remote_ip, iter):
         "Device Logs": ""
     }
 
-    # Trigger device reboot using root credentials
-    ssh_netmiko.runcommand(local_ip, "reboot &")
+    try:
+        ssh_netmiko.runcommand(local_ip, "reboot &")
+    except Exception as e:
+        print(f"Failed to send reboot command: {e}", flush=True)
+        test_iteration_result["Device Logs"] = f"Reboot command failed: {str(e)}"
+        append_result_to_json(test_iteration_result)
+        pytest.fail(f"Reboot command failed: {e}")
 
     # Wait for device to complete reboot
     print("Waiting for device to reboot...", flush=True)
@@ -127,20 +132,35 @@ def test_reboot(local_ip, remote_ip, iter):
             # Check if reboot was successful based on log content
             if "Device Init, Success" in first_three_lines:
                 print("Soft Reboot is done and device is getting 'Device Init, Success' in Device logs", flush=True)
-                # Update status based on ping and log results
-                test_iteration_result["status"] = "PASS" if test_iteration_result["status"] == "PASS" else "PARTIAL"
+                # Only PASS if BOTH pings succeeded AND log has success message
+                if (test_iteration_result["Ping Results"]["Local"] and
+                    test_iteration_result["Ping Results"]["Remote"]):
+                    test_iteration_result["status"] = "PASS"
+                else:
+                    test_iteration_result["status"] = "FAIL"
             else:
                 print("Device Init, Success not found in first 3 lines of logs", flush=True)
-                test_iteration_result["status"] = "FAIL" if test_iteration_result["status"] != "PASS" else "PARTIAL"
+                test_iteration_result["status"] = "FAIL"
         except Exception as e:
             print(f"Failed to retrieve device logs: {e}", flush=True)
             test_iteration_result["Device Logs"] = f"Error retrieving logs: {str(e)}"
+            test_iteration_result["status"] = "FAIL"
     else:
         print("Skipping device log check due to failed local ping", flush=True)
         test_iteration_result["Device Logs"] = "Skipped due to failed local ping"
+        test_iteration_result["status"] = "FAIL"
 
     # Save test results to JSON file
     append_result_to_json(test_iteration_result)
+
+    # CRITICAL: Force pytest to fail the test if status is not PASS
+    if test_iteration_result["status"] != "PASS":
+        pytest.fail(
+            f"Iteration {iter} FAILED – "
+            f"Local Ping: {test_iteration_result['Ping Results']['Local']}, "
+            f"Remote Ping: {test_iteration_result['Ping Results']['Remote']}, "
+            f"Log Check: {'Device Init, Success' in test_iteration_result['Device Logs']}"
+        )
 
 # Suppress warnings to keep console output clean
 def warn(*args, **kwargs):
