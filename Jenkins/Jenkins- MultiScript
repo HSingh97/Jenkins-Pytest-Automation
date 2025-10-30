@@ -3,6 +3,10 @@ import jenkins.model.Jenkins
 def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
+
+def dateStamp = new Date().format("yyyyMMdd", TimeZone.getTimeZone("Asia/Kolkata"))
+def reportFilename = "Multi_test_report_${env.BUILD_NUMBER}_${dateStamp}.html"
+
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
     stages {
@@ -75,6 +79,7 @@ pipeline {
                         echo "Using default iteration count: 1 for all tests"
                     }
                     echo "Number of iterations: ${iterationCounts}"
+                    sh 'rm -f test_log_*.log output.log' // Clear old logs
                     echo "Cleared old workspace"
                     echo "----------------------------------------"
                     // Initialize JSON with proper structure
@@ -108,17 +113,25 @@ pipeline {
                         } else {
                             error "Unknown test type: ${testType}"
                         }
+
+                        def normalizedTestType = testType.replaceAll(' ', '_').toLowerCase()
                         def iterationCount = iterationCounts[index]
                         echo "Running ${testType} sequentially with ${iterationCount} iterations"
                         echo "----------------------------------------"
                         for (int i = 1; i <= iterationCount; i++) {
+                            // *** MODIFIED: Create a unique log file for each iteration ***
+                            def logFile = "test_log_${normalizedTestType}_iter_${i}.log"
+
                             def result = sh(script: """
-                                pytest -v -s ${testScript}::${testFunction} --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${i} ${extraArgs} | tee output.log
+                                pytest -v -s ${testScript}::${testFunction} --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${i} ${extraArgs} | tee "${logFile}"
                             """, returnStatus: true)
+
                             def status = (result == 0) ? "PASS" : "FAIL"
                             echo "DEBUG: Test ${testType} Iteration ${i} Result: ${status}"
+
+                            // *** MODIFIED: Add the 'logFile' name to the JSON entry ***
                             sh """
-                                python3 -c "import json; data = json.load(open('iteration_results.json')); data['iterations'].append({'test': '${testType.replaceAll(' ', '_').toLowerCase()}', 'iteration': ${i}, 'status': '${status}'}); json.dump(data, open('iteration_results.json', 'w'))" || true
+                                python3 -c "import json; data = json.load(open('iteration_results.json')); data['iterations'].append({'test': '${normalizedTestType}', 'iteration': ${i}, 'status': '${status}', 'logFile': '${logFile}'}); json.dump(data, open('iteration_results.json', 'w'))" || true
                             """
                         }
                         sh 'sleep 20'
@@ -145,150 +158,511 @@ pipeline {
                     } catch (Exception e) {
                         echo "Failed to get remote FW version from ${remoteIP}: ${e.message}"
                     }
+
                     def jsonReport = readJSON file: 'iteration_results.json'
                     echo "DEBUG: Full JSON Report: ${jsonReport}"
-                    echo "DEBUG: Iterations content: ${jsonReport.iterations}"
+
+                    // --- Calculate OVERALL Stats (still here if needed, but not displayed) ---
+                    def totalTests = 0
+                    def passCount = 0
+                    if (jsonReport.iterations) {
+                        totalTests = jsonReport.iterations.size()
+                        passCount = jsonReport.iterations.count { it.status == 'PASS' }
+                    }
+                    def failCount = totalTests - passCount
+                    def successPercentage = (totalTests > 0) ? (passCount / (double)totalTests) * 100 : 0
+                    def successPercentageStr = String.format("%.1f", successPercentage)
+
                     def buildParams = [
                         "Local IP Address": params['Local IP Address'],
                         "Remote IP Address": params['Remote IP Address'],
-                        "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
+                        "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}",
                     ]
+
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
+
+                    // *** NEW: HTML content with modern CSS and modal JS ***
                     def htmlContent = """
                     <html>
                     <head>
                         <title>Test Report</title>
                         <style>
                             body {
-                                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
                                 margin: 0;
-                                padding: 20px;
-                                background-color: #f9f9f9;
-                                color: #2c3e50;
+                                padding: 0;
+                                background-color: #f9fafb; /* Lighter gray background */
+                                color: #1f2937;
+                            }
+                            .container {
+                                max-width: 1200px;
+                                margin: 24px auto;
+                                padding: 24px;
                             }
                             .header {
                                 display: flex;
                                 justify-content: space-between;
                                 align-items: center;
-                                background-color: #fff;
-                                padding: 20px;
-                                border-bottom: 2px solid #e0e0e0;
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                                background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%); /* New gradient */
+                                padding: 28px 36px; /* Increased padding */
+                                border: 1px solid #e5e7eb;
+                                border-radius: 12px;
+                                box-shadow: 0 4px 6px rgba(0,0,0,0.04); /* Slightly stronger shadow */
                             }
                             .header img {
-                                height: 60px;
+                                height: 65px; /* Bigger logo */
+                                transition: transform 0.2s ease-in-out;
                             }
-                            .header-info {
-                                text-align: right;
+                            .header img:hover {
+                                transform: scale(1.03); /* Subtle hover effect */
                             }
+                            .header-info { text-align: right; }
                             .header-info h1 {
                                 margin: 0;
-                                font-size: 24px;
+                                font-size: 30px; /* Bigger title */
+                                font-weight: 700; /* Bolder */
+                                color: #0a2540; /* Darker, more corporate blue/black */
                             }
                             .header-info p {
                                 margin: 5px 0;
-                                font-size: 14px;
-                                color: #555;
+                                font-size: 15px; /* Slightly larger sub-text */
+                                color: #4a5568; /* Darker gray */
                             }
                             h2 {
-                                margin-top: 40px;
-                                font-size: 20px;
-                                color: #333;
-                                border-bottom: 2px solid #ddd;
-                                padding-bottom: 5px;
+                                margin-top: 32px;
+                                font-size: 24px;
+                                font-weight: 600;
+                                color: #111827;
+                                border-bottom: 2px solid #e5e7eb;
+                                padding-bottom: 12px;
                             }
+
+                            /* --- REMOVED Overall Summary Cards CSS --- */
+
+                            /* --- NEW: Per-Test Summary Card --- */
+                            .test-summary-card {
+                                background-color: #ffffff;
+                                border: 1px solid #e5e7eb;
+                                border-radius: 12px;
+                                margin-top: 24px;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+                                overflow: hidden; /* To contain the border-top */
+                            }
+                            .test-summary-header {
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                padding: 20px 24px;
+                                border-bottom: 1px solid #e5e7eb;
+                                background-color: #f9fafb;
+                            }
+                            .test-summary-header h3 {
+                                margin: 0;
+                                font-size: 20px;
+                                font-weight: 600;
+                                color: #111827;
+                            }
+                            .test-summary-stats {
+                                display: flex;
+                                justify-content: space-around;
+                                padding: 20px 24px;
+                                flex-wrap: wrap;
+                            }
+                            .stat-item {
+                                text-align: center;
+                                margin: 10px 20px;
+                                min-width: 100px;
+                            }
+                            .stat-item .stat-title {
+                                font-size: 14px;
+                                color: #6b7280;
+                                margin-bottom: 8px;
+                                text-transform: uppercase;
+                                letter-spacing: 0.5px;
+                            }
+                            .stat-item .stat-value {
+                                font-size: 28px;
+                                font-weight: 700;
+                                color: #111827;
+                            }
+                            .stat-value.pass { color: #10b981; }
+                            .stat-value.fail { color: #ef4444; }
+                            .stat-value.percent { color: #3b82f6; }
+                            .percent-sign { font-size: 18px; }
+
+                            /* --- NEW: Details Button --- */
+                            .details-button {
+                                background-color: #3b82f6;
+                                color: white;
+                                padding: 10px 18px;
+                                text-decoration: none;
+                                border-radius: 8px;
+                                font-weight: 600;
+                                font-size: 14px;
+                                transition: background-color 0.2s ease, box-shadow 0.2s ease;
+                                display: inline-block;
+                                border: none;
+                                cursor: pointer;
+                                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+                            }
+                            .details-button:hover {
+                                background-color: #2563eb;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                            }
+
+                            /* --- NEW: Hidden Details Table Container --- */
+                            .details-table-container {
+                                display: none; /* Hidden by default */
+                                padding: 0 24px 24px 24px;
+                                background-color: #ffffff;
+                            }
+
+                            /* --- Table Style (Used inside details) --- */
                             table {
                                 width: 100%;
                                 border-collapse: collapse;
-                                margin-top: 15px;
+                                margin-top: 24px;
                                 background-color: #fff;
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                                border: 1px solid #e5e7eb;
+                                border-radius: 12px;
+                                overflow: hidden;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.04);
                             }
                             th, td {
-                                padding: 12px 15px;
-                                border: 1px solid #ddd;
+                                padding: 16px 20px;
+                                border-bottom: 1px solid #e5e7eb;
                                 text-align: left;
+                                vertical-align: middle;
                             }
                             th {
-                                background-color: #2c3e50;
+                                background-color: #f9fafb;
+                                font-weight: 600;
+                                color: #6b7280;
+                                font-size: 13px;
+                                text-transform: uppercase;
+                                letter-spacing: 0.5px;
+                            }
+                            tr:last-child td { border-bottom: none; }
+                            tr:hover { background-color: #f9fafb; }
+                            .status-pass {
+                                color: #059669;
+                                font-weight: 600;
+                                background-color: #d1fae5;
+                                padding: 5px 10px;
+                                border-radius: 99px;
+                                display: inline-block;
+                            }
+                            .status-fail {
+                                color: #dc2626;
+                                font-weight: 600;
+                                background-color: #fee2e2;
+                                padding: 5px 10px;
+                                border-radius: 99px;
+                                display: inline-block;
+                            }
+                            /* --- Log Button --- */
+                            .log-button {
+                                background-color: #4f46e5; /* Indigo */
                                 color: white;
+                                padding: 8px 16px;
+                                text-decoration: none;
+                                border-radius: 8px;
+                                font-weight: 600;
+                                font-size: 14px;
+                                transition: background-color 0.2s ease, box-shadow 0.2s ease;
+                                display: inline-block;
+                                border: none;
+                                cursor: pointer;
+                                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
                             }
-                            tr:nth-child(even) {
-                                background-color: #f4f4f4;
+                            .log-button:hover {
+                                background-color: #4338ca;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                             }
-                            .pass {
-                                color: green;
+                            /* --- Disabled Log Button --- */
+                            .log-button-disabled {
+                                background-color: #9ca3af; /* Gray */
+                                color: white;
+                                padding: 8px 16px;
+                                text-decoration: none;
+                                border-radius: 8px;
+                                font-weight: 600;
+                                font-size: 14px;
+                                display: inline-block;
+                                border: none;
+                                cursor: not-allowed;
+                                opacity: 0.7;
+                            }
+
+                            /* --- Modal Styles --- */
+                            .modal {
+                                display: none;
+                                position: fixed;
+                                z-index: 100;
+                                left: 0;
+                                top: 0;
+                                width: 100%;
+                                height: 100%;
+                                overflow: auto;
+                                background-color: rgba(0,0,0,0.6);
+                            }
+                            .modal-content {
+                                background-color: #ffffff;
+                                margin: 5% auto;
+                                border: 1px solid #e5e7eb;
+                                border-radius: 12px;
+                                width: 80%;
+                                max-width: 900px;
+                                box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+                                animation-name: animatetop;
+                                animation-duration: 0.4s;
+                                overflow: hidden;
+                            }
+                            .modal-header {
+                                padding: 20px 32px;
+                                border-bottom: 1px solid #e5e7eb;
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                            }
+                            .modal-header h2 {
+                                margin: 0;
+                                padding: 0;
+                                border: none;
+                                font-size: 20px;
+                            }
+                            .modal-close {
+                                color: #9ca3af;
+                                font-size: 28px;
                                 font-weight: bold;
+                                cursor: pointer;
+                                transition: color 0.2s ease;
                             }
-                            .fail {
-                                color: red;
-                                font-weight: bold;
+                            .modal-close:hover,
+                            .modal-close:focus {
+                                color: #1f2937;
+                                text-decoration: none;
+                            }
+                            .modal-body { padding: 0; }
+                            #log-content-pre {
+                                background-color: #1f2937; /* Dark background */
+                                color: #e5e7eb; /* Light text */
+                                padding: 24px 32px;
+                                max-height: 60vh;
+                                overflow: auto;
+                                white-space: pre-wrap;
+                                word-wrap: break-word;
+                                margin: 0;
+                                border-radius: 0 0 12px 12px;
+                                font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+                                font-size: 14px;
+                            }
+                            @keyframes animatetop {
+                                from {transform: translateY(-50px); opacity: 0}
+                                to {transform: translateY(0); opacity: 1}
                             }
                         </style>
+
+                        <script>
+                            // --- NEW: Function to toggle details tables ---
+                            function toggleDetails(elementId, button) {
+                                var element = document.getElementById(elementId);
+                                if (element.style.display === 'none') {
+                                    element.style.display = 'block';
+                                    button.textContent = 'Hide Details';
+                                } else {
+                                    element.style.display = 'none';
+                                    button.textContent = 'Show Details';
+                                }
+                            }
+
+                            // Function to show log modal
+                            function showLog(logDataId) {
+                                var logContent = document.getElementById(logDataId).innerHTML;
+                                document.getElementById('log-content-pre').innerHTML = logContent;
+                                document.getElementById('logModal').style.display = 'block';
+                            }
+
+                            // Function to close log modal
+                            function closeModal() {
+                                document.getElementById('logModal').style.display = 'none';
+                            }
+
+                            // Close modal if user clicks outside of it
+                            window.onclick = function(event) {
+                                var modal = document.getElementById('logModal');
+                                if (event.target == modal) {
+                                    modal.style.display = 'none';
+                                }
+                            }
+                        </script>
                     </head>
                     <body>
-                        <div class="header">
-                            <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
-                            <div class="header-info">
-                                <h1>Automated Test Report</h1>
-                                <p><strong>Pipeline:</strong> ${pipelineName}</p>
-                                <p><strong>Date & Time:</strong> ${currentDateTime}</p>
+                        <div class="container">
+                            <div class="header">
+                                <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
+                                <div class="header-info">
+                                    <h1>Automated Test Report</h1>
+                                    <p><strong>Pipeline:</strong> ${pipelineName}</p>
+                                    <p><strong>Date & Time:</strong> ${currentDateTime}</p>
+                                </div>
                             </div>
-                        </div>
-                        <h2>Build Parameters</h2>
-                        <table>
-                            ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
-                        </table>
+                            <h2>Build Parameters</h2>
+                            <table>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Value</th>
+                                </tr>
+                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
+                            </table>
+
+                            <!-- REMOVED Overall Test Summary HTML Block -->
+
+                            <h2>Per-Test Summaries</h2>
                     """
-                    // Derive test types dynamically from params.TEST_TYPES
+
+                    // --- NEW: Loop and create per-test summaries + hidden tables ---
+                    def logDataBlocks = "" // To store all hidden log <pre> blocks
+
+                    // Get the original test type names from params, preserving order and casing
                     def testTypes = params.TEST_TYPES instanceof String ?
                         params.TEST_TYPES.split(',').collect { it.trim() } :
                         (params.TEST_TYPES ?: [])
-                    // Generate table for each test type
+
+                    // Generate a summary card and a hidden table for each test type
                     testTypes.each { testTypeRaw ->
                         def testType = testTypeRaw.replaceAll('&amp;', '&')
                         def normalizedTestType = testType.replaceAll(' ', '_').toLowerCase()
                         def testResults = jsonReport.iterations.findAll { it.test == normalizedTestType }
+
+                        // Calculate stats for THIS test
+                        def tTotal = testResults.size()
+                        def tPass = testResults.count { it.status == 'PASS' }
+                        def tFail = tTotal - tPass
+                        def tPercent = (tTotal > 0) ? (tPass / (double)tTotal) * 100 : 0
+                        def tPercentStr = String.format("%.1f", tPercent)
+
+                        // This is the unique ID for the hidden details <div>
+                        def detailsContainerId = "${normalizedTestType}_details_container"
+
+                        // --- Build the PER-TEST Summary Card ---
                         htmlContent += """
-                            <h2>${testType}</h2>
-                            <table>
-                                <tr>
-                                    <th>ITERATION</th>
-                                    <th>STATUS</th>
-                                </tr>
+                        <div class="test-summary-card">
+                            <div class="test-summary-header">
+                                <h3>${testType}</h3>
+                                <button class="details-button" onclick="toggleDetails('${detailsContainerId}', this)">Show Details</button>
+                            </div>
+                            <div class="test-summary-stats">
+                                <div class="stat-item">
+                                    <div class="stat-title">Success Rate</div>
+                                    <div class="stat-value percent">${tPercentStr}<span class="percent-sign">%</span></div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-title">Total</div>
+                                    <div class="stat-value">${tTotal}</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-title">Passed</div>
+                                    <div class="stat-value pass">${tPass}</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-title">Failed</div>
+                                    <div class="stat-value fail">${tFail}</div>
+                                </div>
+                            </div>
+
+                            <!-- --- Build the HIDDEN Details Table --- -->
+                            <div class="details-table-container" id="${detailsContainerId}">
+                                <table>
+                                    <tr>
+                                        <th>ITERATION</th>
+                                        <th style="text-align: center;">STATUS</th>
+                                        <th style="text-align: center;">LOGS</th>
+                                    </tr>
                         """
+
                         if (testResults) {
                             testResults.each { result ->
                                 def iteration = result.iteration ?: "-"
-                                def status = result.status == "PASS" ? "<span class='pass'>PASS</span>" : result.status == "FAIL" ? "<span class='fail'>FAIL</span>" : result.status ?: "-"
+                                def status = result.status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
+
+                                def logFile = result.logFile // Get log file name from JSON
+                                def logDataId = "log-data-${normalizedTestType}-${iteration}" // Unique ID for modal
+                                def logButton = "" // Initialize logButton
+
+                                if (logFile) {
+                                    try {
+                                        // Read the log file from the workspace
+                                        def logContent = readFile(file: logFile)
+                                        // Manually escape HTML characters
+                                        logContent = logContent.replace("&", "&amp;")
+                                                             .replace("<", "&lt;")
+                                                             .replace(">", "&gt;")
+
+                                        // SUCCESS: Create the button and the log block
+                                        logButton = "<button class'log-button' onclick=\"showLog('${logDataId}')\">See Logs</button>"
+                                        logDataBlocks += "<div id='${logDataId}' style='display:none;'>${logContent}</div>\n"
+
+                                    } catch (e) {
+                                        echo "⚠️ Could not read log file ${logFile}: ${e.message}"
+                                        // FAIL: Create a disabled/error button
+                                        logButton = "<button class='log-button-disabled' disabled>No Log</button>"
+                                    }
+                                } else {
+                                    echo "⚠️ No logFile specified in JSON for ${normalizedTestType} iter ${iteration}"
+                                    // NO LOGFILE: Create a disabled/error button
+                                    logButton = "<button class='log-button-disabled' disabled>No Log</button>"
+                                }
+
                                 htmlContent += """
                                     <tr>
                                         <td>${iteration}</td>
-                                        <td>${status}</td>
+                                        <td style="text-align: center;">${status}</td>
+                                        <td style="text-align: center;">${logButton}</td>
                                     </tr>
                                 """
                             }
                         } else {
                             htmlContent += """
                                 <tr>
-                                    <td colspan="2">No results available</td>
+                                    <td colspan="3" style='text-align:center;'>No results available for this test type.</td>
                                 </tr>
                             """
                         }
+
                         htmlContent += """
-                            </table>
-                            <hr/>
+                                </table>
+                            </div> <!-- /details-table-container -->
+                        </div> <!-- /test-summary-card -->
                         """
                     }
+
+                    // Add the modal container and the hidden log data blocks at the end
                     htmlContent += """
+                        </div> <!-- /container -->
+
+                        <div id="logModal" class="modal">
+                          <div class="modal-content">
+                            <div class="modal-header">
+                                <h2>Iteration Log</h2>
+                                <span class="modal-close" onclick="closeModal()">&times;</span>
+                            </div>
+                            <div class="modal-body">
+                                <pre id="log-content-pre"></pre>
+                            </div>
+                          </div>
+                        </div>
+
+                        ${logDataBlocks}
                     </body>
                     </html>
                     """
-                    writeFile file: 'report.html', text: htmlContent
+                    writeFile file: reportFilename, text: htmlContent
+                    echo "📄 HTML report generated: ${reportFilename}"
                 }
             }
         }
@@ -300,9 +674,15 @@ pipeline {
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
                 reportDir: '.',
-                reportFiles: 'report.html',
+                reportFiles: '${reportFilename}',
                 reportName: 'Test Report'
             ])
+
+            // *** NEW: Clean up all generated log files ***
+            echo "Cleaning up test log files..."
+            sh 'rm -f test_log_*.log || true'
+            sh 'rm -f output.log || true'
+
             echo "----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
@@ -340,6 +720,7 @@ pipeline {
                             <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
                             <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
                             <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                            <p><strong>HTML Report:</strong> <a href="${env.BUILD_URL}artifact/${reportFilename}">Click here to view</a></p>
                             <br/>
                             <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
                         </body>
@@ -347,7 +728,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html, iteration_results.json'
+                    attachmentsPattern: "${reportFilename}"
                 )
             }
         }
