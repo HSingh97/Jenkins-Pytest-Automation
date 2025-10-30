@@ -118,7 +118,7 @@ def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
         print(f"MAC fetch failed: {e}", flush=True)
         result["notes"] = f"Failed to get remote MAC: {str(e)}"
         append_result_to_json(result)
-        pytest.fail("Could not obtain remote MAC address")
+        pytest.fail(f"Could not obtain remote MAC address: {e}")
 
     kick_cmd = f"cfg80211tool {interface} kickmac {remote_mac}"
     try:
@@ -129,6 +129,28 @@ def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
         print(f"SSH broke (expected): {e}", flush=True)
 
     print("Waiting for local services to reload", flush=True)
-    wait_for_ping(local_ip, timeout=15)
+    if not wait_for_ping(local_ip, timeout=15):
+        result["status"] = "FAIL"
+        result["notes"] = "Local device did not recover after kick"
+        append_result_to_json(result)
+        pytest.fail(f"Iteration {iter}: Local device {local_ip} did not come back after kickmac")
+
     perform_ping_check(local_ip, remote_ip, result)
     append_result_to_json(result)
+
+    if result["status"] != "PASS":
+        fail_reasons = []
+        if not result["Ping Results"]["Local"]:
+            fail_reasons.append("Local ping failed")
+        if not result["Ping Results"]["Remote"]:
+            fail_reasons.append("Remote ping failed")
+        if "notes" in result:
+            fail_reasons.append(result["notes"])
+
+        pytest.fail(
+            f"Iteration {iter} FAILED: {', '.join(fail_reasons)} – "
+            f"MAC: {remote_mac}, "
+            f"Interface: {interface}, "
+            f"Local Ping: {result['Ping Results']['Local']}, "
+            f"Remote Ping: {result['Ping Results']['Remote']}"
+        )
