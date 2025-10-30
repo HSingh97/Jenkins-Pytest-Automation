@@ -3,8 +3,6 @@ import json
 import os
 import pytest
 from netmiko import ConnectHandler, NetmikoTimeoutException, NetmikoAuthenticationException
-from serial.serialjava import device
-
 from testCases.conftest import local_ip
 from preMadeFunctions import pingFunction, ssh_netmiko
 
@@ -12,7 +10,6 @@ USERNAME = "root"
 PASSWORD = "admin"
 
 def rundmesg(ip, timeout=20):
-
     from netmiko import ConnectHandler, NetmikoTimeoutException, NetmikoAuthenticationException
 
     device = {
@@ -124,11 +121,25 @@ def test_soft_reset(local_ip, remote_ip, iter, local_ping=None, remote_ping=None
         "dmesg_output": []
     }
 
-    conn = ConnectHandler(**device)
-    output = conn.send_command("dmesg -c", read_timeout=timeout)
-    conn.disconnect()
-    print("Clear background logs dmesg -c", flush=True)
+    # --- Clear dmesg before reload ---
+    try:
+        device = {
+            "device_type": "linux",
+            "host": local_ip,
+            "username": USERNAME,
+            "password": PASSWORD,
+            "session_timeout": timeout,
+            "timeout": timeout,
+            "fast_cli": False,
+        }
+        conn = ConnectHandler(**device)
+        output = conn.send_command("dmesg -c", read_timeout=timeout)
+        conn.disconnect()
+        print("Clear background logs dmesg -c", flush=True)
+    except Exception as e:
+        print(f"Failed to clear dmesg: {e}", flush=True)
 
+    # --- Trigger network reload ---
     try:
         ssh_netmiko.runcommand(local_ip, "/etc/init.d/network reload &")
         print("Network reload started in background", flush=True)
@@ -138,12 +149,34 @@ def test_soft_reset(local_ip, remote_ip, iter, local_ping=None, remote_ping=None
 
     # --- Wait for device to come back ---
     print("Waiting for network services (up to 30s)...", flush=True)
-    wait_for_ping(local_ip, timeout=30)
+    if not wait_for_ping(local_ip, timeout=30):
+        result["status"] = "FAIL"
+        append_result_to_json(result)
+        pytest.fail(f"Iteration {iter}: Local device {local_ip} did not come back after network reload")
 
     perform_ping_check(local_ip, remote_ip, result)
     append_result_to_json(result)
+
+    if result["status"] != "PASS":
+        fail_reason = []
+        if not result["Ping Results"]["Local"]:
+            fail_reason.append("Local ping failed")
+        if not result["Ping Results"]["Remote"]:
+            fail_reason.append("Remote ping failed")
+        if isinstance(result["dmesg_output"], list) and result["dmesg_output"] and result["dmesg_output"][0] == "ERROR":
+            fail_reason.append("dmesg capture failed")
+
+        pytest.fail(
+            f"Iteration {iter} FAILED: {', '.join(fail_reason)} – "
+            f"Local: {result['Ping Results']['Local']}, "
+            f"Remote: {result['Ping Results']['Remote']}, "
+            f"dmesg: {'OK' if result['dmesg_output'] and result['dmesg_output'][0] != 'ERROR' else 'ERROR'}"
+        )
 
 
 # ---------------- Pytest Fixtures ----------------
 def warn(*args, **kwargs):
     pass
+
+import warnings
+warnings.warn = warn
