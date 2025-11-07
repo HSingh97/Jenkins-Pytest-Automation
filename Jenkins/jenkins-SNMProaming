@@ -425,7 +425,6 @@ pipeline {
                                     <th style="text-align: center;">Logs</th>
                                 </tr>
                     """
-
                     // --- Read log files and build table rows + hidden log data ---
                     def tableRows = ""
                     def logDataBlocks = ""
