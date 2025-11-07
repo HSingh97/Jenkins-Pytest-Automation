@@ -9,8 +9,9 @@ import shlex
 WRITE_COMMUNITY = "private"
 READ_COMMUNITY  = "public"
 
-OID_SSID        = ".1.3.6.1.4.1.52619.1.1.1.5.1.3.2"
-OID_ASSOC_BASE  = ".1.3.6.1.4.1.52619.1.3.3"
+# === UPDATED OIDs AS REQUESTED ===
+OID_SSID        = ".1.3.6.1.4.1.52619.1.1.1.5.1.3.2"   # SSID OID (with leading dot)
+OID_ASSOC_BASE  = ".1.3.6.1.4.1.52619.1.3.3"         # Association table base
 
 SSID_BSU1       = "BSU1_UBR"
 SSID_BSU2       = "BSU2_UBR"
@@ -83,7 +84,7 @@ def wait_for_snmp(ip, timeout=30, interval=3):
     print(f"Timeout: SNMP on {ip} not responsive after {timeout}s", flush=True)
     return False
 
-# CLI Options
+# === CLI OPTIONS ===
 def pytest_addoption(parser):
     parser.addoption("--su-ip", action="store", required=True, help="SU IP address")
     parser.addoption("--iter", action="store", type=int, required=True, help="Iteration number")
@@ -95,7 +96,7 @@ def roaming_args(request):
         "iter": request.config.getoption("--iter")
     }
 
-# Main Test
+# === MAIN TEST — USING FIXTURE + UPDATED OIDs ===
 def test_roaming_snmp(roaming_args):
     su_ip = roaming_args["su_ip"]
     iter = roaming_args["iter"]
