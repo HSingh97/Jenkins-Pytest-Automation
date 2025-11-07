@@ -15,6 +15,9 @@ pipeline {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${TARGET_STAND}"
                     echo "----------------------------------------"
+                    if (!params['Local IP Address'] || !params['Remote IP Address']) {
+                        error "Missing required parameters: Local IP Address or Remote IP Address"
+                    }
                 }
             }
         }
@@ -24,37 +27,44 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
+                    sh 'python3 -m pip install pytest netmiko || true'
+                    sh 'apt-get update && apt-get install -y sshpass || true'
                 }
             }
         }
-        stage('Roaming Test') {
+        stage('Reboot') {
             steps {
                 script {
-                    def suIP = params['SU IP Address']
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
 
-                    echo "SU IP Address: ${suIP}"
+                    echo "Local IP Address: ${localIP}"
+                    echo "Remote IP Address: ${remoteIP}"
 
-                    def roamingCount = params.ROAMING_COUNT ?: 1
-                    echo "Number of roaming iterations: ${roamingCount}"
+                    def rebootCount = params.REBOOT_COUNT ?: 1
+                    echo "Number of reboot iterations: ${rebootCount}"
 
                     echo "Cleared old workspace"
 
                     echo "----------------------------------------"
-                    echo "Testing Roaming - SNMP"
+                    echo "Testing Reboot - SSH"
                     echo "----------------------------------------"
 
                     sh "echo [] > iteration_results.json"  // Initialize JSON array
 
-                    for (int i = 1; i <= roamingCount.toInteger(); i++) {
-                        echo "Running roaming test iteration ${i}"
+                    // FIX: Remove pytest.ini to allow custom args
+                    sh 'rm -f pytest.ini || true'
+
+                    for (int i = 1; i <= rebootCount.toInteger(); i++) {
+                        echo "Running reboot test iteration ${i}"
                         try {
                             sh """
-                                pytest -v -s testCases/test_roaming_snmp.py \
-                                --su-ip '${suIP}' \
+                                pytest -v -s testCases/test_SSHReboot.py::test_reboot \
+                                --local-ip '${localIP}' --remote-ip '${remoteIP}' \
                                 --iter ${i}
                             """
                         } catch (Exception e) {
-                            echo "Roaming test iteration ${i} failed: ${e.message}"
+                            echo "Reboot test iteration ${i} failed: ${e.message}"
                         }
                     }
                 }
@@ -63,15 +73,24 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def suIP = params['SU IP Address']
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
+                    sh "ssh-keygen -R ${localIP} || true"
+                    sh "ssh-keygen -R ${remoteIP} || true"
 
-                    sh "ssh-keygen -R ${suIP} || true"
+                    def local_fw_version = "N/A"
+                    def remote_fw_version = "N/A"
 
-                    def su_fw_version = "N/A"
                     try {
-                        su_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${suIP} 'cat /etc/version'", returnStdout: true).trim()
+                        local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
                     } catch (Exception e) {
-                        echo "Failed to get SU FW version: ${e.message}"
+                        echo "Failed to get local FW version from ${localIP}: ${e.message}"
+                    }
+
+                    try {
+                        remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
+                    } catch (Exception e) {
+                        echo "Failed to get remote FW version from ${remoteIP}: ${e.message}"
                     }
 
                     def jsonReport = readJSON file: 'iteration_results.json'
@@ -85,12 +104,14 @@ pipeline {
                         passCount = jsonReport.iterations.count { it.status == 'PASS' }
                     }
                     def failCount = totalTests - passCount
-                    def successPercentage = (totalTests > 0) ? (passCount / (double)totalTests) * 100 : 0
+                    // FIX: Use float division
+                    def successPercentage = (totalTests > 0) ? (passCount * 100.0 / totalTests) : 0
                     def successPercentageStr = String.format("%.1f", successPercentage)
 
                     def buildParams = [
-                        "SU IP Address": params['SU IP Address'],
-                        "FW Version (SU)": "${su_fw_version}"
+                        "Local IP Address": params['Local IP Address'],
+                        "Remote IP Address": params['Remote IP Address'],
+                        "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
@@ -409,6 +430,7 @@ pipeline {
                                 </div>
                             </div>
 
+
                             <h2>Test Results</h2>
                             <table>
                                 <tr>
@@ -461,12 +483,11 @@ pipeline {
 
                     htmlContent += """
                             </table>
-                        </div>
-                        <div id="logModal" class="modal">
+                        </div> <div id="logModal" class="modal">
                           <div class="modal-content">
                             <div class="modal-header">
                                 <h2>Iteration Log</h2>
-                                <span class="modal-close" onclick="closeModal()">×</span>
+                                <span class="modal-close" onclick="closeModal()">x</span>
                             </div>
                             <div class="modal-body">
                                 <pre id="log-content-pre"></pre>
@@ -485,7 +506,6 @@ pipeline {
             }
         }
     }
-
     post {
         always {
             publishHTML(target: [
@@ -503,7 +523,6 @@ pipeline {
             echo "-----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
-
             script {
                 def buildCauses = currentBuild.getBuildCauses()
                 def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
