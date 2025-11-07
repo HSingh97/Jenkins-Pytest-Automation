@@ -5,7 +5,6 @@ import os
 import pytest
 import subprocess
 import shlex
-from testCases.conftest import local_ip  # Keep for consistency (not used here)
 
 WRITE_COMMUNITY = "private"
 READ_COMMUNITY  = "public"
@@ -17,7 +16,6 @@ SSID_BSU1       = "BSU1_UBR"
 SSID_BSU2       = "BSU2_UBR"
 
 def run_cmd(cmd, timeout=15):
-
     try:
         print(f"   [CMD] {cmd}", flush=True)
         res = subprocess.run(
@@ -38,7 +36,6 @@ def run_cmd(cmd, timeout=15):
         print(f"   [ERROR] {type(e).__name__}: {str(e)}", flush=True)
         return None
 
-
 def snmp_set(ip, oid, value):
     cmd = f"snmpset -v 2c -c {WRITE_COMMUNITY} {ip} {oid} s \"{value}\""
     output = run_cmd(cmd)
@@ -46,13 +43,11 @@ def snmp_set(ip, oid, value):
         return False
     return "STRING:" in output or value in output
 
-
 def get_assoc_table(ip, base_oid):
     cmd = f"snmpwalk -v 2c -c {READ_COMMUNITY} {ip} {base_oid}"
     output = run_cmd(cmd, timeout=20)
     if output is None:
         return {}
-
     data = {}
     for line in output.splitlines():
         if "=" not in line:
@@ -62,7 +57,6 @@ def get_assoc_table(ip, base_oid):
         value = val_part.strip().strip('"')
         data[key] = value
     return data
-
 
 def append_result_to_json(result, filename="iteration_results.json"):
     try:
@@ -78,7 +72,6 @@ def append_result_to_json(result, filename="iteration_results.json"):
         json.dump(data, f, indent=4)
     print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}", flush=True)
 
-
 def wait_for_snmp(ip, timeout=30, interval=3):
     start = time.time()
     while time.time() - start < timeout:
@@ -90,8 +83,23 @@ def wait_for_snmp(ip, timeout=30, interval=3):
     print(f"Timeout: SNMP on {ip} not responsive after {timeout}s", flush=True)
     return False
 
+# CLI Options
+def pytest_addoption(parser):
+    parser.addoption("--su-ip", action="store", required=True, help="SU IP address")
+    parser.addoption("--iter", action="store", type=int, required=True, help="Iteration number")
 
-def test_roaming_snmp(su_ip, iter):
+@pytest.fixture(scope="function")
+def roaming_args(request):
+    return {
+        "su_ip": request.config.getoption("--su-ip"),
+        "iter": request.config.getoption("--iter")
+    }
+
+# Main Test
+def test_roaming_snmp(roaming_args):
+    su_ip = roaming_args["su_ip"]
+    iter = roaming_args["iter"]
+
     print("\n" + "="*60, flush=True)
     print(f"SU IP     : {su_ip}", flush=True)
     print(f"Iteration : {iter}", flush=True)
@@ -167,20 +175,3 @@ def test_roaming_snmp(su_ip, iter):
             f"BSU1 entries: {len(result['Assoc Table BSU1'])}, "
             f"BSU2 entries: {len(result['Assoc Table BSU2'])}"
         )
-
-def pytest_addoption(parser):
-    parser.addoption("--su-ip", action="store", required=True, help="SU IP address")
-    parser.addoption("--iter", action="store", type=int, required=True, help="Iteration number")
-
-@pytest.fixture(scope="function")
-def roaming_args(request):
-    return {
-        "su_ip": request.config.getoption("--su-ip"),
-        "iter": request.config.getoption("--iter")
-    }
-
-def warn(*args, **kwargs):
-    pass
-
-import warnings
-warnings.warn = warn
