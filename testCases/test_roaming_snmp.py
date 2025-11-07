@@ -9,8 +9,8 @@ import shlex
 WRITE_COMMUNITY = "private"
 READ_COMMUNITY  = "public"
 
-OID_SSID        = "1.3.6.1.4.1.52619.1.1.1.5.1.3"
-OID_ASSOC_BASE  = "1.3.6.1.4.1.52619.1.3.3"
+OID_SSID        = ".1.3.6.1.4.1.52619.1.1.1.5.1.3.2"
+OID_ASSOC_BASE  = ".1.3.6.1.4.1.52619.1.3.3"
 
 SSID_BSU1       = "BSU1_UBR"
 SSID_BSU2       = "BSU2_UBR"
