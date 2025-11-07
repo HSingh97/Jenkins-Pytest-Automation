@@ -36,22 +36,17 @@ pipeline {
             steps {
                 script {
                     def suIP = params['SU IP Address']
+                    def roamingCount = params.ROAMING_COUNT ?: 1
 
                     echo "SU IP Address: ${suIP}"
-
-                    def roamingCount = params.ROAMING_COUNT ?: 1
                     echo "Number of roaming iterations: ${roamingCount}"
-
                     echo "Cleared old workspace"
-
                     echo "----------------------------------------"
                     echo "Testing Roaming - SNMP"
                     echo "----------------------------------------"
 
-                    sh "echo [] > iteration_results.json"  // Initialize JSON array
-
-                    // FIX: Remove pytest.ini to allow --su-ip
-                    sh 'rm -f pytest.ini || true'
+                    // DO NOT initialize JSON here — let Python create it
+                    sh 'rm -f pytest.ini || true'  // Allow CLI args
 
                     for (int i = 1; i <= roamingCount.toInteger(); i++) {
                         echo "Running roaming test iteration ${i}"
@@ -75,14 +70,20 @@ pipeline {
                     sh "ssh-keygen -R ${suIP} || true"
 
                     def su_fw_version = "N/A"
-
                     try {
                         su_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${suIP} 'cat /etc/version'", returnStdout: true).trim()
                     } catch (Exception e) {
                         echo "Failed to get SU FW version from ${suIP}: ${e.message}"
                     }
 
-                    def jsonReport = readJSON file: 'iteration_results.json'
+                    def jsonReport = [:]
+                    try {
+                        jsonReport = readJSON file: 'iteration_results.json'
+                    } catch (Exception e) {
+                        echo "No JSON report found or invalid: ${e.message}"
+                        jsonReport = [iterations: []]
+                    }
+
                     echo "JSON Report: ${jsonReport}"
 
                     // --- Calculate Stats ---
@@ -93,8 +94,8 @@ pipeline {
                         passCount = jsonReport.iterations.count { it.status == 'PASS' }
                     }
                     def failCount = totalTests - passCount
-                    // FIX: Use float division
-                    def successPercentage = (totalTests > 0) ? (passCount * 100.0 / totalTests) : 0
+                    // FIX: Force float
+                    def successPercentage = (totalTests > 0) ? (passCount * 100.0 / totalTests) : 0.0
                     def successPercentageStr = String.format("%.1f", successPercentage)
 
                     def buildParams = [
