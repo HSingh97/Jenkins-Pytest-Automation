@@ -15,7 +15,6 @@ pipeline {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${TARGET_STAND}"
                     echo "----------------------------------------"
-                    }
                 }
             }
         }
@@ -38,7 +37,7 @@ pipeline {
                     def roamingCount = params.ROAMING_COUNT ?: 1
                     echo "Number of roaming iterations: ${roamingCount}"
 
-                    echo "✅ Cleared old workspace"
+                    echo "Cleared old workspace"
 
                     echo "----------------------------------------"
                     echo "Testing Roaming - SNMP"
@@ -110,7 +109,7 @@ pipeline {
                                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
                                 margin: 0;
                                 padding: 0;
-                                background-color: #f9fafb; /* Lighter gray background */
+                                background-color: #f9fafb;
                                 color: #1f2937;
                             }
                             .container {
@@ -122,32 +121,31 @@ pipeline {
                                 display: flex;
                                 justify-content: space-between;
                                 align-items: center;
-                                background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%); /* New gradient */
-                                padding: 28px 36px; /* Increased padding */
+                                background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%);
+                                padding: 28px 36px;
                                 border: 1px solid #e5e7eb;
                                 border-radius: 12px;
-                                box-shadow: 0 4px 6px rgba(0,0,0,0.04); /* Slightly stronger shadow */
+                                box-shadow: 0 4px 6px rgba(0,0,0,0.04);
                             }
                             .header img {
-                                height: 65px; /* Bigger logo */
+                                height: 65px;
                                 transition: transform 0.2s ease-in-out;
                             }
                             .header img:hover {
-                                transform: scale(1.03); /* Subtle hover effect */
+                                transform: scale(1.03);
                             }
                             .header-info { text-align: right; }
                             .header-info h1 {
                                 margin: 0;
-                                font-size: 30px; /* Bigger title */
-                                font-weight: 700; /* Bolder */
-                                color: #0a2540; /* Darker, more corporate blue/black */
+                                font-size: 30px;
+                                font-weight: 700;
+                                color: #0a2540;
                             }
                             .header-info p {
                                 margin: 5px 0;
-                                font-size: 15px; /* Slightly larger sub-text */
-                                color: #4a5568; /* Darker gray */
+                                font-size: 15px;
+                                color: #4a5568;
                             }
-                            /* ######## END: MODIFIED CSS (HEADER) ######## --> */
 
                             h2 {
                                 margin-top: 32px;
@@ -158,7 +156,6 @@ pipeline {
                                 padding-bottom: 12px;
                             }
 
-                            /* --- Summary Cards --- */
                             .summary-container {
                                 display: grid;
                                 grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -201,7 +198,6 @@ pipeline {
                             }
                             .percent .percent-sign { font-size: 20px; font-weight: 600; }
 
-                            /* Card-specific Colors */
                             .card-percent { border-color: #6b7280; }
                             .card-percent .card-icon { background-color: #f3f4f6; color: #6b7280; }
                             .card-total { border-color: #3b82f6; }
@@ -211,7 +207,6 @@ pipeline {
                             .card-fail { border-color: #ef4444; }
                             .card-fail .card-icon { background-color: #fee2e2; color: #ef4444; }
 
-                            /* --- Table Style --- */
                             table {
                                 width: 100%;
                                 border-collapse: collapse;
@@ -256,7 +251,6 @@ pipeline {
                                 display: inline-block;
                             }
 
-                            /* --- Log Button --- */
                             .log-button {
                                 background-color: #3b82f6;
                                 color: white;
@@ -276,7 +270,6 @@ pipeline {
                                 box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                             }
 
-                            /* --- Modal Styles --- */
                             .modal {
                                 display: none;
                                 position: fixed;
@@ -329,8 +322,8 @@ pipeline {
                                 padding: 0;
                             }
                             #log-content-pre {
-                                background-color: #1f2937; /* Dark background */
-                                color: #e5e7eb; /* Light text */
+                                background-color: #1f2937;
+                                color: #e5e7eb;
                                 padding: 24px 32px;
                                 max-height: 60vh;
                                 overflow: auto;
@@ -387,35 +380,34 @@ pipeline {
                             <h2>Test Summary</h2>
                             <div class="summary-container">
                                 <div class="summary-card card-percent">
-                                    <div class="card-icon">🎯</div>
+                                    <div class="card-icon">Target</div>
                                     <div class="card-info">
                                         <p class="card-info-title">Success Rate</p>
                                         <p class="card-info-value percent">${successPercentageStr}<span class="percent-sign">%</span></p>
                                     </div>
                                 </div>
                                 <div class="summary-card card-total">
-                                    <div class="card-icon">📦</div>
+                                    <div class="card-icon">Package</div>
                                     <div class="card-info">
                                         <p class="card-info-title">Total Iterations</p>
                                         <p class="card-info-value">${totalTests}</p>
                                     </div>
                                 </div>
                                 <div class="summary-card card-pass">
-                                    <div class="card-icon">✅</div>
+                                    <div class="card-icon">Check</div>
                                     <div class="card-info">
                                         <p class="card-info-title">Passed</p>
                                         <p class="card-info-value">${passCount}</p>
                                     </div>
                                 </div>
                                 <div class="summary-card card-fail">
-                                    <div class="card-icon">❌</div>
+                                    <div class="card-icon">Cross</div>
                                     <div class="card-info">
                                         <p class="card-info-title">Failed</p>
                                         <p class="card-info-value">${failCount}</p>
                                     </div>
                                 </div>
                             </div>
-
 
                             <h2>Test Results</h2>
                             <table>
@@ -425,6 +417,7 @@ pipeline {
                                     <th style="text-align: center;">Logs</th>
                                 </tr>
                     """
+
                     // --- Read log files and build table rows + hidden log data ---
                     def tableRows = ""
                     def logDataBlocks = ""
@@ -439,9 +432,7 @@ pipeline {
                             def logContent = ""
 
                             try {
-                                // Read the log file from the workspace
                                 logContent = readFile(file: logFile)
-                                // Manually escape HTML characters
                                 logContent = logContent.replace("&", "&amp;")
                                                      .replace("<", "&lt;")
                                                      .replace(">", "&gt;")
@@ -470,11 +461,12 @@ pipeline {
 
                     htmlContent += """
                             </table>
-                        </div> <div id="logModal" class="modal">
+                        </div>
+                        <div id="logModal" class="modal">
                           <div class="modal-content">
                             <div class="modal-header">
                                 <h2>Iteration Log</h2>
-                                <span class="modal-close" onclick="closeModal()">&times;</span>
+                                <span class="modal-close" onclick="closeModal()">×</span>
                             </div>
                             <div class="modal-body">
                                 <pre id="log-content-pre"></pre>
@@ -493,6 +485,7 @@ pipeline {
             }
         }
     }
+
     post {
         always {
             publishHTML(target: [
@@ -504,13 +497,13 @@ pipeline {
                 reportName: 'Test Report'
             ])
 
-            // Clean up the log files after all stages are complete
             echo "Cleaning up test log files..."
             sh 'rm -f test-*.log || true'
 
             echo "-----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
+
             script {
                 def buildCauses = currentBuild.getBuildCauses()
                 def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
@@ -520,7 +513,6 @@ pipeline {
 
                 echo "Build started by: ${buildUserName} (${buildUserId})"
 
-                // Define a mapping of user IDs to emails (update as needed)
                 def userEmails = [
                     "puneet": "puneet.sharma@senao.com",
                     "harman": "harmanjot.singh@senao.com",
@@ -533,12 +525,9 @@ pipeline {
                     "dinesh": "dinesh.redddy@senao.com"
                 ]
 
-                // Get email from predefined mapping, else use default
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
 
                 echo "Sending email to: ${userEmail}"
-
-                // Send email notification
 
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
@@ -559,7 +548,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html,iteration_results.json' // Fixed comma placement
+                    attachmentsPattern: 'report.html,iteration_results.json'
                 )
             }
         }
