@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import time
 import json
-import pytest
 import subprocess
 import shlex
 
@@ -16,20 +13,6 @@ OID_ASSOC_BASE = ".1.3.6.1.4.1.52619.1.3.3"
 
 SSID_BSU1 = "BSU1_UBR"
 SSID_BSU2 = "BSU2_UBR"
-
-
-# === CLI OPTIONS (MUST BE AT MODULE LEVEL) ===
-def pytest_addoption(parser):
-    parser.addoption("--su-ip", action="store", required=True, help="SU IP address")
-    parser.addoption("--iter", action="store", type=int, required=True, help="Iteration number")
-
-
-@pytest.fixture(scope="function")
-def roaming_args(request):
-    return {
-        "su_ip": request.config.getoption("--su-ip"),
-        "iter": request.config.getoption("--iter")
-    }
 
 
 # === HELPER FUNCTIONS ===
@@ -66,14 +49,13 @@ def get_assoc_table(ip, base_oid):
     for line in output.splitlines():
         if "=" not in line:
             continue
-        key_part, val_part = line.split("=", 1)
-        key = key_part.strip().split(".")[-1]
-        value = val_part.strip().strip('"')
-        data[key] = value
+        key = line.split("=")[0].strip().split(".")[-1]
+        val = line.split("=", 1)[1].strip().strip('"')
+        data[key] = val
     return data
 
 
-def append_result(result, filename="iteration_results.json"):
+def append_result_to_json(result, filename="iteration_results.json"):
     try:
         with open(filename, "r") as f:
             data = json.load(f)
@@ -85,29 +67,30 @@ def append_result(result, filename="iteration_results.json"):
     data["iterations"].append(result)
     with open(filename, "w") as f:
         json.dump(data, f, indent=4)
-    print(f"\nUpdated JSON: {json.dumps(result, indent=2)}", flush=True)
+    print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}", flush=True)
 
 
-def wait_for_snmp(ip, timeout=30):
+def wait_for_snmp(ip, timeout=30, interval=3):
     start = time.time()
     while time.time() - start < timeout:
         if run_cmd(f"snmpget -v 2c -c {READ_COMMUNITY} {ip} {OID_SSID}", timeout=10):
-            print(f"{ip} SNMP OK", flush=True)
+            print(f"{ip} SNMP is responsive", flush=True)
             return True
-        print(f"Waiting SNMP... ({int(time.time()-start)}s)", flush=True)
-        time.sleep(3)
-    print(f"SNMP timeout after {timeout}s", flush=True)
+        print(f"Waiting for SNMP on {ip}... ({int(time.time()-start)}s)", flush=True)
+        time.sleep(interval)
+    print(f"Timeout: SNMP on {ip} not responsive after {timeout}s", flush=True)
     return False
 
 
-# === MAIN TEST ===
-def test_roaming_snmp(roaming_args):
-    su_ip = roaming_args["su_ip"]
-    iter_num = roaming_args["iter"]
+# === MAIN TEST — USING YOUR conftest.py FIXTURES ===
+def test_roaming_snmp(remote_ip, iter):
+    su_ip = remote_ip
+    iter_num = int(iter)
 
-    print("\n" + "="*60)
-    print(f"SU IP: {su_ip} | Iteration: {iter_num}")
-    print("="*60)
+    print("\n" + "="*60, flush=True)
+    print(f"SU IP     : {su_ip}", flush=True)
+    print(f"Iteration : {iter_num}", flush=True)
+    print("="*60, flush=True)
 
     result = {
         "iteration": iter_num,
@@ -122,33 +105,35 @@ def test_roaming_snmp(roaming_args):
     }
 
     try:
-        # Set BSU1
-        print(f"\nSetting SSID to {SSID_BSU1}...")
+        # === Set BSU1 ===
+        print(f"\nSetting SSID to {SSID_BSU1}...", flush=True)
         if not snmp_set(su_ip, OID_SSID, SSID_BSU1):
             result["Device Logs"] = "Failed to set SSID to BSU1"
-            append_result(result)
-            pytest.fail("SSID set failed (BSU1)")
+            append_result_to_json(result)
+            raise Exception("BSU1 set failed")
 
+        print("Waiting for association (up to 30s)...", flush=True)
         if not wait_for_snmp(su_ip):
             result["Device Logs"] = "SNMP timeout after BSU1"
-            append_result(result)
-            pytest.fail("SNMP timeout")
+            append_result_to_json(result)
+            raise Exception("SNMP timeout after BSU1")
 
         assoc1 = get_assoc_table(su_ip, OID_ASSOC_BASE)
         result["Assoc Table BSU1"] = assoc1
         result["Device Logs"] += f"BSU1: {len(assoc1)} entries\n"
 
-        # Set BSU2
-        print(f"\nSetting SSID to {SSID_BSU2}...")
+        # === Set BSU2 ===
+        print(f"\nSetting SSID to {SSID_BSU2}...", flush=True)
         if not snmp_set(su_ip, OID_SSID, SSID_BSU2):
             result["Device Logs"] += "Failed to set SSID to BSU2"
-            append_result(result)
-            pytest.fail("SSID set failed (BSU2)")
+            append_result_to_json(result)
+            raise Exception("BSU2 set failed")
 
+        print("Waiting for association (up to 30s)...", flush=True)
         if not wait_for_snmp(su_ip):
             result["Device Logs"] += "SNMP timeout after BSU2"
-            append_result(result)
-            pytest.fail("SNMP timeout")
+            append_result_to_json(result)
+            raise Exception("SNMP timeout after BSU2")
 
         assoc2 = get_assoc_table(su_ip, OID_ASSOC_BASE)
         result["Assoc Table BSU2"] = assoc2
@@ -157,10 +142,24 @@ def test_roaming_snmp(roaming_args):
         result["status"] = "PASS"
 
     except Exception as e:
-        result["Device Logs"] += f" [EXC] {e}"
-        print(f"EXCEPTION: {e}", flush=True)
+        error_msg = f"[EXCEPTION] {type(e).__name__}: {str(e)}"
+        result["Device Logs"] += error_msg
+        print(error_msg, flush=True)
 
-    append_result(result)
+    # === Final Append & Check ===
+    append_result_to_json(result)
 
     if result["status"] != "PASS":
-        pytest.fail(f"Iteration {iter_num} FAILED")
+        fail_reasons = []
+        if "Failed to set SSID" in result["Device Logs"]:
+            fail_reasons.append("SSID set failed")
+        if "timeout" in result["Device Logs"]:
+            fail_reasons.append("SNMP timeout")
+        if not result["Assoc Table BSU1"] and not result["Assoc Table BSU2"]:
+            fail_reasons.append("No assoc data")
+
+        raise AssertionError(
+            f"Iteration {iter_num} FAILED: {', '.join(fail_reasons)} – "
+            f"BSU1: {len(result['Assoc Table BSU1'])}, "
+            f"BSU2: {len(result['Assoc Table BSU2'])}"
+        )
