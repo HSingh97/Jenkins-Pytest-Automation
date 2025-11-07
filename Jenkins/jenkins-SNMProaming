@@ -15,8 +15,6 @@ pipeline {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${TARGET_STAND}"
                     echo "----------------------------------------"
-                    if (!params['SU IP Address']) {
-                        error "Missing required parameter: SU IP Address"
                     }
                 }
             }
@@ -66,24 +64,15 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
-                    sh "ssh-keygen -R ${localIP} || true"
-                    sh "ssh-keygen -R ${remoteIP} || true"
+                    def suIP = params['SU IP Address']
 
-                    def local_fw_version = "N/A"
-                    def remote_fw_version = "N/A"
+                    sh "ssh-keygen -R ${suIP} || true"
 
+                    def su_fw_version = "N/A"
                     try {
-                        local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
+                        su_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${suIP} 'cat /etc/version'", returnStdout: true).trim()
                     } catch (Exception e) {
-                        echo "⚠️ Failed to get local FW version from ${localIP}: ${e.message}"
-                    }
-
-                    try {
-                        remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (Exception e) {
-                        echo "⚠️ Failed to get remote FW version from ${remoteIP}: ${e.message}"
+                        echo "Failed to get SU FW version: ${e.message}"
                     }
 
                     def jsonReport = readJSON file: 'iteration_results.json'
@@ -101,9 +90,8 @@ pipeline {
                     def successPercentageStr = String.format("%.1f", successPercentage)
 
                     def buildParams = [
-                        "Local IP Address": params['Local IP Address'],
-                        "Remote IP Address": params['Remote IP Address'],
-                        "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
+                        "SU IP Address": params['SU IP Address'],
+                        "FW Version (SU)": "${su_fw_version}"
                     ]
 
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
