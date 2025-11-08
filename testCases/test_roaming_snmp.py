@@ -13,7 +13,6 @@ OID_ASSOC_BASE = ".1.3.6.1.4.1.52619.1.3.3.1"
 SSID_BSU1 = "BSU1-puneet"
 SSID_BSU2 = "BSU2_puneet"
 
-# BSU IPs
 BSU1_IP = "192.168.1.70"
 BSU2_IP = "192.168.1.71"
 
@@ -111,7 +110,8 @@ def append_result(result, filename="iteration_results.json"):
         json.dump(data, f, indent=4)
     print(f"\nUpdated JSON: {json.dumps(result, indent=2)}", flush=True)
 
-def test_roaming_snmp(su_ip, iter):
+def test_roaming_snmp(remote_ip, iter):
+    su_ip = remote_ip  # SU IP
     iter_num = int(iter)
 
     print("\n" + "="*60)
