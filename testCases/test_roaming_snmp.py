@@ -7,14 +7,18 @@ import shlex
 WRITE_COMMUNITY = "private"
 READ_COMMUNITY  = "public"
 
-OID_SSID = ".1.3.6.1.4.1.52619.1.1.1.5.1.3.2"
+OID_SSID = ".1.3.6.1.4.1.52619.1.1.5.1.3.2"
+
 OID_ASSOC_BASE = ".1.3.6.1.4.1.52619.1.3.3.1"
 
+# SSIDs
 SSID_BSU1 = "BSU1-puneet"
 SSID_BSU2 = "BSU2_puneet"
 
-BSU1_IP = "192.168.1.70"
-BSU2_IP = "192.168.1.71"
+BSU_IP_MAP = {
+    SSID_BSU1: "192.168.1.70",
+    SSID_BSU2: "192.168.1.71"
+}
 
 def run_cmd(cmd, timeout=15):
     print(f"   [CMD] {cmd}", flush=True)
@@ -35,13 +39,28 @@ def snmp_set(ip, oid, value):
     output = run_cmd(cmd)
     return output and ("STRING:" in output or value in output)
 
-def get_assoc_table(ip, base_oid):
-    cmd = f"snmpwalk -v 2c -c {READ_COMMUNITY} {ip} {base_oid} 2>/dev/null"
-    output = run_cmd(cmd, timeout=30)
-    if not output or "No Such Object" in output:
-        print("   [INFO] No clients associated.", flush=True)
-        return {}
+def get_assoc_table(ip, base_oid, timeout=90):
+    print(f"   Waiting up to {timeout}s for client on {ip}...", flush=True)
+    start = time.time()
+    while time.time() - start < timeout:
+        cmd = f"snmpwalk -v 2c -c {READ_COMMUNITY} {ip} {base_oid} 2>/dev/null"
+        output = run_cmd(cmd, timeout=30)
+        if not output:
+            print(f"   [INFO] No SNMP response from {ip}", flush=True)
+        elif "No Such Object" in output:
+            print(f"   [INFO] No clients yet on {ip}", flush=True)
+        else:
+            # Parse clients
+            clients = parse_clients(output)
+            if clients:
+                print(f"   Client associated on {ip} after {int(time.time()-start)}s!", flush=True)
+                return clients
+        print(f"   Still waiting... ({int(time.time()-start)}s)", flush=True)
+        time.sleep(10)
+    print(f"   Timeout: No client on {ip} after {timeout}s", flush=True)
+    return {}
 
+def parse_clients(output):
     data = {}
     current_entry = {}
     current_key = None
@@ -82,21 +101,8 @@ def get_assoc_table(ip, base_oid):
     if current_key and ("MAC" in current_entry or "IP" in current_entry):
         data[current_key] = current_entry
 
-    print(f"   [PARSED] {len(data)} client(s) on {ip}: {list(data.keys())}", flush=True)
+    print(f"   [PARSED] {len(data)} client(s): {list(data.keys())}", flush=True)
     return data
-
-def wait_for_association(ip, timeout=60):
-    print(f"Waiting up to {timeout}s for client on {ip}...", flush=True)
-    start = time.time()
-    while time.time() - start < timeout:
-        output = run_cmd(f"snmpwalk -v 2c -c {READ_COMMUNITY} {ip} {OID_ASSOC_BASE} 2>/dev/null")
-        if output and "No Such Object" not in output and len(output.strip()) > 0:
-            print(f"Client associated on {ip} after {int(time.time()-start)}s!", flush=True)
-            return True
-        print(f"   Still waiting... ({int(time.time()-start)}s)", flush=True)
-        time.sleep(5)
-    print(f"Timeout: No client on {ip} after {timeout}s", flush=True)
-    return False
 
 def append_result(result, filename="iteration_results.json"):
     try:
@@ -111,11 +117,11 @@ def append_result(result, filename="iteration_results.json"):
     print(f"\nUpdated JSON: {json.dumps(result, indent=2)}", flush=True)
 
 def test_roaming_snmp(remote_ip, iter):
-    su_ip = remote_ip  # SU IP
+    su_ip = remote_ip
     iter_num = int(iter)
 
     print("\n" + "="*60)
-    print(f"SU IP: {su_ip} | BSU1: {BSU1_IP} | BSU2: {BSU2_IP} | Iteration: {iter_num}")
+    print(f"SU IP: {su_ip} | Iteration: {iter_num}")
     print("="*60)
 
     result = {
@@ -123,37 +129,41 @@ def test_roaming_snmp(remote_ip, iter):
         "test": "roaming_snmp",
         "status": "FAIL",
         "SU IP": su_ip,
-        "BSU1 IP": BSU1_IP,
-        "BSU2 IP": BSU2_IP,
         "BSU1 SSID": SSID_BSU1,
         "BSU2 SSID": SSID_BSU2,
+        "BSU1 IP": BSU_IP_MAP[SSID_BSU1],
+        "BSU2 IP": BSU_IP_MAP[SSID_BSU2],
         "Assoc Table BSU1": {},
         "Assoc Table BSU2": {},
         "Device Logs": ""
     }
 
     try:
-        # === BSU1 ===
-        print(f"Setting SSID to {SSID_BSU1} on SU {su_ip}")
+        # === TEST BSU1 ===
+        print(f"\nSetting SSID to '{SSID_BSU1}' on SU {su_ip} via OID {OID_SSID}")
         if not snmp_set(su_ip, OID_SSID, SSID_BSU1):
             raise Exception("Failed to set BSU1 SSID")
 
-        if not wait_for_association(BSU1_IP, timeout=60):
-            result["Device Logs"] += f"BSU1 ({BSU1_IP}): No client after 60s\n"
+        bsu1_ip = BSU_IP_MAP[SSID_BSU1]
+        clients = get_assoc_table(bsu1_ip, OID_ASSOC_BASE, timeout=90)
+        if not clients:
+            result["Device Logs"] += f"BSU1 ({bsu1_ip}): No client after 90s\n"
         else:
-            result["Assoc Table BSU1"] = get_assoc_table(BSU1_IP, OID_ASSOC_BASE)
-            result["Device Logs"] += f"BSU1: {len(result['Assoc Table BSU1'])} clients\n"
+            result["Assoc Table BSU1"] = clients
+            result["Device Logs"] += f"BSU1: {len(clients)} client(s) | MAC: {list(clients.values())[0].get('MAC', 'N/A')}\n"
 
-        # === BSU2 ===
-        print(f"Setting SSID to {SSID_BSU2} on SU {su_ip}")
+        # === TEST BSU2 ===
+        print(f"\nSetting SSID to '{SSID_BSU2}' on SU {su_ip} via OID {OID_SSID}")
         if not snmp_set(su_ip, OID_SSID, SSID_BSU2):
             raise Exception("Failed to set BSU2 SSID")
 
-        if not wait_for_association(BSU2_IP, timeout=60):
-            result["Device Logs"] += f"BSU2 ({BSU2_IP}): No client after 60s"
+        bsu2_ip = BSU_IP_MAP[SSID_BSU2]
+        clients = get_assoc_table(bsu2_ip, OID_ASSOC_BASE, timeout=90)
+        if not clients:
+            result["Device Logs"] += f"BSU2 ({bsu2_ip}): No client after 90s"
         else:
-            result["Assoc Table BSU2"] = get_assoc_table(BSU2_IP, OID_ASSOC_BASE)
-            result["Device Logs"] += f"BSU2: {len(result['Assoc Table BSU2'])} clients"
+            result["Assoc Table BSU2"] = clients
+            result["Device Logs"] += f"BSU2: {len(clients)} client(s) | MAC: {list(clients.values())[0].get('MAC', 'N/A')}"
 
         result["status"] = "PASS"
 
