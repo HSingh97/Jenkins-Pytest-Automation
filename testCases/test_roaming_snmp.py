@@ -3,45 +3,69 @@ import sys
 import time
 import json
 import subprocess
+import pytest
 
-for i in range(len(sys.argv)):
-    if sys.argv[i] == "--remote-ip" and i + 1 < len(sys.argv):
-        SU_IP = sys.argv[i + 1]
-    if sys.argv[i] == "--iter" and i + 1 < len(sys.argv):
-        ITER = int(sys.argv[i + 1])
+# === GET ARGS FROM JENKINS ===
+def get_args():
+    remote_ip = None
+    iter_num = None
+    for i in range(len(sys.argv)):
+        if sys.argv[i] == "--remote-ip" and i+1 < len(sys.argv):
+            remote_ip = sys.argv[i+1]
+        if sys.argv[i] == "--iter" and i+1 < len(sys.argv):
+            iter_num = int(sys.argv[i+1])
+    if not remote_ip or not iter_num:
+        raise ValueError("Missing --remote-ip or --iter")
+    return remote_ip, iter_num
 
+SU_IP, ITER = get_args()
+
+# === CONFIG ===
 WRITE_COMMUNITY = "private"
-READ_COMMUNITY = "public"
+READ_COMMUNITY  = "public"
 OID_SSID = ".1.3.6.1.4.1.52619.1.1.1.5.1.3.2"
 OID_TABLE = ".1.3.6.1.4.1.52619.1.3.3.1"
 
-SSID1 = "BSU1-puneet"
-SSID2 = "BSU2_puneet"
-BSU1 = "192.168.1.70"
-BSU2 = "192.168.1.71"
-RESULT = "iteration_results.json"
+SSID_BSU1 = "BSU1-puneet"
+SSID_BSU2 = "BSU2_puneet"
+BSU1_IP = "192.168.1.70"
+BSU2_IP = "192.168.1.71"
+RESULT_FILE = "iteration_results.json"
 
+LINK_WAIT = 60  # 60 SECONDS TO LET LINK FORM FULLY
 
-def snmp(cmd):
+# === RUN SNMP ===
+def run_snmp(cmd):
     try:
-        out = subprocess.check_output(cmd, shell=True, text=True, timeout=15).strip()
-        return out
+        result = subprocess.run(
+            cmd.split(),
+            capture_output=True,
+            text=True,
+            timeout=15
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
     except:
         return ""
 
-
+# === SET SSID ON SU ===
 def set_ssid(ssid):
     cmd = f"snmpset -v 2c -c {WRITE_COMMUNITY} {SU_IP} {OID_SSID} s \"{ssid}\""
-    return "STRING" in snmp(cmd)
+    out = run_snmp(cmd)
+    return "STRING" in out
 
+# === WAIT FOR LINK TO FORM (60s) ===
+def wait_for_link():
+    print(f"Waiting {LINK_WAIT} seconds for link to form fully...", flush=True)
+    time.sleep(LINK_WAIT)
 
+# === GET FULL 1–63 TABLE FROM BSU ===
 def get_table(ip):
-    cmd = f"snmpwalk -v 2c -c {READ_COMMUNITY} {ip} {OID_TABLE} 2>/dev/null"
-    out = snmp(cmd)
-    if not out or "Timeout" in out:
+    cmd = f"snmpwalk -v 2c -c {READ_COMMUNITY} {ip} {OID_TABLE}"
+    out = run_snmp(cmd)
+    if not out or "Timeout" in out or "No Such Object" in out:
         return {}
 
-    data = {}
+    table = {}
     entry = {}
     key = None
 
@@ -49,68 +73,78 @@ def get_table(ip):
         if "=" not in line: continue
         oid, val = line.split("=", 1)
         val = val.strip().strip('"')
-        parts = oid.strip().split(".")
+        parts = [p for p in oid.split(".") if p]
         if len(parts) < 13: continue
         radio, sec, field = parts[-3], parts[-2], parts[-1]
         new_key = f"{radio}.{sec}"
 
         if new_key != key and key:
-            data[key] = entry
+            table[key] = entry
             entry = {}
         key = new_key
         entry[field] = val
 
     if key and entry:
-        data[key] = entry
+        table[key] = entry
 
-    return data
+    return table
 
-
-def wait(ip, timeout=90):
-    for _ in range(timeout // 5):
-        d = get_table(ip)
-        if d: return d
-        time.sleep(5)
-    return {}
-
-
-def has_su_ip(data, su_ip):
+# === CHECK IF SU IS CONNECTED (field 3 == SU_IP) ===
+def is_connected(data):
     for client in data.values():
-        if client.get("3") == su_ip:
+        if client.get("3") == SU_IP:
             return True
     return False
 
-def save(result):
+# === SAVE RESULT TO JSON ===
+def save_result(result):
     try:
-        with open(RESULT, "r") as f:
+        with open(RESULT_FILE, "r") as f:
             all_data = json.load(f)
     except:
         all_data = {"iterations": []}
     all_data["iterations"].append(result)
-    with open(RESULT, "w") as f:
+    with open(RESULT_FILE, "w") as f:
         json.dump(all_data, f, indent=2)
+    print(f"Result saved to {RESULT_FILE}", flush=True)
 
+# === PYTEST TEST ===
+def test_roaming_snmp():
+    print(f"\n" + "*" * 70, flush=True)
+    print(f"ROAMING TEST | SU: {SU_IP} | ITERATION: {ITER}", flush=True)
+    print(f"*" * 70, flush=True)
 
-print(f"\nROAMING TEST | SU: {SU_IP} | ITER: {ITER}")
+    result = {
+        "iteration": ITER,
+        "status": "FAIL",
+        "SU_IP": SU_IP,
+        "BSU1": {"IP": BSU1_IP, "SSID": SSID_BSU1, "data": {}, "connected": False},
+        "BSU2": {"IP": BSU2_IP, "SSID": SSID_BSU2, "data": {}, "connected": False}
+    }
 
-result = {
-    "iteration": ITER,
-    "SU_IP": SU_IP,
-    "BSU1": {"IP": BSU1, "SSID": SSID1, "data": {}, "connected": False},
-    "BSU2": {"IP": BSU2, "SSID": SSID2, "data": {}, "connected": False}
-}
+    # === BSU1: SET SSID + 60s WAIT + GET DATA ===
+    print(f"\n1. Setting SSID → {SSID_BSU1}", flush=True)
+    assert set_ssid(SSID_BSU1), "Failed to set SSID on SU"
+    wait_for_link()  # 60 SECONDS FOR LINK TO FORM
+    result["BSU1"]["data"] = get_table(BSU1_IP)
+    result["BSU1"]["connected"] = is_connected(result["BSU1"]["data"])
 
-# === BSU1 ===
-print(f"Setting SSID → {SSID1}")
-set_ssid(SSID1)
-result["BSU1"]["data"] = wait(BSU1)
-result["BSU1"]["connected"] = has_su_ip(result["BSU1"]["data"], SU_IP)
+    # === BSU2: SET SSID + 60s WAIT + GET DATA ===
+    print(f"\n2. Setting SSID → {SSID_BSU2}", flush=True)
+    assert set_ssid(SSID_BSU2), "Failed to set SSID on SU"
+    wait_for_link()  # 60 SECONDS FOR LINK TO FORM
+    result["BSU2"]["data"] = get_table(BSU2_IP)
+    result["BSU2"]["connected"] = is_connected(result["BSU2"]["data"])
 
-# === BSU2 ===
-print(f"Setting SSID → {SSID2}")
-set_ssid(SSID2)
-result["BSU2"]["data"] = wait(BSU2)
-result["BSU2"]["connected"] = has_su_ip(result["BSU2"]["data"], SU_IP)
+    # === FINAL STATUS ===
+    if result["BSU1"]["connected"] and result["BSU2"]["connected"]:
+        result["status"] = "PASS"
+        print(f"ITER {ITER} → PASS", flush=True)
+    else:
+        print(f"ITER {ITER} → FAIL", flush=True)
 
-save(result)
-print(f"ITER {ITER} DONE → {RESULT}")
+    save_result(result)
+
+    # === FINAL ASSERT FOR JENKINS ===
+    assert result["status"] == "PASS", \
+        f"Roaming failed: BSU1={result['BSU1']['connected']}, BSU2={result['BSU2']['connected']}"
