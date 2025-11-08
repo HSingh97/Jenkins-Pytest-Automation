@@ -4,19 +4,13 @@ import json
 import subprocess
 import shlex
 
-
-SU_IP_CLI = None
-ITER_NUM = None
-
+# === CONFIG ===
 WRITE_COMMUNITY = "private"
 READ_COMMUNITY = "public"
 
-OID_SSID = ".1.3.6.1.4.1.52619.1.1.1.5.1.3.2"
-
-# ASSOCIATION TABLE
+OID_SSID = ".1.3.6.1.4.1.52619.1.1.1.5.1.3.2"  # YOU CONFIRMED
 OID_ASSOC = ".1.3.6.1.4.1.52619.1.3.3.1"
 
-# SSIDs & BSU IPs
 SSID_BSU1 = "BSU1-puneet"
 SSID_BSU2 = "BSU2_puneet"
 
@@ -51,7 +45,7 @@ def set_ssid(ip, ssid):
 def get_clients(ip):
     cmd = f"snmpwalk -v 2c -c {READ_COMMUNITY} {ip} {OID_ASSOC} 2>/dev/null"
     output = run_cmd(cmd)
-    if not output or "No Such Object" in output:
+    if not output or "No Such Object" in output or "Timeout" in str(output):
         return {}
 
     clients = {}
@@ -68,8 +62,9 @@ def get_clients(ip):
         field = parts[-1]
         new_key = f"{radio}.{sec}"
 
-        if new_key != key and key and ("MAC" in entry or "IP" in entry):
-            clients[key] = entry
+        if new_key != key and key:
+            if "MAC" in entry or "IP" in entry:
+                clients[key] = entry
             entry = {}
         key = new_key
 
@@ -89,8 +84,10 @@ def wait_for_client(ip, timeout=90):
     while time.time() - start < timeout:
         clients = get_clients(ip)
         if clients:
+            print(f"   Client found after {int(time.time() - start)}s!")
             return clients
         time.sleep(8)
+    print(f"   No client after {timeout}s")
     return {}
 
 
@@ -104,24 +101,22 @@ def save_result(data):
     results["iterations"].append(data)
     with open(RESULT_FILE, "w") as f:
         json.dump(results, f, indent=2)
-    print(f"\n[JSON] {json.dumps(data, indent=2)}")
+    print(f"\n[RESULT] {json.dumps(data, indent=2)}")
 
 
-# === MAIN TEST ===
+# === MAIN ===
 def test_roaming_snmp(remote_ip, iter):
-    global SU_IP_CLI, ITER_NUM
-    SU_IP_CLI = remote_ip
-    ITER_NUM = int(iter)
+    su_ip = remote_ip
+    iter_num = int(iter)
 
     print("\n" + "=" * 60)
-    print(f"ROAMING TEST | SU: {SU_IP_CLI} | ITER: {ITER_NUM}")
+    print(f"ROAMING TEST | SU: {su_ip} | ITER: {iter_num}")
     print("=" * 60)
 
     result = {
-        "iteration": ITER_NUM,
-        "test": "roaming_snmp",
+        "iteration": iter_num,
         "status": "FAIL",
-        "SU IP": SU_IP_CLI,
+        "SU IP": su_ip,
         "BSU1 IP": BSU1_IP,
         "BSU2 IP": BSU2_IP,
         "BSU1 SSID": SSID_BSU1,
@@ -134,29 +129,29 @@ def test_roaming_snmp(remote_ip, iter):
     try:
         # === BSU1 ===
         print(f"\n1. Setting SSID = {SSID_BSU1}")
-        if not set_ssid(SU_IP_CLI, SSID_BSU1):
+        if not set_ssid(su_ip, SSID_BSU1):
             raise Exception("Failed to set BSU1 SSID")
 
         clients = wait_for_client(BSU1_IP)
         if clients:
             result["clients_BSU1"] = clients
             mac = list(clients.values())[0].get("MAC", "N/A")
-            result["log"] += f"BSU1: Client {mac} connected\n"
+            result["log"] += f"BSU1: {mac} connected\n"
         else:
-            result["log"] += "BSU1: No client after 90s\n"
+            result["log"] += "BSU1: No client\n"
 
         # === BSU2 ===
         print(f"\n2. Setting SSID = {SSID_BSU2}")
-        if not set_ssid(SU_IP_CLI, SSID_BSU2):
+        if not set_ssid(su_ip, SSID_BSU2):
             raise Exception("Failed to set BSU2 SSID")
 
         clients = wait_for_client(BSU2_IP)
         if clients:
             result["clients_BSU2"] = clients
             mac = list(clients.values())[0].get("MAC", "N/A")
-            result["log"] += f"BSU2: Client {mac} connected"
+            result["log"] += f"BSU2: {mac} connected"
         else:
-            result["log"] += "BSU2: No client after 90s"
+            result["log"] += "BSU2: No client"
 
         result["status"] = "PASS"
 
