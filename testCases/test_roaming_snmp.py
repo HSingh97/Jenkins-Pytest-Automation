@@ -33,7 +33,7 @@ def snmp_set(ip, oid, value):
     return output and ("STRING:" in output or value in output)
 
 def get_assoc_table(ip, base_oid):
-    cmd = f"snmpwalk -v 2c -c {READ_COMMUNITY} {ip} {base_oid}"
+    cmd = f"snmpwalk -v 2c -c {READ_COMMUNITY} {ip} {base_oid} 2>/dev/null"
     output = run_cmd(cmd, timeout=30)
     if not output or "No Such Object" in output:
         print("   [INFO] No clients associated yet.", flush=True)
@@ -79,6 +79,7 @@ def get_assoc_table(ip, base_oid):
     if current_key and ("MAC" in current_entry or "IP" in current_entry):
         data[current_key] = current_entry
 
+    print(f"   [PARSED] {len(data)} client(s) found.", flush=True)
     return data
 
 def wait_for_association(ip, timeout=60):
@@ -127,7 +128,7 @@ def test_roaming_snmp(remote_ip, iter):
     }
 
     try:
-        # === BSU1 ===
+        # BSU1
         print(f"Setting SSID: {SSID_BSU1}")
         if not snmp_set(su_ip, OID_SSID, SSID_BSU1):
             raise Exception("Failed to set BSU1 SSID")
@@ -138,7 +139,7 @@ def test_roaming_snmp(remote_ip, iter):
             result["Assoc Table BSU1"] = get_assoc_table(su_ip, OID_ASSOC_BASE)
             result["Device Logs"] += f"BSU1: {len(result['Assoc Table BSU1'])} clients\n"
 
-        # === BSU2 ===
+        # BSU2
         print(f"Setting SSID: {SSID_BSU2}")
         if not snmp_set(su_ip, OID_SSID, SSID_BSU2):
             raise Exception("Failed to set BSU2 SSID")
