@@ -3,11 +3,6 @@ import jenkins.model.Jenkins
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
 
-    parameters {
-        string(name: 'SU IP Address', defaultValue: '192.168.1.72', description: 'SU IP Address (e.g. 192.168.1.72)')
-        string(name: 'ROAMING_COUNT', defaultValue: '3', description: 'Number of Roaming Iterations (e.g. 3)')
-    }
-
     stages {
         stage('Prepare') {
             steps {
