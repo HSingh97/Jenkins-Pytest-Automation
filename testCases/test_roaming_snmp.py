@@ -142,4 +142,5 @@ def test_roaming_snmp():
         raise AssertionError(f"Roaming failed: BSU1={result['BSU1']['connected']}, BSU2={result['BSU2']['connected']}")
 
 if __name__ == "__main__":
+
     test_roaming_snmp()
