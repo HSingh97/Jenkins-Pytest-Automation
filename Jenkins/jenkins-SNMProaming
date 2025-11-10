@@ -18,13 +18,16 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                sh '''
-                    apt-get update -qq
+                script {
+                    echo "----------------------------------------"
+                    echo "Installing Dependencies"
+                    echo "----------------------------------------"
                     apt-get install -y snmp snmp-mibs-downloader sshpass > /dev/null 2>&1 || true
                     python3 -m pip install --break-system-packages --quiet pytest || true
-                '''
+                }
             }
         }
+
 
         stage('Roaming Test') {
             steps {
@@ -40,6 +43,7 @@ pipeline {
                         echo "=== ROAMING ITERATION ${i} of ${count} ==="
                         try {
                             sh """
+                                set -x
                                 python3 testCases/test_roaming_snmp.py \
                                 --su-ip '${suIP}' \
                                 --iter ${i}
