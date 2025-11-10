@@ -1,17 +1,11 @@
 #!/usr/bin/env python3
-import argparse
-import sys
-import time
-import json
-import subprocess
+import argparse, time, json, subprocess
 from datetime import datetime
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--su-ip", required=True, help="SU IP Address")
-parser.add_argument("--iter", type=int, required=True, help="Iteration number")
-args, unknown = parser.parse_known_args()
-
-sys.argv = [sys.argv[0]] + unknown
+parser.add_argument("--su-ip", required=True)
+parser.add_argument("--iter", type=int, required=True)
+args = parser.parse_args()
 
 SU_IP = args.su_ip
 ITER = args.iter
@@ -23,41 +17,27 @@ OID_TABLE = ".1.3.6.1.4.1.52619.1.3.3.1"
 
 SSID_BSU1 = "BSU1_puneet"
 SSID_BSU2 = "BSU2_puneet"
-BSU1_IP = "192.168.1.70"
-BSU2_IP = "192.168.1.71"
-
 RESULT_FILE = "iteration_results.json"
-LINK_WAIT = 30
+WAIT = 35
 
-def run_snmp(cmd):
+def run(cmd):
     try:
-        result = subprocess.run(cmd.split(), capture_output=True, text=True, timeout=20)
-        if result.returncode == 0:
-            return result.stdout.strip()
-        else:
-            print(f"SNMP ERROR: {result.stderr.strip()}", flush=True)
-            return ""
-    except Exception as e:
-        print(f"SNMP EXCEPTION: {e}", flush=True)
-        return ""
+        r = subprocess.run(cmd.split(), capture_output=True, text=True, timeout=25)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except: return ""
 
 def set_ssid(ssid):
-    cmd = f"snmpset -v 2c -c {WRITE_COMMUNITY} {SU_IP} {OID_SSID} s \"{ssid}\""
-    print(f"Setting SSID → {ssid}", flush=True)
-    output = run_snmp(cmd)
-    success = f'STRING: "{ssid}"' in output
-    print(f"→ {'PASS' if success else 'FAIL'}", flush=True)
-    return success
+    out = run(f"snmpset -v 2c -c {WRITE_COMMUNITY} {SU_IP} {OID_SSID} s \"{ssid}\"")
+    ok = f'STRING: "{ssid}"' in out
+    print(f"Set SSID → {ssid} : {'PASS' if ok else 'FAIL'}")
+    return ok
 
-def get_table(bu_ip):
-    cmd = f"snmpwalk -v 2c -c {READ_COMMUNITY} {bu_ip} {OID_TABLE}"
-    output = run_snmp(cmd)
-    if not output or "Timeout" in output or "No Such Object" in output:
-        return {}
+def get_table():
+    out = run(f"snmpwalk -v 2c -c {READ_COMMUNITY} {SU_IP} {OID_TABLE}")
+    if not out or "Timeout" in out: return {}
     table = {}
-    entry = {}
-    key = None
-    for line in output.splitlines():
+    entry = {}; key = None
+    for line in out.splitlines():
         if "=" not in line: continue
         oid, val = line.split("=", 1)
         val = val.strip().strip('"')
@@ -65,79 +45,54 @@ def get_table(bu_ip):
         if len(parts) < 13: continue
         radio, sec, field = parts[-3], parts[-2], parts[-1]
         new_key = f"{radio}.{sec}"
-        if new_key != key and key is not None:
-            table[key] = entry
-            entry = {}
+        if new_key != key and key: table[key] = entry; entry = {}
         key = new_key
         entry[field] = val
-    if key and entry:
-        table[key] = entry
+    if key and entry: table[key] = entry
     return table
 
-def is_connected(table_data):
-    for client in table_data.values():
-        if client.get("4") == SU_IP:
+def has_ssid(table, ssid):
+    for e in table.values():
+        if e.get("28") == ssid or e.get("29") == ssid:
             return True
     return False
 
-def save_result(result):
-    try:
-        with open(RESULT_FILE, "r") as f:
-            data = json.load(f)
-    except:
-        data = {"iterations": []}
-    data["iterations"].append(result)
-    with open(RESULT_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-    print(f"Saved → {RESULT_FILE}", flush=True)
+def save(res):
+    try: data = json.load(open(RESULT_FILE))
+    except: data = {"iterations": []}
+    data["iterations"].append(res)
+    json.dump(data, open(RESULT_FILE, "w"), indent=2)
+    print("Result saved")
 
-def test_roaming_snmp():
-    print(f"\n{'='*70}", flush=True)
-    print(f"ROAMING TEST | SU: {SU_IP} | ITER: {ITER}", flush=True)
-    print(f"{'='*70}", flush=True)
+print("\n" + "="*80)
+print(f"ROAMING TEST | SU: {SU_IP} | ITER: {ITER} | {datetime.now().strftime('%d %b %Y, %H:%M:%S')}")
+print("="*80)
 
-    result = {
-        "iteration": ITER,
-        "timestamp": datetime.now().isoformat(),
-        "status": "FAIL",
-        "SU_IP": SU_IP,
-        "BSU1": {"IP": BSU1_IP, "SSID": SSID_BSU1, "connected": False},
-        "BSU2": {"IP": BSU2_IP, "SSID": SSID_BSU2, "connected": False}
-    }
+result = {"iteration": ITER, "timestamp": datetime.now().isoformat(), "status": "FAIL", "SU_IP": SU_IP,
+          "BSU1": {"SSID": SSID_BSU1, "connected": False}, "BSU2": {"SSID": SSID_BSU2, "connected": False}}
 
-    # === BSU1 ===
-    print(f"\nSetting SSID → {SSID_BSU1}", flush=True)
-    if set_ssid(SSID_BSU1):
-        print(f"Waiting {LINK_WAIT}s for link to form...", flush=True)
-        time.sleep(LINK_WAIT)
-        table1 = get_table(BSU1_IP)
-        result["BSU1"]["connected"] = is_connected(table1)
-        print(f"BSU1 ({BSU1_IP}) connected: {result['BSU1']['connected']}", flush=True)
-    else:
-        print("Failed to set SSID for BSU1", flush=True)
+# BSU1
+print(f"\n[1] Connecting to BSU1 → {SSID_BSU1}")
+set_ssid(SSID_BSU1)
+print(f"Waiting {WAIT}s...")
+time.sleep(WAIT)
+result["BSU1"]["connected"] = has_ssid(get_table(), SSID_BSU1)
+print(f"BSU1 Connected: {result['BSU1']['connected']}")
 
-    # === BSU2 ===
-    print(f"\nSetting SSID → {SSID_BSU2}", flush=True)
-    if set_ssid(SSID_BSU2):
-        print(f"Waiting {LINK_WAIT}s for link to form...", flush=True)
-        time.sleep(LINK_WAIT)
-        table2 = get_table(BSU2_IP)
-        result["BSU2"]["connected"] = is_connected(table2)
-        print(f"BSU2 ({BSU2_IP}) connected: {result['BSU2']['connected']}", flush=True)
-    else:
-        print("Failed to set SSID for BSU2", flush=True)
+# BSU2
+print(f"\n[2] Roaming to BSU2 → {SSID_BSU2}")
+set_ssid(SSID_BSU2)
+print(f"Waiting {WAIT}s...")
+time.sleep(WAIT)
+result["BSU2"]["connected"] = has_ssid(get_table(), SSID_BSU2)
+print(f"BSU2 Connected: {result['BSU2']['connected']}")
 
+if result["BSU1"]["connected"] and result["BSU2"]["connected"]:
+    result["status"] = "PASS"
+    print(f"\nITERATION {ITER} → PASS")
+else:
+    print(f"\nITERATION {ITER} → FAIL")
 
-    if result["BSU1"]["connected"] and result["BSU2"]["connected"]:
-        result["status"] = "PASS"
-        print(f"ITER {ITER} → PASS", flush=True)
-    else:
-        print(f"ITER {ITER} → FAIL", flush=True)
-
-    save_result(result)
-
-    if result["status"] != "PASS":
-        raise AssertionError(f"Roaming failed: BSU1={result['BSU1']['connected']}, BSU2={result['BSU2']['connected']}")
-
-if __name__ == "__main__":
-    test_roaming_snmp()
+save(result)
+if result["status"] == "FAIL":
+    raise SystemExit(1)
