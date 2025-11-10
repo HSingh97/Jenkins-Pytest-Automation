@@ -22,8 +22,6 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
-                    apt-get install -y snmp snmp-mibs-downloader sshpass > /dev/null 2>&1 || true
-                    python3 -m pip install --break-system-packages --quiet pytest || true
                 }
             }
         }
