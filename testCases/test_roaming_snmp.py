@@ -2,7 +2,6 @@
 import argparse, time, json, subprocess, warnings
 from datetime import datetime
 
-
 def warn(*args, **kwargs): pass
 
 
@@ -27,7 +26,7 @@ BSU1_IP = "192.168.1.70"
 BSU2_IP = "192.168.1.71"
 
 RESULT_FILE = "iteration_results.json"
-WAIT = 50
+WAIT = 30
 
 
 def run(cmd):
@@ -165,7 +164,7 @@ else:
 # FINAL
 if result["BSU1"]["connected"] and result["BSU2"]["connected"]:
     result["status"] = "PASS"
-    print(f"\nITERATION {ITER} → PASS | ROAMING 100% SUCCESS")
+    print(f"\nITERATION {ITER} → PASS | ROAMING SUCCESS")
 else:
     print(f"\nITERATION {ITER} → FAIL")
 
