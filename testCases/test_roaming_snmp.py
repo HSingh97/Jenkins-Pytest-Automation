@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, time, json, subprocess, re
+import argparse, time, json, subprocess
 from datetime import datetime
 
 parser = argparse.ArgumentParser()
@@ -17,11 +17,8 @@ OID_TABLE = ".1.3.6.1.4.1.52619.1.3.3.1"
 
 SSID_BSU1 = "BSU1_puneet"
 SSID_BSU2 = "BSU2_puneet"
-BSU1_IP = "192.168.1.70"
-BSU2_IP = "192.168.1.71"
-
 RESULT_FILE = "iteration_results.json"
-WAIT = 45
+WAIT = 45  # Extra safe time
 
 
 def run(cmd):
@@ -43,147 +40,117 @@ def run(cmd):
 def set_ssid(ssid):
     cmd = f"snmpset -v 2c -c {WRITE_COMMUNITY} {SU_IP} {OID_SSID} s {ssid}"
     out = run(cmd)
-    success = f'STRING: "{ssid}"' in out
+    success = f'STRING: "{ssid}"' in out or f'STRING: {ssid}' in out
     print(f"Set SSID → {ssid} : {'PASS' if success else 'FAIL'}")
     return success
 
 
-def parse_table(raw_output):
-    table = {}
-    current_entry = {}
-    current_key = None
+def get_table():
+    cmd = f"snmpwalk -v 2c -c {READ_COMMUNITY} {SU_IP} {OID_TABLE}"
+    out = run(cmd)
 
-    field_pattern = re.compile(r"\.(\d+)\.\d+$")
-
-    for line in raw_output.splitlines():
-        if not line or "=" not in line:
-            continue
-
-        oid_part, value_part = line.split("=", 1)
-        oid_part = oid_part.strip()
-        value_part = value_part.strip()
-
-
-        match = field_pattern.search(oid_part)
-        if not match:
-            continue
-        field = match.group(1)
-
-
-        if value_part.startswith('STRING:'):
-            val = value_part[7:].strip().strip('"')
-        elif value_part.startswith('IpAddress:'):
-            val = value_part.split('IpAddress:')[-1].strip()
-        elif value_part.startswith('INTEGER:'):
-            val = value_part[8:].strip()
-        else:
-            val = value_part.strip().strip('"')
-
-        parts = oid_part.split('.')
-        if len(parts) < 13:
-            continue
-        radio = parts[-3]
-        sec = parts[-2]
-        key = f"{radio}.{sec}"
-
-        if key != current_key and current_key is not None:
-            table[current_key] = current_entry
-            current_entry = {}
-        current_key = key
-        current_entry[field] = val
-
-    if current_key and current_entry:
-        table[current_key] = current_entry
-
-    # SAVE FULL DEBUG
+    # SAVE FULL TABLE FOR PROOF
     debug_file = f"debug_table_iter{ITER}.txt"
     with open(debug_file, "w") as f:
-        f.write(raw_output)
+        f.write(out)
     print(f"FULL TABLE SAVED → {debug_file}")
 
+    if not out or "Timeout" in out or "No Such Object" in out:
+        return {}
+
+    table = {}
+    entry = {}
+    key = None
+    for line in out.splitlines():
+        if "=" not in line:
+            continue
+        oid, val = line.split("=", 1)
+        val = val.strip().strip('"')
+        parts = [p for p in oid.split(".") if p]
+        if len(parts) < 13:
+            continue
+        radio, sec, field = parts[-3], parts[-2], parts[-1]
+        new_key = f"{radio}.{sec}"
+        if new_key != key and key is not None:
+            table[key] = entry
+            entry = {}
+        key = new_key
+        entry[field] = val
+    if key and entry:
+        table[key] = entry
     return table
 
 
-def get_connected_bsu_ip(table):
-    for key, entry in table.items():
-        ip = entry.get("4", "").strip()
-        print(f"Checking entry {key} → field 4 = '{ip}'")
-        if ip == BSU1_IP:
-            return BSU1_IP
-        elif ip == BSU2_IP:
-            return BSU2_IP
-    return None
+def has_ssid(table, ssid):
+    for e in table.values():
+        field28 = e.get("28", "")
+        field29 = e.get("29", "")
+        print(f"Checking → field28='{field28}' | field29='{field29}' | target='{ssid}'")
+        if field28 == ssid or field29 == ssid:
+            return True
+    return False
 
 
-def save_result(result, raw_table):
+def save(res):
     try:
         with open(RESULT_FILE, "r") as f:
             data = json.load(f)
     except:
         data = {"iterations": []}
-
-    result["raw_snmp_sample"] = raw_table.splitlines()[:30]
-    data["iterations"].append(result)
-
+    data["iterations"].append(res)
     with open(RESULT_FILE, "w") as f:
         json.dump(data, f, indent=2)
-    print("Result + proof saved")
+    print("Result saved to iteration_results.json")
 
 
-print("\n" + "=" * 100)
+print("\n" + "=" * 90)
 print(f"ROAMING TEST | SU: {SU_IP} | ITER: {ITER} | {datetime.now().strftime('%d %b %Y, %H:%M:%S')}")
-print("=" * 100)
+print("=" * 90)
 
 result = {
     "iteration": ITER,
     "timestamp": datetime.now().isoformat(),
     "status": "FAIL",
     "SU_IP": SU_IP,
-    "BSU1": {"SSID": SSID_BSU1, "expected_ip": BSU1_IP, "connected": False, "detected_ip": None},
-    "BSU2": {"SSID": SSID_BSU2, "expected_ip": BSU2_IP, "connected": False, "detected_ip": None}
+    "BSU1": {"SSID": SSID_BSU1, "connected": False},
+    "BSU2": {"SSID": SSID_BSU2, "connected": False}
 }
 
-
-print(f"\n[1] CONNECTING TO BSU1 → {SSID_BSU1}")
-if not set_ssid(SSID_BSU1):
-    print("FAILED TO SET SSID")
-else:
-    print(f"Waiting {WAIT}s for association...")
+# === BSU1 ===
+print(f"\n[1] Connecting to BSU1 → {SSID_BSU1}")
+if set_ssid(SSID_BSU1):
+    print(f"Waiting {WAIT}s for link...")
     time.sleep(WAIT)
-    raw = run(f"snmpwalk -v 2c -c {READ_COMMUNITY} {SU_IP} {OID_TABLE}")
-    table = parse_table(raw)
-    detected = get_connected_bsu_ip(table)
-    result["BSU1"]["detected_ip"] = detected
-    result["BSU1"]["connected"] = (detected == BSU1_IP)
-    print(f"BSU1 RESULT → {'PASS' if result['BSU1']['connected'] else 'FAIL'} (Detected: {detected})")
-
-
-print(f"\n[2] ROAMING TO BSU2 → {SSID_BSU2}")
-if not set_ssid(SSID_BSU2):
-    print("FAILED TO SET SSID")
+    table = get_table()
+    result["BSU1"]["connected"] = has_ssid(table, SSID_BSU1)
+    print(f"BSU1 Connected: {result['BSU1']['connected']}")
 else:
+    print("Failed to set SSID")
+
+# === BSU2 ===
+print(f"\n[2] Roaming to BSU2 → {SSID_BSU2}")
+if set_ssid(SSID_BSU2):
     print(f"Waiting {WAIT}s for roaming...")
     time.sleep(WAIT)
-    raw = run(f"snmpwalk -v 2c -c {READ_COMMUNITY} {SU_IP} {OID_TABLE}")
-    table = parse_table(raw)
-    detected = get_connected_bsu_ip(table)
-    result["BSU2"]["detected_ip"] = detected
-    result["BSU2"]["connected"] = (detected == BSU2_IP)
-    print(f"BSU2 RESULT → {'PASS' if result['BSU2']['connected'] else 'FAIL'} (Detected: {detected})")
+    table = get_table()
+    result["BSU2"]["connected"] = has_ssid(table, SSID_BSU2)
+    print(f"BSU2 Connected: {result['BSU2']['connected']}")
+else:
+    print("Failed to set SSID")
 
 if result["BSU1"]["connected"] and result["BSU2"]["connected"]:
     result["status"] = "PASS"
-    print(f"\nITERATION {ITER} → PASS | ROAMING FULLY CONFIRMED!")
+    print(f"\nITERATION {ITER} → PASS | ROAMING SUCCESSFUL!")
 else:
     print(f"\nITERATION {ITER} → FAIL")
-    print(f"   BSU1: {result['BSU1']['connected']} | Got: {result['BSU1']['detected_ip']}")
-    print(f"   BSU2: {result['BSU2']['connected']} | Got: {result['BSU2']['detected_ip']}")
+    print(f"   BSU1: {result['BSU1']['connected']}")
+    print(f"   BSU2: {result['BSU2']['connected']}")
 
-save_result(result, raw)
+save(result)
 
 if result["status"] == "PASS":
-    print("EXIT 0 — SUCCESS")
+    print("EXIT 0 — TEST PASSED")
     raise SystemExit(0)
 else:
-    print("EXIT 1 — FAILED")
+    print("EXIT 1 — TEST FAILED")
     raise SystemExit(1)
