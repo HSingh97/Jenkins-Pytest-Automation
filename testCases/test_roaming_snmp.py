@@ -2,6 +2,12 @@
 import argparse, time, json, subprocess, warnings
 from datetime import datetime
 
+
+def warn(*args, **kwargs): pass
+
+
+warnings.warn = warn
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--su-ip", required=True)
 parser.add_argument("--iter", type=int, required=True)
@@ -46,7 +52,7 @@ def get_table():
     raw = run(cmd)
 
     print(f"\n{'=' * 80}")
-    print(f"SNMP TABLE (Iteration {ITER})")
+    print(f"FULL SNMP TABLE (Iteration {ITER})")
     print(f"{'=' * 80}")
     print(raw)
     print(f"{'=' * 80}\n")
@@ -58,35 +64,51 @@ def get_table():
     table = {}
     entry = {}
     key = None
+
     for line in raw.splitlines():
         if "=" not in line: continue
         oid, val = line.split("=", 1)
         val = val.strip().strip('"')
-        if "STRING:" in val: val = val.split("STRING:")[-1].strip().strip('"')
-        if "IpAddress:" in val: val = val.split("IpAddress:")[-1].strip()
-        if "INTEGER:" in val: val = val.split("INTEGER:")[-1].strip()
+        if "STRING:" in val: val = val.split("STRING:", 1)[-1].strip().strip('"')
+        if "IpAddress:" in val: val = val.split("IpAddress:", 1)[-1].strip()
+        if "INTEGER:" in val: val = val.split("INTEGER:", 1)[-1].strip()
 
         parts = [p for p in oid.split(".") if p]
         if len(parts) < 13: continue
-        radio, sec, field = parts[-3], parts[-2], parts[-1]
-        new_key = f"{radio}.{sec}"
+
+        # CORRECT ORDER: field.section.radio
+        field = parts[-3]  # 4, 28, 29
+        section = parts[-2]  # 2
+        radio = parts[-1]  # 1
+
+        new_key = f"{radio}.{section}"
+
         if new_key != key and key is not None:
             table[key] = entry
             entry = {}
         key = new_key
         entry[field] = val
+
     if key and entry:
         table[key] = entry
+
     return table
 
 
 def get_bsu_ip(table):
-    for e in table.values():
-        ip = e.get("4", "").strip()
-        ssid = e.get("28", "") or e.get("29", "")
-        print(f"Found entry → IP: {ip} | SSID: {ssid}")
-        if ip == BSU1_IP: return BSU1_IP
-        if ip == BSU2_IP: return BSU2_IP
+    print("Checking all entries for BSU IP:")
+    for key, entry in table.items():
+        ip = entry.get("4", "").strip()
+        ssid28 = entry.get("28", "")
+        ssid29 = entry.get("29", "")
+        print(f"  Entry {key} → IP: '{ip}' | SSID28: '{ssid28}' | SSID29: '{ssid29}'")
+        if ip == BSU1_IP:
+            print(f"  FOUND BSU1: {BSU1_IP}")
+            return BSU1_IP
+        if ip == BSU2_IP:
+            print(f"  FOUND BSU2: {BSU2_IP}")
+            return BSU2_IP
+    print("  NO BSU FOUND")
     return None
 
 
@@ -99,7 +121,7 @@ def save_result(result):
     data["iterations"].append(result)
     with open(RESULT_FILE, "w") as f:
         json.dump(data, f, indent=4)
-    print(f"\nJSON UPDATED:\n{json.dumps(result, indent=4)}\n")
+    print(f"\nJSON REPORT UPDATED:\n{json.dumps(result, indent=4)}\n")
 
 
 print("\n" + "=" * 100)
@@ -126,7 +148,7 @@ if set_ssid(SSID_BSU1):
     result["BSU1"]["connected"] = (ip == BSU1_IP)
     print(f"BSU1 → {'PASS' if result['BSU1']['connected'] else 'FAIL'} | Got: {ip}")
 else:
-    print("FAILED TO SET SSID")
+    print("SET SSID FAILED")
 
 # BSU2
 print(f"\n[2] SETTING SSID → {SSID_BSU2}")
@@ -139,8 +161,9 @@ if set_ssid(SSID_BSU2):
     result["BSU2"]["connected"] = (ip == BSU2_IP)
     print(f"BSU2 → {'PASS' if result['BSU2']['connected'] else 'FAIL'} | Got: {ip}")
 else:
-    print("FAILED TO SET SSID")
+    print("SET SSID FAILED")
 
+# FINAL
 if result["BSU1"]["connected"] and result["BSU2"]["connected"]:
     result["status"] = "PASS"
     print(f"\nITERATION {ITER} → PASS | ROAMING 100% SUCCESS")
@@ -150,15 +173,8 @@ else:
 save_result(result)
 
 if result["status"] == "PASS":
-    print("EXIT 0")
+    print("EXIT 0 — SUCCESS")
     exit(0)
 else:
-    print("EXIT 1")
+    print("EXIT 1 — FAILED")
     exit(1)
-
-# ---------------- Pytest Fixtures ----------------
-def warn(*args, **kwargs):
-    pass
-
-import warnings
-warnings.warn = warn
