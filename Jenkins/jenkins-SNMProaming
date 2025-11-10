@@ -1,3 +1,10 @@
+import jenkins.model.Jenkins
+
+// Functions
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
 
@@ -26,8 +33,8 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
+                    sh 'apt-get update && apt-get install -y snmp snmp-mibs-downloader || true'
                     sh 'python3 -m pip install pytest || true'
-                    sh 'apt-get update && apt-get install -y snmp snmp-mibs-downloader sshpass || true'
                 }
             }
         }
@@ -46,18 +53,18 @@ pipeline {
 
                     // Clear old results
                     sh 'rm -f iteration_results.json test-*.log || true'
+                    sh 'echo [] > iteration_results.json'
 
                     for (int i = 1; i <= roamingCount.toInteger(); i++) {
                         echo "Running roaming test iteration ${i}"
                         try {
                             sh """
                                 pytest -v -s testCases/test_roaming_snmp.py \
-                                --remote-ip '${suIP}' \
+                                --su-ip '${suIP}' \
                                 --iter ${i}
                             """
                         } catch (Exception e) {
                             echo "Roaming test iteration ${i} failed: ${e.message}"
-                            // Continue to next iteration
                         }
                     }
                 }
