@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, time, json, subprocess
+import argparse, time, json, subprocess, warnings
 from datetime import datetime
 
 parser = argparse.ArgumentParser()
@@ -17,104 +17,89 @@ OID_TABLE = ".1.3.6.1.4.1.52619.1.3.3.1"
 
 SSID_BSU1 = "BSU1_puneet"
 SSID_BSU2 = "BSU2_puneet"
+BSU1_IP = "192.168.1.70"
+BSU2_IP = "192.168.1.71"
+
 RESULT_FILE = "iteration_results.json"
 WAIT = 50
 
 
 def run(cmd):
-    print(f"Running: {cmd}")
-    try:
-        r = subprocess.run(cmd.split(), capture_output=True, text=True, timeout=30)
-        out = r.stdout.strip()
-        err = r.stderr.strip()
-        if r.returncode != 0:
-            print(f"ERROR: {err}")
-            return ""
-        print(f"OUTPUT: {len(out.splitlines())} lines received")
-        return out
-    except Exception as e:
-        print(f"EXCEPTION: {e}")
+    print(f"\n>>> {cmd}")
+    r = subprocess.run(cmd.split(), capture_output=True, text=True, timeout=30)
+    out = r.stdout.strip()
+    if r.returncode != 0:
+        print(f"ERROR: {r.stderr.strip()}")
         return ""
+    print(f"Received {len(out.splitlines())} lines")
+    return out
 
 
 def set_ssid(ssid):
     cmd = f"snmpset -v 2c -c {WRITE_COMMUNITY} {SU_IP} {OID_SSID} s {ssid}"
     out = run(cmd)
-    success = f'STRING: "{ssid}"' in out
-    print(f"Set SSID → {ssid} : {'PASS' if success else 'FAIL'}")
-    return success
+    return f'STRING: "{ssid}"' in out
 
 
 def get_table():
     cmd = f"snmpwalk -v 2c -c {READ_COMMUNITY} {SU_IP} {OID_TABLE}"
     raw = run(cmd)
+
+    print(f"\n{'=' * 80}")
+    print(f"SNMP TABLE (Iteration {ITER})")
+    print(f"{'=' * 80}")
+    print(raw)
+    print(f"{'=' * 80}\n")
+
     with open(f"debug_table_iter{ITER}.txt", "w") as f:
         f.write(raw)
-    print(f"FULL TABLE SAVED → debug_table_iter{ITER}.txt")
+    print(f"SAVED → debug_table_iter{ITER}.txt\n")
 
     table = {}
-    current_entry = {}
-    current_key = None
-
+    entry = {}
+    key = None
     for line in raw.splitlines():
-        if "=" not in line:
-            continue
-        oid, value = line.split("=", 1)
-        oid = oid.strip()
-        value = value.strip().strip('"')
+        if "=" not in line: continue
+        oid, val = line.split("=", 1)
+        val = val.strip().strip('"')
+        if "STRING:" in val: val = val.split("STRING:")[-1].strip().strip('"')
+        if "IpAddress:" in val: val = val.split("IpAddress:")[-1].strip()
+        if "INTEGER:" in val: val = val.split("INTEGER:")[-1].strip()
 
-        if value.startswith("STRING:"):
-            value = value[7:].strip().strip('"')
-        elif value.startswith("IpAddress:"):
-            value = value.split(":", 1)[-1].strip()
-        elif value.startswith("INTEGER:"):
-            value = value[8:].strip()
-
-        parts = oid.split(".")
-        if len(parts) < 14:
-            continue
-        try:
-            field = parts[-3]  # 28
-            section = parts[-2]  # 2
-            radio = parts[-1]  # 1
-        except:
-            continue
-
-        key = f"{radio}.{section}"
-
-        if key != current_key and current_key is not None:
-            table[current_key] = current_entry
-            current_entry = {}
-        current_key = key
-        current_entry[field] = value
-
-    if current_key and current_entry:
-        table[current_key] = current_entry
-
+        parts = [p for p in oid.split(".") if p]
+        if len(parts) < 13: continue
+        radio, sec, field = parts[-3], parts[-2], parts[-1]
+        new_key = f"{radio}.{sec}"
+        if new_key != key and key is not None:
+            table[key] = entry
+            entry = {}
+        key = new_key
+        entry[field] = val
+    if key and entry:
+        table[key] = entry
     return table
 
 
-def has_ssid(table, target_ssid):
-    found = False
-    for key, entry in table.items():
-        ssid28 = entry.get("28", "")
-        ssid29 = entry.get("29", "")
-        print(f"Entry {key} → SSID28='{ssid28}' | SSID29='{ssid29}' | Looking for '{target_ssid}'")
-        if ssid28 == target_ssid or ssid29 == target_ssid:
-            found = True
-    return found
+def get_bsu_ip(table):
+    for e in table.values():
+        ip = e.get("4", "").strip()
+        ssid = e.get("28", "") or e.get("29", "")
+        print(f"Found entry → IP: {ip} | SSID: {ssid}")
+        if ip == BSU1_IP: return BSU1_IP
+        if ip == BSU2_IP: return BSU2_IP
+    return None
 
 
 def save_result(result):
     try:
-        with open(RESULT_FILE) as f:
+        with open(RESULT_FILE, "r") as f:
             data = json.load(f)
     except:
         data = {"iterations": []}
     data["iterations"].append(result)
     with open(RESULT_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-    print("Result saved")
+        json.dump(data, f, indent=4)
+    print(f"\nJSON UPDATED:\n{json.dumps(result, indent=4)}\n")
 
 
 print("\n" + "=" * 100)
@@ -123,38 +108,42 @@ print("=" * 100)
 
 result = {
     "iteration": ITER,
-    "status": "FAIL",
+    "timestamp": datetime.now().isoformat(),
     "SU_IP": SU_IP,
-    "BSU1": {"SSID": SSID_BSU1, "connected": False},
-    "BSU2": {"SSID": SSID_BSU2, "connected": False}
+    "BSU1": {"expected": BSU1_IP, "got": None, "connected": False},
+    "BSU2": {"expected": BSU2_IP, "got": None, "connected": False},
+    "status": "FAIL"
 }
 
 # BSU1
-print(f"\n[1] CONNECTING TO BSU1 → {SSID_BSU1}")
+print(f"\n[1] SETTING SSID → {SSID_BSU1}")
 if set_ssid(SSID_BSU1):
     print(f"Waiting {WAIT}s...")
     time.sleep(WAIT)
     table = get_table()
-    result["BSU1"]["connected"] = has_ssid(table, SSID_BSU1)
-    print(f"BSU1 CONNECTED: {result['BSU1']['connected']}")
+    ip = get_bsu_ip(table)
+    result["BSU1"]["got"] = ip
+    result["BSU1"]["connected"] = (ip == BSU1_IP)
+    print(f"BSU1 → {'PASS' if result['BSU1']['connected'] else 'FAIL'} | Got: {ip}")
 else:
-    print("SET SSID FAILED")
+    print("FAILED TO SET SSID")
 
 # BSU2
-print(f"\n[2] ROAMING TO BSU2 → {SSID_BSU2}")
+print(f"\n[2] SETTING SSID → {SSID_BSU2}")
 if set_ssid(SSID_BSU2):
     print(f"Waiting {WAIT}s...")
     time.sleep(WAIT)
     table = get_table()
-    result["BSU2"]["connected"] = has_ssid(table, SSID_BSU2)
-    print(f"BSU2 CONNECTED: {result['BSU2']['connected']}")
+    ip = get_bsu_ip(table)
+    result["BSU2"]["got"] = ip
+    result["BSU2"]["connected"] = (ip == BSU2_IP)
+    print(f"BSU2 → {'PASS' if result['BSU2']['connected'] else 'FAIL'} | Got: {ip}")
 else:
-    print("SET SSID FAILED")
+    print("FAILED TO SET SSID")
 
-# FINAL
 if result["BSU1"]["connected"] and result["BSU2"]["connected"]:
     result["status"] = "PASS"
-    print(f"\nITERATION {ITER} → PASS | ROAMING SUCCESS!")
+    print(f"\nITERATION {ITER} → PASS | ROAMING 100% SUCCESS")
 else:
     print(f"\nITERATION {ITER} → FAIL")
 
@@ -162,7 +151,14 @@ save_result(result)
 
 if result["status"] == "PASS":
     print("EXIT 0")
-    raise SystemExit(0)
+    exit(0)
 else:
     print("EXIT 1")
-    raise SystemExit(1)
+    exit(1)
+
+# ---------------- Pytest Fixtures ----------------
+def warn(*args, **kwargs):
+    pass
+
+import warnings
+warnings.warn = warn
