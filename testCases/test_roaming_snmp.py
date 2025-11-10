@@ -1,23 +1,20 @@
 #!/usr/bin/env python3
+import argparse
 import sys
 import time
 import json
 import subprocess
 from datetime import datetime
 
-def get_args():
-    su_ip = None
-    iteration = None
-    for i in range(len(sys.argv)):
-        if sys.argv[i] == "--su-ip" and i+1 < len(sys.argv):
-            su_ip = sys.argv[i+1]
-        if sys.argv[i] == "--iter" and i+1 < len(sys.argv):
-            iteration = int(sys.argv[i+1])
-    if not su_ip or not iteration:
-        raise ValueError("Missing --su-ip or --iter")
-    return su_ip, iteration
+parser = argparse.ArgumentParser()
+parser.add_argument("--su-ip", required=True, help="SU IP Address")
+parser.add_argument("--iter", type=int, required=True, help="Iteration number")
+args, unknown = parser.parse_known_args()
 
-SU_IP, ITER = get_args()
+sys.argv = [sys.argv[0]] + unknown
+
+SU_IP = args.su_ip
+ITER = args.iter
 
 WRITE_COMMUNITY = "private"
 READ_COMMUNITY = "public"
@@ -129,6 +126,7 @@ def test_roaming_snmp():
         print(f"BSU2 ({BSU2_IP}) connected: {result['BSU2']['connected']}", flush=True)
     else:
         print("Failed to set SSID for BSU2", flush=True)
+
 
     if result["BSU1"]["connected"] and result["BSU2"]["connected"]:
         result["status"] = "PASS"
