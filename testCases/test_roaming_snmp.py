@@ -76,10 +76,9 @@ def get_table():
         parts = [p for p in oid.split(".") if p]
         if len(parts) < 13: continue
 
-        # CORRECT ORDER: field.section.radio
-        field = parts[-3]  # 4, 28, 29
-        section = parts[-2]  # 2
-        radio = parts[-1]  # 1
+        field = parts[-3]
+        section = parts[-2]
+        radio = parts[-1]
 
         new_key = f"{radio}.{section}"
 
