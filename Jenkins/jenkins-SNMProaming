@@ -164,42 +164,48 @@ pipeline {
                                     <p><strong>Date & Time:</strong> ${currentDateTime}</p>
                                 </div>
                             </div>
+
                             <h2>Build Parameters</h2>
                             <table>
-                                <tr><th>Parameter</th><th>Value</th></tr>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Value</th>
+                                </tr>
                                 ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
                             </table>
+
                             <h2>Test Summary</h2>
                             <div class="summary-container">
                                 <div class="summary-card card-percent">
-                                    <div class="card-icon">Target</div>
+                                    <div class="card-icon">🎯</div>
                                     <div class="card-info">
                                         <p class="card-info-title">Success Rate</p>
                                         <p class="card-info-value percent">${successPercentageStr}<span class="percent-sign">%</span></p>
                                     </div>
                                 </div>
                                 <div class="summary-card card-total">
-                                    <div class="card-icon">Package</div>
+                                    <div class="card-icon">📦</div>
                                     <div class="card-info">
                                         <p class="card-info-title">Total Iterations</p>
                                         <p class="card-info-value">${totalTests}</p>
                                     </div>
                                 </div>
                                 <div class="summary-card card-pass">
-                                    <div class="card-icon">Check</div>
+                                    <div class="card-icon">✅</div>
                                     <div class="card-info">
                                         <p class="card-info-title">Passed</p>
                                         <p class="card-info-value">${passCount}</p>
                                     </div>
                                 </div>
                                 <div class="summary-card card-fail">
-                                    <div class="card-icon">Cross</div>
+                                    <div class="card-icon">❌</div>
                                     <div class="card-info">
                                         <p class="card-info-title">Failed</p>
                                         <p class="card-info-value">${failCount}</p>
                                     </div>
                                 </div>
                             </div>
+
                             <h2>Test Results</h2>
                             <table>
                                 <tr>
