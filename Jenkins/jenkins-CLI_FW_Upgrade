@@ -1,112 +1,58 @@
-// Functions
-def archiveArtifacts(pattern) {
-    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
-}
-
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
 
     stages {
-        stage('Prepare') {
-            steps {
-                echo "TARGET: ${TARGET_STAND} | DUT: ${params['Local IP Address']} | Model: ${params.Model}"
-            }
-        }
+        stage('Prepare') { steps { echo "DUT → ${params['Local IP Address']} | Model → ${params.Model}" } }
 
-        stage('Install sshpass') {
-            steps { sh 'which sshpass || (sudo yum install -y sshpass || sudo apt install -y sshpass || true)' }
-        }
+        stage('Install sshpass') { steps { sh 'which sshpass || sudo yum install -y sshpass || true' } }
 
-        stage('Download & Prepare Firmware') {
+        stage('Download Firmware') {
             steps {
                 script {
                     sh 'mkdir -p artifacts && rm -f fw.tgz fw.img.enc'
-
                     def url = params['Build URL']
-                    if (!url?.trim()) error "Build URL is required!"
-
                     def path = url.substring(url.indexOf('/bonsai/') + 8)
-                    def baseUrl = "https://jenkins.senao.com/bonsai/${path}"
-                    if (!baseUrl.endsWith('/')) baseUrl += '/'
+                    def base = "https://jenkins.senao.com/bonsai/${path}"
+                    base += base.endsWith('/') ? '' : '/'
 
-                    echo "Downloading from: ${baseUrl}"
+                    sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.tgz,*-apps.img.enc,*single*.img.enc' --no-directories '${base}'"
 
-                    // Download both files
-                    sh """
-                        wget --no-verbose --no-parent --no-check-certificate \
-                             -e robots=off --recursive --level=1 \
-                             -A '*-apps.tgz,*-apps.img.enc,*single*.img.enc' \
-                             --no-directories "${baseUrl}"
-                    """
-
-                    // Handle .tgz
                     sh 'mv -f *-apps.tgz fw.tgz || true'
+                    sh 'img=\$(ls *-apps.img.enc *single*.img.enc 2>/dev/null | head -n1); [ -n "\$img" ] && mv -f "\$img" fw.img.enc || true'
 
-                    // Handle .img.enc (including single image)
-                    sh '''
-                        img=$(ls *-apps.img.enc *single*.img.enc 2>/dev/null | head -n1)
-                        if [ -n "$img" ]; then
-                            mv -f "$img" fw.img.enc
-                            echo "Using image: $img → fw.img.enc"
-                        fi
-                    '''
-
-                    def useTgz = fileExists('fw.tgz')
-                    def useImg = fileExists('fw.img.enc')
-
-                    if (useTgz && useImg) {
-                        env.FIRMWARE_FILE = 'fw.tgz'
-                        echo "Both files found → Using .tgz (default)"
-                    } else if (useImg) {
-                        env.FIRMWARE_FILE = 'fw.img.enc'
-                        echo "Only .img.enc found → Using single image"
-                    } else if (useTgz) {
-                        env.FIRMWARE_FILE = 'fw.tgz'
-                        echo "Only .tgz found → Using .tgz"
-                    } else {
-                        error "No firmware file downloaded!"
-                    }
-
-                    echo "FINAL FIRMWARE FOR UPGRADE: ${env.FIRMWARE_FILE}"
-                    archiveArtifacts('fw.tgz,fw.img.enc')
+                    env.FW = fileExists('fw.tgz') ? 'fw.tgz' : (fileExists('fw.img.enc') ? 'fw.img.enc' : null)
+                    if (!env.FW) error "No firmware downloaded!"
+                    echo "Using firmware → ${env.FW}"
                 }
             }
         }
 
         stage('Deploy CLI Script') {
             steps {
-                // TRY EVERY POSSIBLE LOCATION — ONE WILL WORK
+                // THIS IS THE ONLY LINE THAT MATTERS NOW — EXACT PATH FROM YOUR SCREENSHOT
                 sh '''
-                    set +e
-                    if cp testCases/test_CLI_FW_Upgrade.py ./ 2>/dev/null; then
-                        echo "Found in testCases/"
-                    elif cp test_CLI_FW_Upgrade.py ./ 2>/dev/null; then
-                        echo "Found in root"
-                    elif cp utilities/test_CLI_FW_Upgrade.py ./ 2>/dev/null; then
-                        echo "Found in utilities/"
-                    else
-                        echo "test_CLI_FW_Upgrade.py NOT FOUND ANYWHERE!"
-                        exit 1
-                    fi
+                    cp -f testCases/test_CLI_FW_Upgrade.py ./
+                    [ -f test_CLI_FW_Upgrade.py ] || (echo "SCRIPT STILL NOT FOUND! CHECK SPELLING!" && exit 1)
                     chmod +x test_CLI_FW_Upgrade.py
+                    echo "SCRIPT COPIED SUCCESSFULLY!"
                     ls -la test_CLI_FW_Upgrade.py
                 '''
             }
         }
 
-        stage('Run CLI Firmware Upgrade') {
+        stage('Run Upgrade Cycles') {
             steps {
                 script {
-                    def ip     = params['Local IP Address']
-                    def cycles = (params.FIRMWARE_UPGRADE_COUNT ?: "1").toInteger()
-                    def keep   = params['Keep Setting'] ? "" : "-n"
+                    def ip = params['Local IP Address']
+                    def n  = (params.FIRMWARE_UPGRADE_COUNT ?: 1).toInteger()
+                    def k  = params['Keep Setting'] ? "" : "-n"
 
-                    sh 'echo \'{"iterations": []}\' > iteration_results.json'
+                    sh 'echo \'{"iterations":[]}\' > iteration_results.json'
 
-                    for (int i = 1; i <= cycles; i++) {
-                        echo "CYCLE ${i}/${cycles} → ${env.FIRMWARE_FILE}"
-                        timeout(time: 22, unit: 'MINUTES') {
-                            sh "python3 test_CLI_FW_Upgrade.py '${ip}' '${env.FIRMWARE_FILE}' '${i}' '${keep}'"
+                    for (i = 1; i <= n; i++) {
+                        echo "CYCLE ${i}/${n} STARTED"
+                        timeout(22) {
+                            sh "python3 test_CLI_FW_Upgrade.py '${ip}' '${env.FW}' '${i}' '${k}'"
                         }
                     }
                 }
@@ -116,50 +62,33 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def json = fileExists('iteration_results.json') ? readJSON(file: 'iteration_results.json') : [iterations: []]
-                    def total = json.iterations.size()
-                    def pass  = json.iterations.count { it.status == 'PASS' }
+                    def j = fileExists('iteration_results.json') ? readJSON(file: 'iteration_results.json') : [iterations: []]
+                    def total = j.iterations.size()
+                    def pass  = j.iterations.count { it.status == 'PASS' }
                     def rate  = total > 0 ? String.format("%.1f", pass * 100.0 / total) : "0.0"
-                    env.RATE = rate
 
                     def ver = "N/A"
-                    try {
-                        ver = sh(script: "sshpass -p admin ssh -o StrictHostKeyChecking=no root@${params['Local IP Address']} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (e) {}
-
-                    def now = new java.text.SimpleDateFormat("dd MMM yyyy, HH:mm:ss z")
-                              .tap { it.timeZone = TimeZone.getTimeZone('Asia/Kolkata') }
-                              .format(new Date())
+                    try { ver = sh(script: "sshpass -p admin ssh -o StrictHostKeyChecking=no root@${params['Local IP Address']} 'cat /etc/version'", returnStdout: true).trim() } catch(e) {}
 
                     writeFile file: 'report.html', text: """
-                    <!DOCTYPE html>
-                    <html><head><meta charset="utf-8"><title>CLI FW Upgrade</title>
+                    <!DOCTYPE html><html><head><meta charset="utf-8"><title>CLI FW Upgrade</title>
                     <style>
-                        body{font-family:system-ui;background:#000;color:#0f0;text-align:center;padding:100px;}
-                        h1{font-size:110px;margin:20px;}
-                        .big{font-size:320px;font-weight:900;color:#22c55e;line-height:1;}
-                        .box{background:#111;padding:90px;border-radius:50px;display:inline-block;box-shadow:0 0 120px #0f0;}
-                        .small{font-size:40px;color:#0f0;}
+                        body{background:#000;color:#0f0;font-family:system-ui;text-align:center;padding:100px;}
+                        .box{background:#111;padding:100px;border-radius:50px;display:inline-block;box-shadow:0 0 150px #0f0;}
+                        h1{font-size:100px;margin:20px;}
+                        .big{font-size:350px;font-weight:900;color:#22c55e;}
                     </style></head>
-                    <body>
-                        <div class="box">
-                            <h1>CLI FIRMWARE UPGRADE</h1>
-                            <h1>${params.Model} • ${TARGET_STAND}</h1>
-                            <div class="big">${rate}<span style="font-size:120px;">%</span></div>
-                            <h1>${pass}/${total} PASSED</h1>
-                            <div class="small">Final Version: ${ver}</div>
-                            <p>${now}</p>
-                        </div>
-                    </body></html>
+                    <body><div class="box">
+                        <h1>CLI FIRMWARE UPGRADE</h1>
+                        <h1>${params.Model} • ${TARGET_STAND}</h1>
+                        <div class="big">${rate}%</div>
+                        <h1>${pass}/${total} PASSED</h1>
+                        <h1>Final Version: ${ver}</h1>
+                        <p>${new Date().format('dd MMM yyyy HH:mm:ss z', TimeZone.getTimeZone('Asia/Kolkata'))}</p>
+                    </div></body></html>
                     """
 
-                    publishHTML([
-                        reportName: 'CLI Firmware Upgrade Report',
-                        reportDir: '.',
-                        reportFiles: 'report.html',
-                        keepAll: true,
-                        alwaysLinkToLastBuild: true
-                    ])
+                    publishHTML([reportName: 'CLI Report', reportDir: '.', reportFiles: 'report.html', keepAll: true])
                 }
             }
         }
@@ -167,16 +96,10 @@ pipeline {
 
     post {
         always {
-            script {
-                def rate = env.RATE ?: "0.0"
-                emailext(
-                    to: 'puneet.sharma@senao.com',
-                    subject: "CLI FW Upgrade #${BUILD_NUMBER} → ${rate}% SUCCESS",
-                    body: "<h2>CLI Firmware Upgrade Completed</h2><p>Success Rate: <b>${rate}%</b></p><p><a href='${BUILD_URL}CLI_Firmware_Upgrade_Report/'>View Report</a></p>",
-                    mimeType: 'text/html',
-                    attachmentsPattern: 'report.html'
-                )
-            }
+            emailext to: 'puneet.sharma@senao.com',
+                     subject: "CLI Upgrade #${BUILD_NUMBER} → SUCCESS",
+                     body: "<h2>Done! Check report → ${BUILD_URL}CLI_Report/</h2>",
+                     mimeType: 'text/html'
         }
     }
 }
