@@ -34,6 +34,8 @@ pipeline {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
+                    sh "ssh-keygen -R ${localIP} || true"
+                    sh "ssh-keygen -R ${remoteIP} || true"
 
                     def ResetCount = params.RESET_COUNT ?: 1
                     echo "Number of reboot iterations: ${ResetCount}"
