@@ -1,5 +1,7 @@
+
 import jenkins.model.Jenkins
 
+// Functions
 def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
@@ -7,28 +9,13 @@ def archiveArtifacts(pattern) {
 // Main Pipeline
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
-
     stages {
         stage('Prepare tests') {
             steps {
                 script {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${TARGET_STAND}"
-                    echo "Local IP : ${params['Local IP Address']}"
-                    echo "Remote IPs: ${params['Remote IP Address']}"
                     echo "----------------------------------------"
-
-                    // ONLY ADDED THIS BLOCK — creates venv and installs pytest every time
-                    sh '''
-                        echo "Setting up Python virtual environment..."
-                        rm -rf venv
-                        python3 -m venv venv || python -m venv venv
-                        . venv/bin/activate
-                        pip install --upgrade pip > /dev/null
-                        pip install --quiet pytest pytest-html pytest-json-report netmiko paramiko scp ssh2-python > /dev/null
-                        echo "Virtual environment ready. pytest version:"
-                        pytest --version
-                    '''
                 }
             }
         }
@@ -46,27 +33,29 @@ pipeline {
         stage('Soft Reset Testing') {
             steps {
                 script {
-                    def localIP = params['Local IP Address'].trim()
-                    def remoteIPs = params['Remote IP Address'].trim()
-                    def ResetCount = params.RESET_COUNT ?: 1
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
 
+                    def ResetCount = params.RESET_COUNT ?: 1
                     echo "Number of reboot iterations: ${ResetCount}"
-                    echo "Cleared old workspace"
+
+
+                    echo "✅ Cleared old workspace"
+
                     echo "----------------------------------------"
                     echo "Testing Soft Reset"
                     echo "----------------------------------------"
 
-                    sh "echo '{\"iterations\": []}' > iteration_results.json"
+                    // Initialize results file
+                    sh "echo [] > iteration_results.json"  // Initialize JSON array
 
                     for (int i = 1; i <= ResetCount.toInteger(); i++) {
                         echo "Running reboot test iteration ${i}"
                         try {
                             sh """
-                                . venv/bin/activate
-                                python -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
-                                    --local-ip '${localIP}' \
-                                    --remote-ip '${remoteIPs}' \
-                                    --iter ${i}
+                                pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
+                                --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                                --iter ${i}
                             """
                         } catch (Exception e) {
                             echo "Reset test iteration ${i} failed: ${e.message}"
@@ -79,36 +68,38 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def localIP = params['Local IP Address'].trim()
-                    def remoteIPs = params['Remote IP Address'].trim()
-
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
                     sh "ssh-keygen -R ${localIP} || true"
-
-                    if (remoteIPs) {
-                        remoteIPs.split(/[,\s]+/).findAll{it.trim()}.each { ip ->
-                            sh "ssh-keygen -R ${ip} || true"
-                        }
-                    }
+                    sh "ssh-keygen -R ${remoteIP} || true"
 
                     def local_fw_version = "N/A"
+                    def remote_fw_version = "N/A"
+
                     try {
                         local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
                     } catch (Exception e) {
-                        echo "Failed to get local FW version from ${localIP}: ${e.message}"
+                        echo "⚠️ Failed to get local FW version from ${localIP}: ${e.message}"
+                    }
+
+                    try {
+                        remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
+                    } catch (Exception e) {
+                        echo "⚠️ Failed to get remote FW version from ${remoteIP}: ${e.message}"
                     }
 
                     def jsonReport = readJSON file: 'iteration_results.json'
-                    echo "JSON Report: ${jsonReport}"
-
+                    echo "JSON Report: ${jsonReport}" // Debugging output
                     def buildParams = [
-                        "Local IP Address": localIP,
-                        "Remote IP Address(s)": remoteIPs,
-                        "FW Version (Local / Remote)": "${local_fw_version}"
+                        "Local IP Address": params['Local IP Address'],
+                        "Remote IP Address": params['Remote IP Address'],
+                        "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
+
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
 
@@ -117,19 +108,71 @@ pipeline {
                     <head>
                         <title>Test Report</title>
                         <style>
-                            body {font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f9f9f9; color: #2c3e50;}
-                            .header {display: flex; justify-content: space-between; align-items: center; background-color: #fff; padding: 20px; border-bottom: 2px solid #e0e0e0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
-                            .header img {height: 60px;}
-                            .header-info {text-align: right;}
-                            .header-info h1 {margin: 0; font-size: 24px;}
-                            .header-info p {margin: 5px 0; font-size: 14px; color: #555;}
-                            h2 {margin-top: 40px; font-size: 20px; color: #333; border-bottom: 2px solid #ddd; padding-bottom: 5px;}
-                            table {width: 100%; border-collapse: collapse; margin-top: 15px; background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05);}
-                            th, td {padding: 12px 15px; border: 1px solid #ddd; text-align: left;}
-                            th {background-color: #2c3e50; color: white;}
-                            tr:nth-child(even) {background-color: #f4f4f4;}
-                            .pass {color: green; font-weight: bold;}
-                            .fail {color: red; font-weight: bold;}
+                            body {
+                                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                                margin: 0;
+                                padding: 20px;
+                                background-color: #f9f9f9;
+                                color: #2c3e50;
+                            }
+                            .header {
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                background-color: #fff;
+                                padding: 20px;
+                                border-bottom: 2px solid #e0e0e0;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                            }
+                            .header img {
+                                height: 60px;
+                            }
+                            .header-info {
+                                text-align: right;
+                            }
+                            .header-info h1 {
+                                margin: 0;
+                                font-size: 24px;
+                            }
+                            .header-info p {
+                                margin: 5px 0;
+                                font-size: 14px;
+                                color: #555;
+                            }
+                            h2 {
+                                margin-top: 40px;
+                                font-size: 20px;
+                                color: #333;
+                                border-bottom: 2px solid #ddd;
+                                padding-bottom: 5px;
+                            }
+                            table {
+                                width: 100%;
+                                border-collapse: collapse;
+                                margin-top: 15px;
+                                background-color: #fff;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                            }
+                            th, td {
+                                padding: 12px 15px;
+                                border: 1px solid #ddd;
+                                text-align: left;
+                            }
+                            th {
+                                background-color: #2c3e50;
+                                color: white;
+                            }
+                            tr:nth-child(even) {
+                                background-color: #f4f4f4;
+                            }
+                            .pass {
+                                color: green;
+                                font-weight: bold;
+                            }
+                            .fail {
+                                color: red;
+                                font-weight: bold;
+                            }
                         </style>
                     </head>
                     <body>
@@ -147,24 +190,36 @@ pipeline {
                         </table>
                         <h2>Test Results</h2>
                         <table>
-                            <tr><th>Iteration</th><th>Status</th></tr>
+                            <tr>
+                                <th>Iteration</th>
+                                <th>Status</th>
+                            </tr>
                     """
+
                     jsonReport.iterations.each { result ->
                         def iteration = result.iteration ?: "-"
                         def status = result.status == "PASS" ? "<span class='pass'>PASS</span>" : "<span class='fail'>FAIL</span>"
-                        htmlContent += "<tr><td>${iteration}</td><td>${status}</td></tr>"
+
+                        htmlContent += """
+                            <tr>
+                                <td>${iteration}</td>
+                                <td>${status}</td>
+                        """
+
+                        htmlContent += "</tr>"
                     }
+
                     htmlContent += """
                         </table>
                     </body>
                     </html>
                     """
+
                     writeFile file: 'report.html', text: htmlContent
                 }
             }
         }
     }
-
     post {
         always {
             publishHTML (target: [
@@ -178,14 +233,16 @@ pipeline {
             echo "-----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
-
             script {
                 def buildCauses = currentBuild.getBuildCauses()
                 def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+
                 def buildUserName = userCause?.userName ?: "Unknown User"
                 def buildUserId = userCause?.userId ?: "unknown"
+
                 echo "Build started by: ${buildUserName} (${buildUserId})"
 
+                // Define a mapping of user IDs to emails (update as needed)
                 def userEmails = [
                     "puneet": "puneet.sharma@senao.com",
                     "harman": "harmanjot.singh@senao.com",
@@ -197,9 +254,13 @@ pipeline {
                     "phani": "phani.darla@senao.com",
                     "dinesh": "dinesh.redddy@senao.com"
                 ]
+
+                // Get email from predefined mapping, else use default
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+
                 echo "Sending email to: ${userEmail}"
 
+                // Send email notification
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
                     body: """
@@ -207,7 +268,8 @@ pipeline {
                         <body>
                             <h2 style="color:blue;">Jenkins Build Notification</h2>
                             <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
-                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">${currentBuild.currentResult}</span></p>
+                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
+                                ${currentBuild.currentResult}</span></p>
                             <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
                             <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
                             <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
@@ -218,7 +280,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html'
+                    attachmentsPattern: 'report.html'  // Only attach, do not embed
                 )
             }
         }
