@@ -52,7 +52,7 @@ pipeline {
                         echo "Running reboot test iteration ${i}"
                         try {
                             sh """
-                                python3 -m pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
+                                pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
                                 --local-ip '${localIP}' --remote-ip '${remoteIP}' \
                                 --iter ${i}
                             """
