@@ -17,7 +17,8 @@ pipeline {
             }
         }
 
-        stage mbedtls('Install Dependencies') {
+        // FIXED: Was written as "stage mbedtls(...)"
+        stage('Install Dependencies') {
             steps {
                 script {
                     echo "----------------------------------------"
@@ -76,12 +77,15 @@ pipeline {
                     sh "ssh-keygen -R ${localIP} || true"
                     if (remoteIP != "N/A") sh "ssh-keygen -R ${remoteIP} || true"
 
-                    // FIXED LINE — This was causing the build to fail
+                    // FIXED: Proper Groovy syntax (no Python ternary)
                     def local_fw_version = "N/A"
                     try {
-                        def output = sh(script: "ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version 2>/dev/null || ubus call system board'", returnStdout: true).trim()
+                        def output = sh(
+                            script: "ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version 2>/dev/null || ubus call system board'",
+                            returnStdout: true
+                        ).trim()
+
                         if (output.contains('"description"')) {
-                            // Extract from JSON: "description": "OpenWrt 23.05.2 ..."
                             def matcher = (output =~ /"description"\s*:\s*"([^"]+)"/)
                             local_fw_version = matcher ? matcher[0][1] : output
                         } else if (output) {
@@ -94,8 +98,8 @@ pipeline {
                     def jsonReport = readJSON file: 'iteration_results.json'
 
                     def totalTests = jsonReport.iterations.size()
-                    def passCount = jsonReport.iterations.count { it.status == 'PASS' }
-                    def failCount = totalTests - passCount
+                    def passCount  = jsonReport.iterations.count { it.status == 'PASS' }
+                    def failCount  = totalTests - passCount
                     def successPercentage = totalTests > 0 ? String.format("%.1f", (passCount * 100.0 / totalTests)) : "0.0"
 
                     def buildParams = [
@@ -108,9 +112,7 @@ pipeline {
                         "FW Version"         : local_fw_version
                     ]
 
-                    def istDate = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata")).getTime()
-                    def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z")
-
+                    def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
                     def htmlContent = """
@@ -118,12 +120,12 @@ pipeline {
                     <head>
                         <title>Firmware Upgrade Test Report</title>
                         <style>
-                            body {font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin:0; background:#f9fafb; color:#1f2937;}
-                            .container {max-width:1200px; margin:30px auto; padding:30px; background:white; border-radius:12px; box-shadow:0 4px 20px rgba(0,0,0,0.1);}
+                            body {font-family: -apple-system,system-ui,sans-serif; background:#f9fafb; color:#1f2937; margin:0;}
+                            .container {max-width:1200px; margin:30px auto; padding:30px; background:white; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.1);}
                             .header {background:linear-gradient(135deg,#667eea,#764ba2); color:white; padding:40px; border-radius:12px; text-align:center;}
-                            .header img {height:65px;}
-                            h1 {margin:10px 0; font-size:32px;}
-                            table {width:100%; border-collapse:collapse; margin:25px 0; background:white; border-radius:8px; overflow:hidden;}
+                            .header img {height:65px; margin-bottom:10px;}
+                            h1 {margin:8px 0; font-size:32px;}
+                            table {width:100%; border-collapse:collapse; margin:25px 0;}
                             th, td {padding:14px; text-align:left; border-bottom:1px solid #e5e7eb;}
                             th {background:#f3f4f6; font-weight:600; color:#4b5563;}
                             .status-pass {background:#d1fae5; color:#065f46; padding:6px 14px; border-radius:30px; font-weight:bold;}
@@ -148,9 +150,9 @@ pipeline {
 
                             <h2>Test Summary</h2>
                             <div class="summary">
-                                <div class="card"><h3>Total</h3><div class="big">${totalTests}</div></div>
-                                <div class="card"><h3>Pass</h3><div class="big" style="color:#16a34a;">${passCount}</div></div>
-                                <div class="card"><h3>Fail</h3><div class="big" style="color:#dc2626;">${failCount}</div></div>
+                                <div class="card"><h3>Total Cycles</h3><div class="big">${totalTests}</div></div>
+                                <div class="card"><h3>Passed</h3><div class="big" style="color:#16a34a;">${passCount}</div></div>
+                                <div class="card"><h3>Failed</h3><div class="big" style="color:#dc2626;">${failCount}</div></div>
                                 <div class="card"><h3>Success Rate</h3><div class="big" style="color:#16a34a;">${successPercentage}%</div></div>
                             </div>
 
@@ -188,9 +190,8 @@ pipeline {
             sh 'rm -f test-*.log iteration_results.json || true'
 
             script {
-                def cause = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')?.get(0)
-                def userId = cause ? cause.userId : "unknown"
-                def userEmails = [
+                def userId = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')?.userId ?: "unknown"
+                def toEmail = [
                     "puneet":"puneet.sharma@senao.com",
                     "harman":"harmanjot.singh@senao.com",
                     "mahesh":"mahesh.battala@senao.com",
@@ -200,8 +201,7 @@ pipeline {
                     "srilatha":"srilatha.tadiboina@senao.com",
                     "phani":"phani.darla@senao.com",
                     "dinesh":"dinesh.redddy@senao.com"
-                ]
-                def toEmail = userEmails.getOrDefault(userId, "puneet.sharma@senao.com")
+                ].getOrDefault(userId, "puneet.sharma@senao.com")
 
                 emailext(
                     subject: "FW Upgrade Test #${BUILD_NUMBER} - ${currentBuild.currentResult}",
