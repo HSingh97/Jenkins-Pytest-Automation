@@ -1,7 +1,15 @@
 import jenkins.model.Jenkins
+import java.util.Calendar
+import java.util.TimeZone
 
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
+
+    // Declare variables globally so post{} can access them
+    environment {
+        SCRIPT_PATH = "/usr/local/bin/test_CLI_FW_Upgarde.py"
+        SUCCESS_RATE = "0.0"
+    }
 
     stages {
         stage('Prepare tests') {
@@ -11,20 +19,15 @@ pipeline {
                     echo "--- TARGET STAND: ${TARGET_STAND}"
                     echo "----------------------------------------"
                     if (!params['Local IP Address']) {
-                        error "Missing required parameters: Local IP Address"
+                        error "Missing required parameter: Local IP Address"
                     }
                 }
             }
         }
 
-        // FIXED: Was written as "stage mbedtls(...)"
         stage('Install Dependencies') {
             steps {
-                script {
-                    echo "----------------------------------------"
-                    echo "Installing Dependencies (if any)"
-                    echo "----------------------------------------"
-                }
+                echo "Dependencies ready"
             }
         }
 
@@ -37,12 +40,7 @@ pipeline {
                     def count     = params.FIRMWARE_UPGRADE_COUNT.toInteger()
                     def keepFlag  = params['Keep Setting'] ? "" : "-n"
 
-                    echo "Local IP Address : ${localIP}"
-                    echo "Remote IP Address: ${remoteIP}"
-                    echo "Upgrade Count    : ${count}"
-                    echo "Keep Settings    : ${params['Keep Setting'] ? 'YES' : 'NO'}"
-                    echo "Model            : ${params.Model}"
-                    echo "Firmware Source  : ${params.CUSTOM_FIRMWARE ? 'Uploaded File' : 'Default Path'}"
+                    echo "Starting ${count} upgrade cycle(s) on ${localIP}"
 
                     sh "echo '{\"iterations\": []}' > iteration_results.json"
 
@@ -51,13 +49,14 @@ pipeline {
                     }
 
                     for (int i = 1; i <= count; i++) {
-                        echo "Running firmware upgrade iteration ${i}"
+                        echo "=== FIRMWARE UPGRADE CYCLE ${i}/${count} ==="
                         try {
-                            sh """
-                                test_CLI_FW_Upgarde.py '${localIP}' '${fwPath}' '${i}' '${keepFlag}'
-                            """
-                        } catch (Exception e) {
-                            echo "Upgrade iteration ${i} failed: ${e.message}"
+                            timeout(time: 15, unit: 'MINUTES') {
+                                sh "${env.SCRIPT_PATH} '${localIP}' '${fwPath}' '${i}' '${keepFlag}'"
+                            }
+                        } catch (err) {
+                            echo "Cycle ${i} FAILED: ${err}"
+                            currentBuild.result = 'UNSTABLE'
                         }
 
                         if (remoteIP) {
@@ -74,102 +73,98 @@ pipeline {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address'] ?: "N/A"
 
+                    // Clean known hosts
                     sh "ssh-keygen -R ${localIP} || true"
-                    if (remoteIP != "N/A") sh "ssh-keygen -R ${remoteIP} || true"
+                    sh "ssh-keygen -R ${remoteIP} || true"
 
-                    // FIXED: Proper Groovy syntax (no Python ternary)
-                    def local_fw_version = "N/A"
+                    // Get firmware version safely
+                    def local_fw_version = "Unknown"
                     try {
                         def output = sh(
-                            script: "ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version 2>/dev/null || ubus call system board'",
+                            script: "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@${localIP} 'cat /etc/version 2>/dev/null || ubus call system board || echo Unknown'",
                             returnStdout: true
                         ).trim()
-
                         if (output.contains('"description"')) {
-                            def matcher = (output =~ /"description"\s*:\s*"([^"]+)"/)
-                            local_fw_version = matcher ? matcher[0][1] : output
-                        } else if (output) {
+                            def m = (output =~ /"description"\s*:\s*"([^"]+)"/)
+                            local_fw_version = m ? m[0][1] : output
+                        } else {
                             local_fw_version = output
                         }
                     } catch (e) {
-                        echo "Warning: Could not fetch firmware version"
+                        local_fw_version = "Not reachable"
                     }
 
+                    // Read results
                     def jsonReport = readJSON file: 'iteration_results.json'
-
                     def totalTests = jsonReport.iterations.size()
                     def passCount  = jsonReport.iterations.count { it.status == 'PASS' }
                     def failCount  = totalTests - passCount
-                    def successPercentage = totalTests > 0 ? String.format("%.1f", (passCount * 100.0 / totalTests)) : "0.0"
+                    env.SUCCESS_RATE = totalTests > 0 ? String.format("%.1f", (passCount * 100.0 / totalTests)) : "0.0"
 
                     def buildParams = [
                         "Target Stand"       : TARGET_STAND,
-                        "Local IP Address"   : localIP,
-                        "Remote IP Address"  : remoteIP,
+                        "Local IP"           : localIP,
+                        "Remote IP"          : remoteIP,
                         "Model"              : params.Model,
                         "Keep Settings"      : params['Keep Setting'] ? "YES" : "NO",
-                        "Upgrade Cycles"     : totalTests,
-                        "FW Version"         : local_fw_version
+                        "Cycles"             : totalTests,
+                        "Final FW Version"   : local_fw_version
                     ]
 
-                    def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
-                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+                    def currentDateTime = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata"))
+                                              .getTime().format("dd MMM yyyy, HH:mm:ss")
 
-                    def htmlContent = """
+                    def logo = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+
+                    writeFile file: 'report.html', text: """
                     <html>
-                    <head>
-                        <title>Firmware Upgrade Test Report</title>
-                        <style>
-                            body {font-family: -apple-system,system-ui,sans-serif; background:#f9fafb; color:#1f2937; margin:0;}
-                            .container {max-width:1200px; margin:30px auto; padding:30px; background:white; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.1);}
-                            .header {background:linear-gradient(135deg,#667eea,#764ba2); color:white; padding:40px; border-radius:12px; text-align:center;}
-                            .header img {height:65px; margin-bottom:10px;}
-                            h1 {margin:8px 0; font-size:32px;}
-                            table {width:100%; border-collapse:collapse; margin:25px 0;}
-                            th, td {padding:14px; text-align:left; border-bottom:1px solid #e5e7eb;}
-                            th {background:#f3f4f6; font-weight:600; color:#4b5563;}
-                            .status-pass {background:#d1fae5; color:#065f46; padding:6px 14px; border-radius:30px; font-weight:bold;}
-                            .status-fail {background:#fee2e2; color:#991b1b; padding:6px 14px; border-radius:30px; font-weight:bold;}
-                            .summary {display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:20px; margin:30px 0;}
-                            .card {background:white; padding:25px; border-radius:10px; box-shadow:0 4px 15px rgba(0,0,0,0.08); text-align:center;}
-                            .card .big {font-size:42px; font-weight:bold;}
-                        </style>
+                    <head><title>FW Upgrade Report - ${params.Model}</title>
+                    <style>
+                        body {font-family: system-ui; background:#f8fafc; color:#1e293b; margin:0;}
+                        .container {max-width:1200px; margin:40px auto; padding:30px; background:white; border-radius:12px; box-shadow:0 10px 40px rgba(0,0,0,0.1);}
+                        .header {background:linear-gradient(135deg,#6366f1,#8b5cf6); color:white; padding:40px; border-radius:12px; text-align:center;}
+                        .header img {height:70px; margin-bottom:15px;}
+                        h1 {margin:10px 0; font-size:34px;}
+                        table {width:100%; border-collapse:collapse; margin:25px 0;}
+                        th, td {padding:14px; text-align:left; border-bottom:1px solid #e2e8f0;}
+                        th {background:#f1f5f9; font-weight:600;}
+                        .pass {background:#dcfce7; color:#166534; padding:8px 16px; border-radius:50px; font-weight:bold;}
+                        .fail {background:#fee2e2; color:#991b1b; padding:8px 16px; border-radius:50px; font-weight:bold;}
+                        .summary {display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:20px; margin:30px 0;}
+                        .card {background:#fff; padding:25px; border-radius:12px; box-shadow:0 4px 20px rgba(0,0,0,0.08); text-align:center;}
+                        .card h3 {margin:0 0 10px; color:#64748b;}
+                        .card .big {font-size:48px; font-weight:bold; color:#1e293b;}
+                    </style>
                     </head>
                     <body>
                         <div class="container">
                             <div class="header">
-                                <img src="${companyLogoUrl}" alt="Senao"/>
-                                <h1>Senao ${params.Model} - Firmware Upgrade Test</h1>
+                                <img src="${logo}" alt="Senao"/>
+                                <h1>Senao ${params.Model}<br>Firmware Upgrade Stress Test</h1>
                                 <p>${currentDateTime}</p>
                             </div>
 
-                            <h2>Build Parameters</h2>
-                            <table>
-                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join()}
-                            </table>
+                            <h2>Parameters</h2>
+                            <table>${buildParams.collect { k,v -> "<tr><td><b>${k}</b></td><td>${v}</td></tr>" }.join()}</table>
 
-                            <h2>Test Summary</h2>
+                            <h2>Summary</h2>
                             <div class="summary">
-                                <div class="card"><h3>Total Cycles</h3><div class="big">${totalTests}</div></div>
-                                <div class="card"><h3>Passed</h3><div class="big" style="color:#16a34a;">${passCount}</div></div>
-                                <div class="card"><h3>Failed</h3><div class="big" style="color:#dc2626;">${failCount}</div></div>
-                                <div class="card"><h3>Success Rate</h3><div class="big" style="color:#16a34a;">${successPercentage}%</div></div>
+                                <div class="card"><h3>Total</h3><div class="big">${totalTests}</div></div>
+                                <div class="card"><h3>Pass</h3><div class="big" style="color:#16a34a">${passCount}</div></div>
+                                <div class="card"><h3>Fail</h3><div class="big" style="color:#dc2626">${failCount}</div></div>
+                                <div class="card"><h3>Success Rate</h3><div class="big" style="color:#16a34a">${env.SUCCESS_RATE}%</div></div>
                             </div>
 
-                            <h2>Test Results</h2>
+                            <h2>Results</h2>
                             <table>
-                                <tr><th>Iteration</th><th>Status</th><th>Keep Settings</th><th>Logs</th></tr>
+                                <tr><th>#</th><th>Status</th><th>Keep Settings</th><th>Log</th></tr>
                                 ${jsonReport.iterations.collect { r ->
-                                    def cls = r.status == "PASS" ? "status-pass" : "status-fail"
-                                    "<tr><td>${r.iteration}</td><td><span class='${cls}'>${r.status}</span></td><td>${r.'Keep Settings'}</td><td>${r.'Device Logs'}</td></tr>"
+                                    "<tr><td>${r.iteration}</td><td><span class='${r.status=='PASS'?'pass':'fail'}'>${r.status}</span></td><td>${r.'Keep Settings'}</td><td>${r.'Device Logs'}</td></tr>"
                                 }.join()}
                             </table>
                         </div>
-                    </body>
-                    </html>
+                    </body></html>
                     """
-
-                    writeFile file: 'report.html', text: htmlContent
                 }
             }
         }
@@ -178,48 +173,38 @@ pipeline {
     post {
         always {
             publishHTML(target: [
-                allowMissing: false,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
                 reportDir: '.',
                 reportFiles: 'report.html',
-                reportName: 'Firmware Upgrade Test Report'
+                reportName: 'Firmware Upgrade Test Report',
+                keepAll: true,
+                alwaysLinkToLastBuild: true
             ])
 
             archiveArtifacts artifacts: 'iteration_results.json,report.html', allowEmptyArchive: true
-            sh 'rm -f test-*.log iteration_results.json || true'
+            sh 'rm -f iteration_results.json test-*.log || true'
 
             script {
-                def userId = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')?.userId ?: "unknown"
-                def toEmail = [
+                def userId = currentBuild.getBuildCauses()?.find { it.class.simpleName.contains('UserIdCause') }?.userId ?: "unknown"
+                def email = [
                     "puneet":"puneet.sharma@senao.com",
-                    "harman":"harmanjot.singh@senao.com",
-                    "mahesh":"mahesh.battala@senao.com",
-                    "sandeep":"sandeep.manchikanti@senao.com",
-                    "sampath":"sampath.marella@senao.com",
-                    "jayanth":"jayanth.munnaluru@senao.com",
-                    "srilatha":"srilatha.tadiboina@senao.com",
-                    "phani":"phani.darla@senao.com",
-                    "dinesh":"dinesh.redddy@senao.com"
-                ].getOrDefault(userId, "puneet.sharma@senao.com")
+                    "harman":"harmanjot.singh@senao.com"
+                ].getOrDefault(userId.toLowerCase(), "puneet.sharma@senao.com")
 
                 emailext(
-                    subject: "FW Upgrade Test #${BUILD_NUMBER} - ${currentBuild.currentResult}",
+                    subject: "FW Upgrade Test #${BUILD_NUMBER} - ${currentBuild.currentResult} (${env.SUCCESS_RATE}%)",
                     body: """
-                        <h2>Firmware Upgrade Test Completed</h2>
-                        <p><strong>Model:</strong> ${params.Model}</p>
-                        <p><strong>Keep Settings:</strong> ${params['Keep Setting'] ? 'YES' : 'NO'}</p>
-                        <p><strong>Success Rate:</strong> ${successPercentage}%</p>
-                        <p><a href="${env.BUILD_URL}Firmware_Upgrade_Test_Report/">View Full Report</a></p>
+                    <h2>Firmware Upgrade Test Completed</h2>
+                    <p><b>Model:</b> ${params.Model} | <b>Success Rate:</b> ${env.SUCCESS_RATE}%</p>
+                    <p><a href="${env.BUILD_URL}Firmware_Upgrade_Test_Report/">View Full Report</a></p>
                     """,
-                    to: toEmail,
+                    to: email,
                     mimeType: 'text/html',
                     attachmentsPattern: 'report.html'
                 )
             }
         }
-        success { echo "ALL FIRMWARE UPGRADES PASSED!" }
-        unstable { echo "SOME UPGRADE CYCLES FAILED" }
-        failure { echo "PIPELINE ERROR" }
+        success { echo "ALL CYCLES PASSED!" }
+        unstable { echo "SOME CYCLES FAILED" }
+        failure { echo "PIPELINE FAILED" }
     }
 }
