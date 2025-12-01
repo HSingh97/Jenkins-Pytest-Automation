@@ -4,6 +4,7 @@ def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
+// Main Pipeline
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
 
@@ -21,7 +22,13 @@ pipeline {
         }
 
         stage('Install Python Dependencies') {
-            steps { echo "Dependencies already available" }
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "Installing Dependencies"
+                    echo "----------------------------------------"
+                }
+            }
         }
 
         stage('Soft Reset Testing') {
@@ -31,11 +38,15 @@ pipeline {
                     def remoteIPs = params['Remote IP Address'].trim()  // Can have multiple
                     def ResetCount = params.RESET_COUNT ?: 1
 
-                    echo "Number of iterations: ${ResetCount}"
-                    sh "echo '{\"iterations\": []}' > iteration_results.json"
-
+                    echo "Number of reboot iterations: ${ResetCount}"
+                    echo "✅ Cleared old workspace"
+                    echo "----------------------------------------"
+                    echo "Testing Soft Reset"
+                    echo "----------------------------------------"
+                    // Initialize results file
+                    sh "echo '{\"iterations\": []}' > iteration_results.json" // Initialize JSON array
                     for (int i = 1; i <= ResetCount.toInteger(); i++) {
-                        echo "=== Running Soft Reset Test - Iteration ${i} ==="
+                        echo "Running reboot test iteration ${i}"
                         try {
                             sh """
                                 pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
@@ -44,8 +55,7 @@ pipeline {
                                 --iter ${i}
                             """
                         } catch (Exception e) {
-                            echo "Iteration ${i} failed: ${e.getMessage()}"
-                            currentBuild.result = 'UNSTABLE'
+                            echo "Reset test iteration ${i} failed: ${e.message}"
                         }
                     }
                 }
@@ -55,24 +65,32 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def localIP = params['Local IP Address']
-                    def remoteIPs = params['Remote IP Address']
+                    def localIP = params['Local IP Address'].trim()
+                    def remoteIPs = params['Remote IP Address'].trim()
+
+                    // Clear known_hosts for local IP
                     sh "ssh-keygen -R ${localIP} || true"
-                    remoteIPs.split('[,\s]+').each { ip -> sh "ssh-keygen -R ${ip.trim()} || true" }
+                    // Handle multiple remote IPs
+                    if (remoteIPs) {
+                        remoteIPs.split(/[,\s]+/).each { ip ->
+                            if (ip.trim()) sh "ssh-keygen -R ${ip.trim()} || true"
+                        }
+                    }
 
                     def local_fw_version = "N/A"
-                    def remote_fw_version = "N/A"
                     try {
                         local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (Exception e) { echo "Failed to get local FW version" }
+                    } catch (Exception e) {
+                        echo "⚠️ Failed to get local FW version from ${localIP}: ${e.message}"
+                    }
 
                     def jsonReport = readJSON file: 'iteration_results.json'
+                    echo "JSON Report: ${jsonReport}" // Debugging output
                     def buildParams = [
                         "Local IP Address": localIP,
                         "Remote IP Address(s)": remoteIPs,
-                        "FW Version (Local)": local_fw_version
+                        "FW Version (Local / Remote)": "${local_fw_version}"
                     ]
-
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
@@ -80,24 +98,80 @@ pipeline {
                     def pipelineName = env.JOB_NAME
 
                     def htmlContent = """
-                    <html><head><title>Test Report</title>
-                    <style>
-                        body {font-family: 'Segoe UI', sans-serif; margin: 0; padding: 20px; background: #f9f9f9; color: #2c3e50;}
-                        .header {display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 20px; border-bottom: 2px solid #e0e0e0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
-                        .header img {height: 60px;}
-                        .header-info {text-align: right;}
-                        .header-info h1 {margin: 0; font-size: 24px;}
-                        h2 {margin-top: 40px; color: #333; border-bottom: 2px solid #ddd; padding-bottom: 5px;}
-                        table {width: 100%; border-collapse: collapse; margin-top: 15px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05);}
-                        th, td {padding: 12px 15px; border: 1px solid #ddd; text-align: left;}
-                        th {background: #2c3e50; color: white;}
-                        tr:nth-child(even) {background: #f4f4f4;}
-                        .pass {color: green; font-weight: bold;}
-                        .fail {color: red; font-weight: bold;}
-                    </style>
-                    </head><body>
+                    <html>
+                    <head>
+                        <title>Test Report</title>
+                        <style>
+                            body {
+                                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                                margin: 0;
+                                padding: 20px;
+                                background-color: #f9f9f9;
+                                color: #2c3e50;
+                            }
+                            .header {
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                background-color: #fff;
+                                padding: 20px;
+                                border-bottom: 2px solid #e0e0e0;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                            }
+                            .header img {
+                                height: 60px;
+                            }
+                            .header-info {
+                                text-align: right;
+                            }
+                            .header-info h1 {
+                                margin: 0;
+                                font-size: 24px;
+                            }
+                            .header-info p {
+                                margin: 5px 0;
+                                font-size: 14px;
+                                color: #555;
+                            }
+                            h2 {
+                                margin-top: 40px;
+                                font-size: 20px;
+                                color: #333;
+                                border-bottom: 2px solid #ddd;
+                                padding-bottom: 5px;
+                            }
+                            table {
+                                width: 100%;
+                                border-collapse: collapse;
+                                margin-top: 15px;
+                                background-color: #fff;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                            }
+                            th, td {
+                                padding: 12px 15px;
+                                border: 1px solid #ddd;
+                                text-align: left;
+                            }
+                            th {
+                                background-color: #2c3e50;
+                                color: white;
+                            }
+                            tr:nth-child(even) {
+                                background-color: #f4f4f4;
+                            }
+                            .pass {
+                                color: green;
+                                font-weight: bold;
+                            }
+                            .fail {
+                                color: red;
+                                font-weight: bold;
+                            }
+                        </style>
+                    </head>
+                    <body>
                         <div class="header">
-                            <img src="${companyLogoUrl}" alt="Senao Networks"/>
+                            <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
                             <div class="header-info">
                                 <h1>Automated Test Report</h1>
                                 <p><strong>Pipeline:</strong> ${pipelineName}</p>
@@ -105,16 +179,30 @@ pipeline {
                             </div>
                         </div>
                         <h2>Build Parameters</h2>
-                        <table>${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('')}</table>
+                        <table>
+                            ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
+                        </table>
                         <h2>Test Results</h2>
                         <table>
-                            <tr><th>Iteration</th><th>Status</th></tr>
-                            ${jsonReport.iterations.collect { res ->
-                                def status = res.status == "PASS" ? "<span class='pass'>PASS</span>" : "<span class='fail'>FAIL</span>"
-                                "<tr><td>${res.iteration}</td><td>${status}</td></tr>"
-                            }.join('')}
+                            <tr>
+                                <th>Iteration</th>
+                                <th>Status</th>
+                            </tr>
+                    """
+                    jsonReport.iterations.each { result ->
+                        def iteration = result.iteration ?: "-"
+                        def status = result.status == "PASS" ? "<span class='pass'>PASS</span>" : "<span class='fail'>FAIL</span>"
+                        htmlContent += """
+                            <tr>
+                                <td>${iteration}</td>
+                                <td>${status}</td>
+                            </tr>
+                        """
+                    }
+                    htmlContent += """
                         </table>
-                    </body></html>
+                    </body>
+                    </html>
                     """
                     writeFile file: 'report.html', text: htmlContent
                 }
@@ -124,42 +212,71 @@ pipeline {
 
     post {
         always {
-            publishHTML(target: [
+            publishHTML (target: [
                 allowMissing: false,
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
                 reportDir: '.',
                 reportFiles: 'report.html',
-                reportName: 'PtMP Soft Reset Test Report'
+                reportName: 'Test Report'
             ])
-            echo "Script Completed!"
-
+            echo "-----------------------------------------"
+            echo 'Script Done!'
+            echo "-----------------------------------------"
             script {
                 def buildCauses = currentBuild.getBuildCauses()
                 def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
-                def buildUserName = userCause?.userName ?: "Unknown"
+                def buildUserName = userCause?.userName ?: "Unknown User"
                 def buildUserId = userCause?.userId ?: "unknown"
-
+                echo "Build started by: ${buildUserName} (${buildUserId})"
+                // Define a mapping of user IDs to emails (update as needed)
                 def userEmails = [
                     "puneet": "puneet.sharma@senao.com",
                     "harman": "harmanjot.singh@senao.com",
-                    // ... add others
+                    "mahesh": "mahesh.battala@senao.com",
+                    "sandeep": "sandeep.manchikanti@senao.com",
+                    "sampath": "sampath.marella@senao.com",
+                    "jayanth": "jayanth.munnaluru@senao.com",
+                    "srilatha": "srilatha.tadiboina@senao.com",
+                    "phani": "phani.darla@senao.com",
+                    "dinesh": "dinesh.redddy@senao.com"
                 ]
+                // Get email from predefined mapping, else use default
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
-
+                echo "Sending email to: ${userEmail}"
+                // Send email notification
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
-                    body: """<h2>Jenkins Build Notification</h2>
-                             <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'}">${currentBuild.currentResult}</span></p>
-                             <p><strong>Started By:</strong> ${buildUserName}</p>
-                             <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>""",
+                    body: """
+                        <html>
+                        <body>
+                            <h2 style="color:blue;">Jenkins Build Notification</h2>
+                            <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
+                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
+                                ${currentBuild.currentResult}</span></p>
+                            <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
+                            <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                            <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                            <br/>
+                            <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
+                        </body>
+                        </html>
+                    """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html'
+                    attachmentsPattern: 'report.html' // Only attach, do not embed
                 )
             }
         }
-        success { echo "All Tests Passed!" }
-        failure { echo "Test Failed!" }
+        success {
+            echo "-----------------------------------------"
+            echo 'Script Success'
+            echo "-----------------------------------------"
+        }
+        failure {
+            echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
+        }
     }
 }
