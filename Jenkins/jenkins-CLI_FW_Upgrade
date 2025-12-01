@@ -17,7 +17,7 @@ pipeline {
             }
         }
 
-        stage('Install Dependencies') {
+        stage mbedtls('Install Dependencies') {
             steps {
                 script {
                     echo "----------------------------------------"
@@ -76,18 +76,27 @@ pipeline {
                     sh "ssh-keygen -R ${localIP} || true"
                     if (remoteIP != "N/A") sh "ssh-keygen -R ${remoteIP} || true"
 
+                    // FIXED LINE — This was causing the build to fail
                     def local_fw_version = "N/A"
                     try {
-                        local_fw_version = sh(script: "ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version 2>/dev/null || ubus call system board | grep description'", returnStdout: true).trim()
-                        local_fw_version = local_fw_version.split('"')[1] if '"' in local_fw_version else local_fw_version
-                    } catch (e) {}
+                        def output = sh(script: "ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version 2>/dev/null || ubus call system board'", returnStdout: true).trim()
+                        if (output.contains('"description"')) {
+                            // Extract from JSON: "description": "OpenWrt 23.05.2 ..."
+                            def matcher = (output =~ /"description"\s*:\s*"([^"]+)"/)
+                            local_fw_version = matcher ? matcher[0][1] : output
+                        } else if (output) {
+                            local_fw_version = output
+                        }
+                    } catch (e) {
+                        echo "Warning: Could not fetch firmware version"
+                    }
 
                     def jsonReport = readJSON file: 'iteration_results.json'
 
                     def totalTests = jsonReport.iterations.size()
                     def passCount = jsonReport.iterations.count { it.status == 'PASS' }
                     def failCount = totalTests - passCount
-                    def successPercentage = totalTests > 0 ? (passCount * 100.0 / totalTests).setScale(1) : 0
+                    def successPercentage = totalTests > 0 ? String.format("%.1f", (passCount * 100.0 / totalTests)) : "0.0"
 
                     def buildParams = [
                         "Target Stand"       : TARGET_STAND,
@@ -103,9 +112,7 @@ pipeline {
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z")
 
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
-                    def pipelineName = env.JOB_NAME
 
-                    // EXACT SAME HTML AS YOUR SSH REBOOT JOB (just title changed)
                     def htmlContent = """
                     <html>
                     <head>
