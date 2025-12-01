@@ -7,7 +7,6 @@ import paramiko
 import csv
 from datetime import datetime
 
-# Try importing openpyxl for Excel generation
 try:
     from openpyxl import Workbook
     from openpyxl.styles import PatternFill, Font
@@ -17,18 +16,17 @@ except ImportError:
     print("!!! WARNING: 'openpyxl' module not found. Excel report will NOT be generated.")
     excel_available = False
 
-# CONFIGURATION
-file_name_base = 'Nov_27_PTMP_Test'
+# ================= CONFIGURATION =================
+file_name_base = 'Nov_29_PTMP_Test'
 txt_file_name = f'{file_name_base}.txt'
 csv_file_name = f'{file_name_base}.csv'
 xlsx_file_name = f'{file_name_base}_Summary.xlsx'
 
-local_ip = "192.168.1.26"  # BSU IP
+local_ip = "192.168.1.64"  # BSU IP
 
 # Remote SUs
 remote_ips = [
-    "192.168.1.28", "192.168.1.29", "192.168.1.30", "192.168.1.31",
-    "192.168.1.32", "192.168.1.33", "192.168.1.34", "192.168.1.35"
+    "192.168.1.65"
 ]
 
 custom_channel_list = ["160", "161"]
@@ -42,6 +40,7 @@ passwords_ssh = "admin"
 
 channel_results = []
 
+
 # ANSI Colors
 class Colors:
     HEADER = '\033[95m'
@@ -51,6 +50,7 @@ class Colors:
     FAIL = '\033[91m'
     ENDC = '\033[0m'
     BOLD = '\033[1m'
+
 
 if radio == "radio1":
     radio_index = '1'
@@ -62,6 +62,7 @@ else:
     print("Select a valid Radio")
     exit()
 
+
 def init_csv():
     with open(csv_file_name, mode='w', newline='') as file:
         writer = csv.writer(file)
@@ -69,10 +70,12 @@ def init_csv():
             ["Timestamp", "Channel", "Node_IP", "Local_SNR_A1/A2", "Remote_SNR_A1/A2", "Tx/Rx", "Uptime_Raw", "Status",
              "Notes"])
 
+
 def log_to_csv(data_row):
     with open(csv_file_name, mode='a', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(data_row)
+
 
 def parse_uptime_to_seconds(uptime_str):
     try:
@@ -87,6 +90,47 @@ def parse_uptime_to_seconds(uptime_str):
         return total_seconds
     except:
         return -1
+
+
+def get_snmp_value_simple(oid):
+    try:
+        cmd = f"snmpget -v 2c -c private {local_ip} {oid}"
+        output = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
+        match = re.search(r'(?:INTEGER|STRING|Gauge32|Counter32):\s*(.+)', output)
+        if match:
+            return match.group(1).replace('"', '').strip()
+        else:
+            return output.split(':')[-1].strip()
+    except Exception as e:
+        return "Err"
+
+
+def verify_bsu_operation(expected_bw, expected_chan):
+    print(f"{Colors.HEADER}--> Verifying BSU Operating Parameters...{Colors.ENDC}")
+
+    op_bw_oid = f".1.3.6.1.4.1.52619.1.1.1.1.1.51.{radio_oid}"
+    op_ch_oid = f".1.3.6.1.4.1.52619.1.1.1.1.1.23.{radio_oid}"
+
+    op_bw = get_snmp_value_simple(op_bw_oid)
+    op_ch = get_snmp_value_simple(op_ch_oid)
+
+    if str(op_ch) == str(expected_chan):
+        ch_status = f"{Colors.OKGREEN}MATCH{Colors.ENDC}"
+    else:
+        ch_status = f"{Colors.FAIL}MISMATCH{Colors.ENDC}"
+
+    if str(op_bw) == str(expected_bw):
+        bw_status = f"{Colors.OKGREEN}MATCH{Colors.ENDC}"
+    else:
+        bw_status = f"{Colors.WARNING}MISMATCH/DIFF{Colors.ENDC}"  # Warning as format might differ (e.g. 80 vs HT80)
+
+    print(f"\tOp Bandwidth : {op_bw:<10} (Target: {expected_bw}) [{bw_status}]")
+    print(f"\tOp Channel   : {op_ch:<10} (Target: {expected_chan}) [{ch_status}]")
+
+    if "MISMATCH" in ch_status:
+        return False
+    return True
+
 
 def start_test():
     init_csv()
@@ -119,10 +163,9 @@ def start_test():
             current_bw = bandwidth[i]
             print(f"{Colors.HEADER}Current Bandwidth : {current_bw}{Colors.ENDC}")
 
-            #set_oid_with_retry("Bandwidth", f".1.3.6.1.4.1.52619.1.1.1.1.1.7.{radio_oid}", "s", current_bw)
+            # set_oid_with_retry("Bandwidth", f".1.3.6.1.4.1.52619.1.1.1.1.1.7.{radio_oid}", "s", current_bw)
             check_single_ip_reachability(local_ip)
 
-            # --- CHANNEL SELECTION LOGIC ---
             if len(custom_channel_list) > 0:
                 print(f"{Colors.OKBLUE}Using Custom Channel List: {custom_channel_list}{Colors.ENDC}")
                 channel_list = custom_channel_list
@@ -139,7 +182,9 @@ def start_test():
                 print("Waiting for SUs to connect...")
                 links_up = wait_for_connection(remote_ips)
 
+                # ==========================================
                 # CHECK 1: IF LINKS DO NOT FORM, SKIP CHANNEL
+                # ==========================================
                 if not links_up:
                     print(
                         f"{Colors.FAIL}Link Timeout! Not all SUs connected. Skipping Channel {current_chan}{Colors.ENDC}")
@@ -158,7 +203,19 @@ def start_test():
                     continue
 
                 print(f"{Colors.OKGREEN}All Links Formed in Channel {current_chan}{Colors.ENDC}")
-                print(f"--> Starting 5-minute stability check for Channel {current_chan}...")
+
+                # ==========================================
+                # NEW CHECK: VERIFY OPERATING PARAMETERS
+                # ==========================================
+                # Checks if BSU is actually running on the configured BW/Channel
+                ops_ok = verify_bsu_operation(current_bw, current_chan)
+                if not ops_ok:
+                    print(
+                        f"{Colors.FAIL}!!! WARNING: BSU Operating Channel mismatch! Proceeding with caution...{Colors.ENDC}")
+                    with open(txt_file_name, 'a') as f:
+                        f.write(f"WARNING: Channel Mismatch Detected for Target {current_chan}\n")
+
+                print(f"--> Starting 2-minute stability check for Channel {current_chan}...")
 
                 monitor_duration = 120
                 interval = 5
@@ -167,7 +224,9 @@ def start_test():
                 incidents = []
                 previous_uptime_map = {}
 
+                # ==========================================
                 # MONITORING LOOP
+                # ==========================================
                 while elapsed_time < monitor_duration:
                     loop_start = time.time()
                     timestamp = datetime.now().strftime("%H:%M:%S")
@@ -183,7 +242,9 @@ def start_test():
                             if "Zero SNR" in issue:
                                 zero_snr_detected = True
 
+                    # ==========================================
                     # CHECK 2: IMMEDIATE EXIT ON ZERO SNR
+                    # ==========================================
                     if zero_snr_detected:
                         print(
                             f"{Colors.FAIL}!!! CRITICAL FAILURE: Zero SNR Detected. Aborting Channel {current_chan} !!!{Colors.ENDC}")
@@ -231,6 +292,7 @@ def start_test():
 
     generate_excel_report()
 
+
 def generate_excel_report():
     if not excel_available: return
     print(f"\n{Colors.HEADER}Generating Excel Report: {xlsx_file_name}...{Colors.ENDC}")
@@ -255,6 +317,7 @@ def generate_excel_report():
 
     wb.save(xlsx_file_name)
     print(f"{Colors.OKGREEN}Report Saved Successfully!{Colors.ENDC}")
+
 
 def check_single_ip_reachability(ip):
     t = 0
@@ -301,6 +364,7 @@ def set_oid_with_retry(name, oid, type_char, value):
     print(f"{Colors.FAIL}!!! FAILED TO SET {name} AFTER 3 ATTEMPTS !!!{Colors.ENDC}")
     return False
 
+
 def get_and_log_linkstats(channel, timestamp, previous_uptime_map):
     issues = []
     found_data = {}
@@ -311,7 +375,8 @@ def get_and_log_linkstats(channel, timestamp, previous_uptime_map):
             cmd_ip = f"snmpget -v 2c -c private {local_ip} .1.3.6.1.4.1.52619.1.3.3.1.4.{radio_oid}.{i}"
             out_ip = subprocess.check_output(cmd_ip, shell=True).decode("utf-8")
         except:
-            i += 1; continue
+            i += 1
+            continue
 
         if "No Such Instance" in out_ip: i += 1; continue
         match_ip = re.search(r'IpAddress:\s*([\d.]+)', out_ip)
@@ -396,6 +461,7 @@ def get_and_log_linkstats(channel, timestamp, previous_uptime_map):
 
     return issues
 
+
 def get_channel_list(ip, country, bandwidth):
     try:
         ssh = paramiko.SSHClient()
@@ -408,6 +474,7 @@ def get_channel_list(ip, country, bandwidth):
         return nums[::2]
     except:
         return []
+
 
 def ping(host):
     param = '-n' if platform.system().lower() == 'windows' else '-c'
