@@ -1,67 +1,53 @@
-
-
 pipeline {
-    agent { label 'test-puneet' }
+    agent { label 'test-puneet' }   // ONLY YOUR NODE, NO CHANCE OF GIT ERROR
 
     parameters {
-        string(name: 'Local IP Address', defaultValue: '192.168.1.10', description: 'DUT IP')
-        string(name: 'Build URL', defaultValue: 'https://jenkins.senao.com/bonsai/5018/UBR655/debug/425/', description: 'Bonsai Build URL')
-        string(name: 'FIRMWARE_UPGRADE_COUNT', defaultValue: '10', description: 'Number of upgrade cycles')
-        booleanParam(name: 'Keep Setting', defaultValue: true, description: 'Keep settings after upgrade')
-        choice(name: 'Model', choices: ['UBR655', 'UBR650', 'Other'], description: 'Device Model')
+        string(name: 'Local IP Address', defaultValue: '192.168.1.10')
+        string(name: 'Build URL', defaultValue: 'https://jenkins.senao.com/bonsai/5018/UBR655/debug/425/')
+        string(name: 'FIRMWARE_UPGRADE_COUNT', defaultValue: '10')
+        booleanParam(name: 'Keep Setting', defaultValue: true)
+        choice(name: 'Model', choices: ['UBR655', 'Other'])
     }
 
     stages {
-        stage('Prepare') {
-            steps {
-                echo "========================================="
-                echo "    CLI FIRMWARE UPGRADE CYCLE TEST"
-                echo "    Target: ${params.Model} @ ${params['Local IP Address']}"
-                echo "    Cycles: ${params.FIRMWARE_UPGRADE_COUNT}"
-                echo "========================================="
-            }
-        }
-
         stage('Download Firmware') {
             steps {
                 script {
-                    sh 'mkdir -p artifacts && rm -f fw.tgz fw.img.enc'
-                    def base = params['Build URL'].trim()
+                    sh 'rm -f fw.tgz fw.img.enc'
+                    def url = params['Build URL'].trim()
+                    def base = url.startsWith('http') ? url : "https://jenkins.senao.com/bonsai/${url}"
                     if (!base.endsWith('/')) base += '/'
-                    base = "https://jenkins.senao.com/bonsai/" + base.substring(base.indexOf('/bonsai/') + 8)
 
-                    sh """
-                        wget --no-verbose --no-parent --no-check-certificate \
-                             -e robots=off --recursive --level=1 \
-                             -A '*-apps.tgz,*-apps.img.enc,*single*.img.enc' \
-                             --no-directories "${base}"
-                    """
-
+                    sh "wget -q --no-check-certificate --recursive --level=1 --no-directories -A '*-apps.tgz,*-apps.img.enc,*single*.img.enc' '${base}'"
                     sh 'mv -f *-apps.tgz fw.tgz || true'
-                    sh 'img=$(ls *-apps.img.enc *single*.img.enc 2>/dev/null | head -n1); [ -n "$img" ] && mv "$img" fw.img.enc || true'
+                    sh 'img=\$(ls *-apps.img.enc *single*.img.enc 2>/dev/null | head -n1); [ -n "\$img" ] && mv "\$img" fw.img.enc || true'
 
-                    env.FW = fileExists('fw.tgz') ? 'fw.tgz' : (fileExists('fw.img.enc') ? 'fw.img.enc' : null)
-                    if (!env.FW) error "Firmware not downloaded!"
-
-                    echo "Using firmware: ${env.FW}"
-                    archiveArtifacts("${env.FW}")
+                    env.FW_FILE = fileExists('fw.tgz') ? 'fw.tgz' : 'fw.img.enc'
+                    echo "Using → ${env.FW_FILE}"
                 }
             }
         }
 
-        stage('Deploy CLI Script') {
+        stage('Deploy Script') {
             steps {
                 sh '''
-                    cp -f testCases/test_CLI_FW_Upgrade.py . || \
-                    cp -f testCases/test_CLI_FW_upgrade.py . || \
-                    (echo "SCRIPT NOT FOUND!" && exit 1)
+                    # TRY EVERY POSSIBLE NAME — ONE WILL WORK
+                    cp -f testCases/test_CLI_FW_Upgrade.py . 2>/dev/null || \
+                    cp -f testCases/test_CLI_FW_upgrade.py . 2>/dev/null || \
+                    cp -f testCases/test_cli_fw_upgrade.py . 2>/dev/null || \
+                    cp -f testCases/*.py . 2>/dev/null || \
+                    (echo "SCRIPT NOT FOUND IN testCases/ — CHECK FILENAME & COMMIT!" && exit 1)
+
+                    # RENAME TO STANDARD NAME
+                    mv *.py test_CLI_FW_Upgrade.py 2>/dev/null || true
                     chmod +x test_CLI_FW_Upgrade.py
-                    echo "CLI Script ready!"
+                    echo "SCRIPT DEPLOYED → test_CLI_FW_Upgrade.py"
+                    ls -la test_CLI_FW_Upgrade.py
                 '''
             }
         }
 
-        stage('Run Upgrade Cycles') {
+        stage('Run Cycles') {
             steps {
                 script {
                     def ip = params['Local IP Address']
@@ -71,61 +57,54 @@ pipeline {
                     sh 'echo \'{"iterations": []}\' > iteration_results.json'
 
                     for (int i = 1; i <= n; i++) {
-                        echo "CYCLE ${i}/${n} STARTED"
-                        timeout(time: 22, unit: 'MINUTES') {
-                            sh "python3 test_CLI_FW_Upgrade.py '${ip}' '${env.FW}' '${i}' '${keep}'"
+                        echo "CYCLE ${i}/${n}"
+                        timeout(22) {
+                            sh "python3 test_CLI_FW_Upgrade.py '${ip}' '${env.FW_FILE}' '${i}' '${keep}'"
                         }
                     }
                 }
             }
         }
 
-        stage('Generate Report') {
+        stage('Report') {
             steps {
                 script {
                     def json = readJSON file: 'iteration_results.json'
                     def total = json.iterations.size()
                     def pass = json.iterations.count { it.status == 'PASS' }
                     def rate = total > 0 ? String.format("%.1f", pass * 100.0 / total) : "0.0"
+                    env.SUCCESS_RATE = rate
 
-                    def ver = "N/A"
-                    try {
-                        ver = sh(script: "sshpass -p admin ssh -o StrictHostKeyChecking=no root@${params['Local IP Address']} 'cat /etc/version || echo Unknown'", returnStdout: true).trim()
-                    } catch (e) {}
+                    def ver = "Unknown"
+                    try { ver = sh(script: "sshpass -p admin ssh -o StrictHostKeyChecking=no root@${params['Local IP Address']} 'cat /etc/version'", returnStdout: true).trim() }
+                    catch(e) { ver = "Failed to read" }
 
                     def now = new Date().format('dd MMM yyyy, HH:mm:ss z', TimeZone.getTimeZone('Asia/Kolkata'))
 
                     writeFile file: 'report.html', text: """
                     <!DOCTYPE html>
-                    <html><head><meta charset="utf-8"><title>CLI FW Upgrade Report</title>
+                    <html><head><meta charset="utf-8"><title>CLI Upgrade Report</title>
                     <style>
-                        body {font-family: system-ui; background: #000; color: #0f0; margin:0; padding:80px; text-align:center;}
-                        .box {background:#111; padding:100px; border-radius:50px; display:inline-block; box-shadow:0 0 120px #0f0; width:90%; max-width:1000px;}
-                        h1 {font-size:90px; margin:20px; color:#22c55e;}
-                        .big {font-size:380px; font-weight:900; color:#22c55e; line-height:1;}
-                        .small {font-size:50px; color:#0f0;}
-                        .logo {height:80px; margin-bottom:30px;}
+                        body{background:#000;color:#0f0;font-family:system-ui;text-align:center;padding:100px;}
+                        .box{background:#111;padding:120px;border-radius:60px;display:inline-block;box-shadow:0 0 150px #0f0;width:90%;max-width:1100px;}
+                        h1{font-size:100px;margin:20px;color:#22c55e;}
+                        .big{font-size:400px;font-weight:900;color:#22c55e;line-height:1;}
+                        .logo{height:90px;margin-bottom:40px;}
                     </style></head>
                     <body>
                         <div class="box">
                             <img src="https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png" class="logo">
                             <h1>CLI FIRMWARE UPGRADE</h1>
-                            <h1>${params.Model} • ${env.JOB_NAME}</h1>
-                            <div class="big">${rate}<span style="font-size:180px;">%</span></div>
+                            <h1>${params.Model} • test-puneet</h1>
+                            <div class="big">${rate}<span style="font-size:200px;">%</span></div>
                             <h1>${pass}/${total} PASSED</h1>
-                            <div class="small">Final Version: ${ver}</div>
-                            <p style="font-size:40px; margin-top:50px;">${now}</p>
+                            <h1>Final Version: ${ver}</h1>
+                            <p style="font-size:50px;margin-top:60px;">${now}</p>
                         </div>
                     </body></html>
                     """
 
-                    publishHTML([
-                        reportName: 'CLI Firmware Upgrade Report',
-                        reportDir: '.',
-                        reportFiles: 'report.html',
-                        keepAll: true,
-                        alwaysLinkToLastBuild: true
-                    ])
+                    publishHTML([reportName: 'CLI Upgrade Report', reportDir: '.', reportFiles: 'report.html', keepAll: true])
                 }
             }
         }
@@ -133,13 +112,16 @@ pipeline {
 
     post {
         always {
-            emailext(
-                to: 'puneet.sharma@senao.com',
-                subject: "CLI Upgrade #${BUILD_NUMBER} → ${env.RATE ?: rate}%",
-                body: "<h2>CLI Firmware Upgrade Completed</h2><p>Success Rate: <b>${rate}%</b></p><p><a href='${BUILD_URL}CLI_Firmware_Upgrade_Report/'>View Full Report</a></p>",
-                mimeType: 'text/html',
-                attachmentsPattern: 'report.html'
-            )
+            script {
+                def rate = env.SUCCESS_RATE ?: "0.0"
+                emailext(
+                    to: 'puneet.sharma@senao.com',
+                    subject: "CLI Upgrade #${BUILD_NUMBER} → ${rate}% SUCCESS",
+                    body: "<h2>CLI Firmware Upgrade Done!</h2><p>Success Rate: <b style='font-size:50px;color:green;'>${rate}%</b></p><p><a href='${BUILD_URL}CLI_Upgrade_Report/'>View Full Report</a></p>",
+                    mimeType: 'text/html',
+                    attachmentsPattern: 'report.html'
+                )
+            }
         }
     }
 }
