@@ -1,71 +1,75 @@
-import jenkins.model.Jenkins
-import java.util.Calendar
-import java.util.TimeZone
-
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
 
-    environment {
-        SUCCESS_RATE = "0.0"
-        LOCAL_IP     = "${params['Local IP Address']}"
-        REMOTE_IP    = "${params['Remote IP Address'] ?: 'N/A'}"
-        SCRIPT_NAME  = "test_CLI_FW_Upgarde.py"
-    }
-
     stages {
-        stage('Deploy Test Script') {
+        stage('Prepare tests') {
             steps {
                 script {
-                    def scriptFile = findFiles(glob: "**/${env.SCRIPT_NAME}")[0]
-                    if (!scriptFile) { error "FATAL: ${env.SCRIPT_NAME} not found in repo!" }
+                    echo "----------------------------------------"
+                    echo "--- TARGET STAND: ${TARGET_STAND}"
+                    echo "--- Local IP : ${params['Local IP Address']}"
+                    echo "--- Remote IP: ${params['Remote IP Address'] ?: 'N/A'}"
+                    echo "--- Model    : ${params.Model}"
+                    echo "--- Cycles   : ${params.FIRMWARE_UPGRADE_COUNT}"
+                    echo "--- Keep Setting: ${params['Keep Setting'] ? 'YES' : 'NO'}"
+                    echo "----------------------------------------"
 
-                    sh """
-                        cp -f "${scriptFile.path}" "./${env.SCRIPT_NAME}"
-                        chmod +x "./${env.SCRIPT_NAME}"
-                        sed -i '1i#!/usr/bin/env python3' "./${env.SCRIPT_NAME}"
-                    """
-                    echo "Deployed ${env.SCRIPT_NAME}"
+                    if (!params['Local IP Address']) {
+                        error "Missing required parameter: Local IP Address"
+                    }
                 }
             }
         }
 
-        stage('Setup Passwordless SSH') {
+        stage('Deploy Test Script') {
             steps {
-                sh '''
-                    mkdir -p ~/.ssh && chmod 700 ~/.ssh
-                    [ -f ~/.ssh/id_rsa ] || ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -q -N ""
-                    ssh-copy-id -f -o StrictHostKeyChecking=no root@${LOCAL_IP} >/dev/null 2>&1 || true
-                    ssh-keygen -R ${LOCAL_IP} >/dev/null 2>&1 || true
-                '''
-                echo "SSH ready for ${env.LOCAL_IP}"
+                script {
+                    def scriptFile = findFiles(glob: "**/test_CLI_FW_Upgarde.py")[0]
+                    if (!scriptFile) error "FATAL: test_CLI_FW_Upgarde.py not found in repo!"
+
+                    sh """
+                        cp -f "${scriptFile.path}" ./
+                        chmod +x test_CLI_FW_Upgarde.py
+                        sed -i '1i#!/usr/bin/env python3' test_CLI_FW_Upgarde.py
+                    """
+                    echo "Deployed test_CLI_FW_Upgarde.py"
+                }
+            }
+        }
+
+        stage('Clean SSH Known Hosts') {
+            steps {
+                script {
+                    def localIP  = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address'] ?: ''
+
+                    sh "ssh-keygen -R ${localIP} || true"
+                    if (remoteIP) sh "ssh-keygen -R ${remoteIP} || true"
+
+                    echo "Cleaned known_hosts for ${localIP} ${remoteIP ? 'and ' + remoteIP : ''}"
+                }
             }
         }
 
         stage('Firmware Upgrade Cycles') {
             steps {
                 script {
-                    def fwPath   = params.CUSTOM_FIRMWARE ? "/tmp/custom_firmware.bin" : "/var/lib/jenkins/firmware/UBR655-latest.bin"
-                    def count    = params.FIRMWARE_UPGRADE_COUNT.toInteger()
-                    def keepFlag = params['Keep Setting'] ? "" : "-n"
+                    def localIP   = params['Local IP Address']
+                    def fwPath    = params.CUSTOM_FIRMWARE?.trim() ? params.CUSTOM_FIRMWARE : "/var/lib/jenkins/firmware/${params.Model}-latest.bin"
+                    def cycles    = params.FIRMWARE_UPGRADE_COUNT.toInteger()
+                    def keepFlag  = params['Keep Setting'] ? "" : "-n"
 
-                    sh "echo '{\"iterations\": []}' > iteration_results.json"
+                    sh 'echo \'{"iterations": []}\' > iteration_results.json'
 
-                    if (params.CUSTOM_FIRMWARE) {
-                        sh "cp '${params.CUSTOM_FIRMWARE}' /tmp/custom_firmware.bin"
-                    }
-
-                    for (int i = 1; i <= count; i++) {
-                        echo "=== FIRMWARE UPGRADE CYCLE ${i}/${count} ==="
+                    for (int i = 1; i <= cycles; i++) {
+                        echo "=== FIRMWARE UPGRADE CYCLE ${i}/${cycles} ==="
                         try {
                             timeout(time: 20, unit: 'MINUTES') {
-                                sh "python3 ./${env.SCRIPT_NAME} '${env.LOCAL_IP}' '${fwPath}' '${i}' '${keepFlag}'"
+                                sh "python3 test_CLI_FW_Upgarde.py '${localIP}' '${fwPath}' '${i}' '${keepFlag}'"
                             }
                         } catch (err) {
-                            echo "Cycle ${i} FAILED: ${err}"
+                            echo "Cycle ${i} FAILED → ${err}"
                             currentBuild.result = 'UNSTABLE'
-                        }
-                        if (env.REMOTE_IP != 'N/A') {
-                            sh "ping -c 3 ${env.REMOTE_IP} || true"
                         }
                     }
                 }
@@ -75,74 +79,90 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def fw_version = "Not reachable"
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address'] ?: ''
+
+                    // Clean known_hosts again before final FW version fetch
+                    sh "ssh-keygen -R ${localIP} || true"
+                    if (remoteIP) sh "ssh-keygen -R ${remoteIP} || true"
+
+                    def final_fw = "N/A"
                     try {
-                        def out = sh(script: "ssh -o StrictHostKeyChecking=no root@${env.LOCAL_IP} 'cat /etc/version 2>/dev/null || ubus call system board || echo Unknown'", returnStdout: true).trim()
-                        fw_version = out.contains('"description"') ? (out =~ /"description"\\s*:\\s*"([^"]+)"/)[0][1] : out
-                    } catch (e) {}
+                        final_fw = sh(
+                            script: "ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version 2>/dev/null || ubus call system board | grep description || echo Unknown'",
+                            returnStdout: true
+                        ).trim()
+                        if (final_fw.contains("description")) {
+                            final_fw = final_fw =~ /"(.*?)"/ ? (final_fw =~ /"(.*?)"/)[0][1] : final_fw
+                        }
+                    } catch (e) { echo "Could not get final firmware version" }
 
-                    def json = [iterations: []]
-                    try { json = readJSON file: 'iteration_results.json' } catch (e) {}
+                    def jsonReport = readJSON file: 'iteration_results.json'
+                    def totalTests = jsonReport.iterations?.size() ?: 0
+                    def passCount  = jsonReport.iterations?.count { it.status == 'PASS' } ?: 0
+                    def failCount  = totalTests - passCount
+                    def successRate = totalTests > 0 ? String.format("%.1f", (passCount / totalTests) * 100) : "0.0"
 
-                    def total = json.iterations.size()
-                    def pass  = json.iterations.count { it.status == 'PASS' }
-                    env.SUCCESS_RATE = total > 0 ? String.format("%.1f", pass * 100.0 / total) : "0.0"
+                    def buildParams = [
+                        "Target Stand"       : TARGET_STAND,
+                        "Local IP Address"   : localIP,
+                        "Remote IP Address"  : remoteIP ?: "N/A",
+                        "Model"              : params.Model,
+                        "Upgrade Cycles"     : params.FIRMWARE_UPGRADE_COUNT,
+                        "Keep Settings"      : params['Keep Setting'] ? "YES" : "NO",
+                        "Final FW Version"   : final_fw
+                    ]
 
-                    def istDate = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata")).getTime()
-                    def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z")
+                    def currentDateTime = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Kolkata"))
+                                          .format("dd MMM yyyy, HH:mm:ss z")
 
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
+                    // === YOUR EXACT SAME GORGEOUS HTML REPORT FROM REBOOT SCRIPT ===
                     def htmlContent = """
-                    <html>
-                    <head>
-                        <title>CLI Firmware Upgrade Report - ${params.Model}</title>
-                        <style>
-                            body {font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;margin:0;background:#f9fafb;color:#1f2937;}
-                            .container {max-width:1200px;margin:24px auto;padding:24px;}
-                            .header {display:flex;justify-content:space-between;align-items:center;background:linear-gradient(to right,#ffffff 10%,#f9fafb 100%);padding:28px 36px;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.04);}
-                            .header img {height:65px;transition:transform .2s;}.header img:hover{transform:scale(1.03);}
-                            .header-info h1{margin:0;font-size:30px;font-weight:700;color:#0a2540;}
-                            .header-info p{margin:5px 0;font-size:15px;color:#4a5568;}
-                            h2{margin-top:32px;font-size:24px;font-weight:600;color:#111827;border-bottom:2px solid #e5e7eb;padding-bottom:12px;}
-                            .summary-container{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:24px;margin-top:24px;}
-                            .summary-card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 2px 4px rgba(0,0,0,0.04);display:flex;padding:24px;align-items:center;border-top:4px solid;}
-                            .card-icon{font-size:32px;margin-right:20px;padding:12px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
-                            .card-info-title{font-size:16px;color:#6b7280;margin:0 0 4px;}
-                            .card-info-value{font-size:32px;font-weight:700;color:#111827;margin:0;}
-                            .card-total{border-color:#3b82f6;}.card-total .card-icon{background:#dbeafe;color:#3b82f6;}
-                            .card-pass{border-color:#10b981;}.card-pass .card-icon{background:#d1fae5;color:#10b981;}
-                            .card-fail{border-color:#ef4444;}.card-fail .card-icon{background:#fee2e2;color:#ef4444;}
-                            .card-percent{border-color:#6b7280;}.card-percent .card-icon{background:#f3f4f6;color:#6b7280;}
-                            table{width:100%;border-collapse:collapse;margin-top:24px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,0.04);}
-                            th,td{padding:16px 20px;border-bottom:1px solid #e5e7eb;text-align:left;}
-                            th{background:#f9fafb;font-weight:600;color:#6b7280;font-size:13px;text-transform:uppercase;letter-spacing:.5px;}
-                            tr:hover{background:#f9fafb;}
-                            .status-pass{color:#059669;background:#d1fae5;}.status-fail{color:#dc2626;background:#fee2e2;}
-                            .status-pass,.status-fail{font-weight:600;padding:5px 10px;border-radius:99px;display:inline-block;}
-                            .log-button{background:#3b82f6;color:white;padding:8px 16px;border:none;border-radius:8px;font-weight:600;font-size:14px;cursor:pointer;}
-                            .log-button:hover{background:#2563eb;}
-                            .modal{display:none;position:fixed;z-index:100;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.6);}
-                            .modal-content{background:#fff;margin:5% auto;border-radius:12px;width:80%;max-width:900px;box-shadow:0 10px 25px rgba(0,0,0,0.1);overflow:hidden;animation:animatetop .4s;}
-                            .modal-header{padding:20px 32px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;}
-                            .modal-close{font-size:28px;font-weight:bold;color:#9ca3af;cursor:pointer;}
-                            .modal-close:hover{color:#1f2937;}
-                            #log-content-pre{background:#1f2937;color:#e5e7eb;padding:24px 32px;max-height:60vh;overflow:auto;white-space:pre-wrap;font-family:SFMono-Regular,Consolas,monospace;font-size:14px;border-radius:0 0 12px 12px;}
-                            @keyframes animatetop{from{transform:translateY(-50px);opacity:0} to{transform:translateY(0);opacity:1}}
-                        </style>
-                        <script>
-                            function showLog(id){document.getElementById('log-content-pre').innerHTML=document.getElementById(id).innerHTML;document.getElementById('logModal').style.display='block';}
-                            function closeModal(){document.getElementById('logModal').style.display='none';}
-                            window.onclick=e=>{if(e.target==document.getElementById('logModal'))closeModal();}
-                        </script>
+                    <html><head><meta charset="utf-8"><title>CLI Firmware Upgrade - ${params.Model}</title>
+                    <style>
+                        body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;margin:0;background:#f9fafb;color:#1f2937}
+                        .container{max-width:1200px;margin:24px auto;padding:24px}
+                        .header{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(to right,#fff 10%,#f9fafb 100%);padding:28px 36px;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,.04)}
+                        .header img{height:65px;transition:transform .2s}.header img:hover{transform:scale(1.03)}
+                        .header-info h1{margin:0;font-size:30px;font-weight:700;color:#0a2540}
+                        h2{margin-top:32px;font-size:24px;font-weight:600;color:#111827;border-bottom:2px solid #e5e7eb;padding-bottom:12px}
+                        .summary-container{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:24px;margin-top:24px}
+                        .summary-card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 2px 4px rgba(0,0,0,.04);display:flex;padding:24px;align-items:center;border-top:4px solid}
+                        .card-icon{font-size:32px;margin-right:20px;padding:12px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+                        .card-info-title{font-size:16px;color:#6b7280;margin:0 0 4px}
+                        .card-info-value{font-size:32px;font-weight:700;color:#111827;margin:0}
+                        .card-percent{border-color:#6b7280}.card-percent .card-icon{background:#f3f4f6;color:#6b7280}
+                        .card-total{border-color:#3b82f6}.card-total .card-icon{background:#dbeafe;color:#3b82f6}
+                        .card-pass{border-color:#10b981}.card-pass .card-icon{background:#d1fae5;color:#10b981}
+                        .card-fail{border-color:#ef4444}.card-fail .card-icon{background:#fee2e2;color:#ef4444}
+                        table{width:100%;border-collapse:collapse;margin-top:24px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,.04)}
+                        th,td{padding:16px 20px;border-bottom:1px solid #e5e7eb;text-align:left}
+                        th{background:#f9fafb;color:#6b7280;font-weight:600;font-size:13px;text-transform:uppercase}
+                        .status-pass{color:#059669;background:#d1fae5}.status-fail{color:#dc2626;background:#fee2e2}
+                        .status-pass,.status-fail{font-weight:600;padding:5px 10px;border-radius:99px;display:inline-block}
+                        .log-button{background:#3b82f6;color:white;padding:8px 16px;border:none;border-radius:8px;cursor:pointer;font-weight:600}
+                        .log-button:hover{background:#2563eb}
+                        .modal{display:none;position:fixed;z-index:100;inset:0;background:rgba(0,0,0,0.6)}
+                        .modal-content{background:#fff;margin:5% auto;border-radius:12px;width:80%;max-width:900px;box-shadow:0 10px 25px rgba(0,0,0,.1)}
+                        .modal-header{padding:20px 32px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center}
+                        .modal-close{font-size:28px;font-weight:bold;color:#9ca3af;cursor:pointer}
+                        #log-content-pre{background:#1f2937;color:#e5e7eb;padding:24px 32px;max-height:60vh;overflow:auto;white-space:pre-wrap;font-family:SFMono-Regular,Consolas,monospace;font-size:14px}
+                    </style>
+                    <script>
+                        function showLog(id){document.getElementById('log-content-pre').innerHTML=document.getElementById(id).innerHTML;document.getElementById('logModal').style.display='block';}
+                        function closeModal(){document.getElementById('logModal').style.display='none';}
+                        window.onclick=e=>e.target===document.getElementById('logModal')&&closeModal();
+                    </script>
                     </head>
                     <body>
                         <div class="container">
                             <div class="header">
-                                <img src="${companyLogoUrl}" alt="Senao"/>
+                                <img src="${companyLogoUrl}" alt="Senao Networks"/>
                                 <div class="header-info">
                                     <h1>CLI Firmware Upgrade Test</h1>
-                                    <p><strong>Model:</strong> ${params.Model}</p>
+                                    <p><strong>Pipeline:</strong> ${env.JOB_NAME}</p>
                                     <p><strong>Date & Time:</strong> ${currentDateTime}</p>
                                 </div>
                             </div>
@@ -150,20 +170,15 @@ pipeline {
                             <h2>Build Parameters</h2>
                             <table>
                                 <tr><th>Parameter</th><th>Value</th></tr>
-                                <tr><td><b>Target Stand</b></td><td>${TARGET_STAND}</td></tr>
-                                <tr><td><b>Local IP</b></td><td>${env.LOCAL_IP}</td></tr>
-                                <tr><td><b>Remote IP</b></td><td>${env.REMOTE_IP}</td></tr>
-                                <tr><td><b>Upgrade Count</b></td><td>${count}</td></tr>
-                                <tr><td><b>Keep Settings</b></td><td>${params['Keep Setting'] ? 'YES' : 'NO'}</td></tr>
-                                <tr><td><b>Final FW Version</b></td><td>${fw_version}</td></tr>
+                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join()}
                             </table>
 
                             <h2>Test Summary</h2>
                             <div class="summary-container">
-                                <div class="summary-card card-percent"><div class="card-icon">Target</div><div class="card-info"><p class="card-info-title">Success Rate</p><p class="card-info-value">${env.SUCCESS_RATE}<span style="font-size:20px">%</span></p></div></div>
-                                <div class="summary-card card-total"><div class="card-icon">Package</div><div class="card-info"><p class="card-info-title">Total Cycles</p><p class="card-info-value">${total}</p></div></div>
-                                <div class="summary-card card-pass"><div class="card-icon">Check</div><div class="card-info"><p class="card-info-title">Passed</p><p class="card-info-value">${pass}</p></div></div>
-                                <div class="summary-card card-fail"><div class="card-icon">Cross</div><div class="card-info"><p class="card-info-title">Failed</p><p class="card-info-value">${total-pass}</p></div></div>
+                                <div class="summary-card card-percent"><div class="card-icon">Target</div><div class="card-info"><p class="card-info-title">Success Rate</p><p class="card-info-value">${successRate}<span style="font-size:20px">%</span></p></div></div>
+                                <div class="summary-card card-total"><div class="card-icon">Package</div><div class="card-info"><p class="card-info-title">Total Cycles</p><p class="card-info-value">${totalTests}</p></div></div>
+                                <div class="summary-card card-pass"><div class="card-icon">Check</div><div class="card-info"><p class="card-info-title">Passed</p><p class="card-info-value">${passCount}</p></div></div>
+                                <div class="summary-card card-fail"><div class="card-icon">Cross</div><div class="card-info"><p class="card-info-title">Failed</p><p class="card-info-value">${failCount}</p></div></div>
                             </div>
 
                             <h2>Test Results</h2>
@@ -174,23 +189,29 @@ pipeline {
                     def tableRows = ""
                     def logBlocks = ""
 
-                    json.iterations.each { r ->
-                        def logId = "log-${r.iteration}"
-                        def logFile = "test-${r.iteration}.log"
-                        def logContent = "No log captured"
-                        try { logContent = readFile(file: logFile).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;") } catch(e) {}
+                    jsonReport.iterations?.each { r ->
+                        def iter = r.iteration
+                        def status = r.status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
+                        def logId = "log-${iter}"
+                        def logContent = fileExists("test-${iter}.log") ?
+                            readFile("test-${iter}.log").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;") :
+                            "Log file missing"
 
-                        tableRows += "<tr><td>${r.iteration}</td><td style='text-align:center;'><span class='${r.status=="PASS"?"status-pass":"status-fail"}'>${r.status}</span></td><td style='text-align:center;'><button class='log-button' onclick=\"showLog('${logId}')\">See Logs</button></td></tr>"
+                        tableRows += "<tr><td>${iter}</td><td style='text-align:center;'>${status}</td><td style='text-align:center;'><button class='log-button' onclick=\"showLog('${logId}')\">See Logs</button></td></tr>"
                         logBlocks += "<div id='${logId}' style='display:none;'>${logContent}</div>"
                     }
 
                     htmlContent += tableRows + """
                             </table>
-                            <div id="logModal" class="modal"><div class="modal-content"><div class="modal-header"><h2>Iteration Log</h2><span class="modal-close" onclick="closeModal()">×</span></div><div class="modal-body"><pre id="log-content-pre"></pre></div></div></div>
+                            <div id="logModal" class="modal">
+                                <div class="modal-content">
+                                    <div class="modal-header"><h2>Iteration Log</h2><span class="modal-close" onclick="closeModal()">×</span></div>
+                                    <div class="modal-body"><pre id="log-content-pre"></pre></div>
+                                </div>
+                            </div>
                             ${logBlocks}
                         </div>
-                    </body>
-                    </html>
+                    </body></html>
                     """
 
                     writeFile file: 'report.html', text: htmlContent
@@ -201,25 +222,27 @@ pipeline {
 
     post {
         always {
-            publishHTML(
+            publishHTML([
                 allowMissing: false,
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
                 reportDir: '.',
                 reportFiles: 'report.html',
                 reportName: 'CLI Firmware Upgrade Report'
-            )
+            ])
 
-            archiveArtifacts artifacts: 'iteration_results.json,report.html', allowEmptyArchive: true
-            sh 'rm -f test-*.log iteration_results.json || true'
+            sh 'rm -f test-*.log || true'
 
             script {
                 def userId = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')?.userId?.get(0) ?: "unknown"
-                def email = ["puneet":"puneet.sharma@senao.com"].get(userId.toLowerCase(), "puneet.sharma@senao.com")
+                def email = [
+                    "puneet": "puneet.sharma@senao.com",
+                    "harman": "harmanjot.singh@senao.com"
+                ].get(userId.toLowerCase(), "puneet.sharma@senao.com")
 
                 emailext(
-                    subject: "FW Upgrade #${BUILD_NUMBER} - ${currentBuild.currentResult} (${env.SUCCESS_RATE}%)",
-                    body: "<h2>CLI Firmware Upgrade Completed</h2><p>Model: ${params.Model}<br>Success Rate: ${env.SUCCESS_RATE}%</p><p><a href='${env.BUILD_URL}CLI_Firmware_Upgrade_Report/'>View Full Report</a></p>",
+                    subject: "FW Upgrade #${BUILD_NUMBER} - ${currentBuild.currentResult} (${successRate}%)",
+                    body: "<h2>CLI Firmware Upgrade Completed</h2><p>Model: ${params.Model} | Success: ${successRate}%</p><p><a href='${env.BUILD_URL}CLI_Firmware_Upgrade_Report/'>View Full Report</a></p>",
                     to: email,
                     mimeType: 'text/html',
                     attachmentsPattern: 'report.html'
