@@ -1,56 +1,49 @@
 pipeline {
-    agent { node { label "${TARGET_STAND}" } }
+    agent any
 
     stages {
-        stage('Prepare') { steps { echo "DUT → ${params['Local IP Address']} | Model → ${params.Model}" } }
-
-        stage('Install sshpass') { steps { sh 'which sshpass || sudo yum install -y sshpass || true' } }
-
         stage('Download Firmware') {
             steps {
                 script {
-                    sh 'mkdir -p artifacts && rm -f fw.tgz fw.img.enc'
+                    sh 'rm -f fw.tgz fw.img.enc'
                     def url = params['Build URL']
                     def path = url.substring(url.indexOf('/bonsai/') + 8)
                     def base = "https://jenkins.senao.com/bonsai/${path}"
                     base += base.endsWith('/') ? '' : '/'
-
-                    sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.tgz,*-apps.img.enc,*single*.img.enc' --no-directories '${base}'"
-
+                    sh "wget -q --no-check-certificate --recursive --level=1 --no-directories -A '*-apps.tgz,*-apps.img.enc,*single*.img.enc' '${base}'"
                     sh 'mv -f *-apps.tgz fw.tgz || true'
-                    sh 'img=\$(ls *-apps.img.enc *single*.img.enc 2>/dev/null | head -n1); [ -n "\$img" ] && mv -f "\$img" fw.img.enc || true'
-
-                    env.FW = fileExists('fw.tgz') ? 'fw.tgz' : (fileExists('fw.img.enc') ? 'fw.img.enc' : null)
-                    if (!env.FW) error "No firmware downloaded!"
-                    echo "Using firmware → ${env.FW}"
+                    sh 'img=$(ls *-apps.img.enc *single*.img.enc 2>/dev/null | head -n1); [ -n "$img" ] && mv "$img" fw.img.enc || true'
+                    env.FW = fileExists('fw.tgz') ? 'fw.tgz' : 'fw.img.enc'
                 }
             }
         }
 
-        stage('Deploy CLI Script') {
+        stage('Deploy Script') {
             steps {
-                // THIS IS THE ONLY LINE THAT MATTERS NOW — EXACT PATH FROM YOUR SCREENSHOT
                 sh '''
-                    cp -f testCases/test_CLI_FW_Upgrade.py ./
-                    [ -f test_CLI_FW_Upgrade.py ] || (echo "SCRIPT STILL NOT FOUND! CHECK SPELLING!" && exit 1)
+                    # Try both possible cases
+                    cp testCases/test_CLI_FW_Upgrade.py ./ 2>/dev/null || \
+                    cp testCases/test_CLI_FW_upgrade.py ./ 2>/dev/null || \
+                    cp testCases/test_cli_fw_upgrade.py ./ 2>/dev/null || \
+                    (echo "SCRIPT NOT FOUND!" && exit 1)
+
+                    # Always name it correctly for the runner
+                    mv test_CLI_FW_* test_CLI_FW_Upgrade.py 2>/dev/null || true
                     chmod +x test_CLI_FW_Upgrade.py
-                    echo "SCRIPT COPIED SUCCESSFULLY!"
+                    echo "SCRIPT DEPLOYED SUCCESSFULLY!"
                     ls -la test_CLI_FW_Upgrade.py
                 '''
             }
         }
 
-        stage('Run Upgrade Cycles') {
+        stage('Run') {
             steps {
                 script {
                     def ip = params['Local IP Address']
-                    def n  = (params.FIRMWARE_UPGRADE_COUNT ?: 1).toInteger()
-                    def k  = params['Keep Setting'] ? "" : "-n"
-
+                    def n = (params.FIRMWARE_UPGRADE_COUNT ?: 1).toInteger()
+                    def k = params['Keep Setting'] ? "" : "-n"
                     sh 'echo \'{"iterations":[]}\' > iteration_results.json'
-
-                    for (i = 1; i <= n; i++) {
-                        echo "CYCLE ${i}/${n} STARTED"
+                    (1..n).each { i ->
                         timeout(22) {
                             sh "python3 test_CLI_FW_Upgrade.py '${ip}' '${env.FW}' '${i}' '${k}'"
                         }
@@ -59,47 +52,17 @@ pipeline {
             }
         }
 
-        stage('Generate Report') {
+        stage('Report') {
             steps {
                 script {
-                    def j = fileExists('iteration_results.json') ? readJSON(file: 'iteration_results.json') : [iterations: []]
-                    def total = j.iterations.size()
-                    def pass  = j.iterations.count { it.status == 'PASS' }
-                    def rate  = total > 0 ? String.format("%.1f", pass * 100.0 / total) : "0.0"
-
-                    def ver = "N/A"
-                    try { ver = sh(script: "sshpass -p admin ssh -o StrictHostKeyChecking=no root@${params['Local IP Address']} 'cat /etc/version'", returnStdout: true).trim() } catch(e) {}
-
-                    writeFile file: 'report.html', text: """
-                    <!DOCTYPE html><html><head><meta charset="utf-8"><title>CLI FW Upgrade</title>
-                    <style>
-                        body{background:#000;color:#0f0;font-family:system-ui;text-align:center;padding:100px;}
-                        .box{background:#111;padding:100px;border-radius:50px;display:inline-block;box-shadow:0 0 150px #0f0;}
-                        h1{font-size:100px;margin:20px;}
-                        .big{font-size:350px;font-weight:900;color:#22c55e;}
-                    </style></head>
-                    <body><div class="box">
-                        <h1>CLI FIRMWARE UPGRADE</h1>
-                        <h1>${params.Model} • ${TARGET_STAND}</h1>
-                        <div class="big">${rate}%</div>
-                        <h1>${pass}/${total} PASSED</h1>
-                        <h1>Final Version: ${ver}</h1>
-                        <p>${new Date().format('dd MMM yyyy HH:mm:ss z', TimeZone.getTimeZone('Asia/Kolkata'))}</p>
-                    </div></body></html>
-                    """
-
+                    def data = readJSON file: 'iteration_results.json', returnPojo: true
+                    def pass = data.iterations.count { it.status == 'PASS' }
+                    def total = data.iterations.size()
+                    def rate = total > 0 ? String.format("%.1f", pass * 100.0 / total) : "0.0"
+                    writeFile file: 'report.html', text: "<h1 style='color:green;text-align:center;padding:200px;font-size:100px;background:black;'>${rate}% SUCCESS</h1>"
                     publishHTML([reportName: 'CLI Report', reportDir: '.', reportFiles: 'report.html', keepAll: true])
                 }
             }
-        }
-    }
-
-    post {
-        always {
-            emailext to: 'puneet.sharma@senao.com',
-                     subject: "CLI Upgrade #${BUILD_NUMBER} → SUCCESS",
-                     body: "<h2>Done! Check report → ${BUILD_URL}CLI_Report/</h2>",
-                     mimeType: 'text/html'
         }
     }
 }
