@@ -1,24 +1,86 @@
+// Functions
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
 
-    parameters {
-        string(name: 'Local IP Address', defaultValue: '192.168.1.10')
-        string(name: 'Remote IP Address', defaultValue: '192.168.1.11')
-        string(name: 'FIRMWARE_UPGRADE_COUNT', defaultValue: '10')
-        booleanParam(name: 'Keep Setting', defaultValue: true)
-        choice(name: 'Model', choices: ['UBR655', 'EOC655', 'ENH1750', 'Custom'], description: 'Select model')
-        string(name: 'CUSTOM_FIRMWARE', defaultValue: '', description: 'Optional full path to .tgz/.bin')
-    }
-
     stages {
-        stage('Install sshpass') {
+        stage('Prepare') {
             steps {
-                sh 'which sshpass || (sudo yum install -y sshpass || sudo apt install -y sshpass)'
+                script {
+                    echo "----------------------------------------"
+                    echo "--- TARGET STAND: ${TARGET_STAND}"
+                    echo "--- LOCAL IP     : ${params['Local IP Address']}"
+                    echo "--- MODEL        : ${params.Model}"
+                    echo "----------------------------------------"
+                }
             }
         }
 
-        stage('Deploy CLI Script') {
+        stage('Install sshpass') {
             steps {
+                sh 'which sshpass || (sudo yum install -y sshpass || sudo apt install -y sshpass || true)'
+            }
+        }
+
+        stage('Download Firmware from Build URL') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "Downloading Firmware from Build URL"
+                    echo "----------------------------------------"
+
+                    sh 'mkdir -p artifacts'
+                    sh 'rm -f fw.tgz fw.img.enc'
+
+                    def url = params['Build URL']
+                    if (!url || url.trim() == '') {
+                        error "Build URL is empty! Please provide valid bonsai URL."
+                    }
+
+                    def bonsaiIndex = url.indexOf('/bonsai/')
+                    if (bonsaiIndex == -1) {
+                        error "Invalid Build URL. Must contain '/bonsai/'"
+                    }
+
+                    def buildPath = url.substring(bonsaiIndex + 8)
+                    def WGET_URL = "https://jenkins.senao.com/bonsai/${buildPath}"
+                    if (!WGET_URL.endsWith('/')) WGET_URL += '/'
+
+                    echo "Downloading from: ${WGET_URL}"
+
+                    // Download both .tgz and .img.enc
+                    sh """
+                        wget --no-verbose --no-parent --no-check-certificate \
+                             -e robots=off --recursive --level=1 \
+                             -A '*-apps.tgz,*-apps.img.enc' --no-directories \
+                             "${WGET_URL}" 2>&1 | tee artifacts/download.log
+                    """
+
+                    // Rename files
+                    sh '''
+                        mv -f *-apps.tgz fw.tgz || echo "No .tgz found"
+                        imgfile=$(ls -t *-apps.img.enc 2>/dev/null | head -n1)
+                        [ -n "$imgfile" ] && mv -f "$imgfile" fw.img.enc || echo "No .img.enc found"
+                    '''
+
+                    if (!fileExists('fw.tgz')) {
+                        error "Failed to download fw.tgz from Build URL"
+                    }
+
+                    env.FIRMWARE_FILE = "fw.tgz"
+                    echo "Firmware ready: ${env.FIRMWARE_FILE}"
+
+                    archiveArtifacts('fw.tgz')
+                    archiveArtifacts('fw.img.enc')
+                    archiveArtifacts('artifacts/**/*')
+                }
+            }
+        }
+
+        stage('Deploy CLI Upgrade Script') {
             steps {
                 sh '''
                     cp -f testCases/test_CLI_FW_Upgrade.py ./
@@ -27,21 +89,20 @@ pipeline {
             }
         }
 
-        stage('Run Upgrade Cycles') {
+        stage('CLI Firmware Upgrade Cycles') {
             steps {
                 script {
-                    def ip = params['Local IP Address']
-                    def fw = params.CUSTOM_FIRMWARE?.trim() ?: "/var/lib/jenkins/firmware/${params.Model}-latest.tgz"
+                    def ip     = params['Local IP Address']
                     def cycles = params.FIRMWARE_UPGRADE_COUNT.toInteger()
-                    def keep = params['Keep Setting'] ? "" : "-n"
+                    def keep   = params['Keep Setting'] ? "" : "-n"
 
                     sh 'echo \'{"iterations": []}\' > iteration_results.json'
 
                     for (int i = 1; i <= cycles; i++) {
-                        echo "CYCLE ${i}/${cycles} – CLI UPGRADE"
-                        timeout(time: 22, unit: 'MINUTES') {
+                        echo "=== CLI UPGRADE CYCLE ${i}/${cycles} ==="
+                        timeout(time: 20, unit: 'MINUTES') {
                             sh """
-                                python3 test_CLI_FW_Upgrade.py '${ip}' '${fw}' '${i}' '${keep}'
+                                python3 test_CLI_FW_Upgrade.py '${ip}' '${env.FIRMWARE_FILE}' '${i}' '${keep}'
                             """
                         }
                     }
@@ -49,35 +110,83 @@ pipeline {
             }
         }
 
-        stage('Generate Report') {
+        stage('Generate Professional Report') {
             steps {
                 script {
-                    def data = readJSON file: 'iteration_results.json'
-                    def total = data.iterations.size()
-                    def pass  = data.iterations.count { it.status == 'PASS' }
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
+
+                    def localVer = "N/A"
+                    def remoteVer = "N/A"
+                    try {
+                        localVer = sh(script: "sshpass -p admin ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version 2>/dev/null || echo N/A'", returnStdout: true).trim()
+                    } catch (e) {}
+                    try {
+                        remoteVer = sh(script: "sshpass -p admin ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version 2>/dev/null || echo N/A'", returnStdout: true).trim()
+                    } catch (e) {}
+
+                    def json = readJSON file: 'iteration_results.json'
+                    def total = json.iterations?.size() ?: 0
+                    def pass  = json.iterations?.count { it.status == "PASS" } ?: 0
                     def rate  = total > 0 ? String.format("%.1f", pass * 100.0 / total) : "0.0"
 
-                    def finalVer = sh(script: "sshpass -p admin ssh -o StrictHostKeyChecking=no root@${params['Local IP Address']} 'cat /etc/version || echo Unknown'", returnStdout: true).trim()
+                    def istZone = TimeZone.getTimeZone("Asia/Kolkata")
+                    def now = Calendar.getInstance(istZone).getTime().format("dd MMM yyyy, HH:mm:ss z", istZone)
 
-                    writeFile file: 'report.html', text: """
-                    <!DOCTYPE html>
-                    <html>
-                    <head><meta charset="utf-8"><title>CLI FW Upgrade Result</title>
+                    def logo = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+
+                    def buildParams = [
+                        "Local IP Address": localIP,
+                        "Remote IP Address": remoteIP,
+                        "Model": params.Model,
+                        "Keep Setting": params['Keep Setting'] ? "YES" : "NO",
+                        "Cycles": total,
+                        "Build URL": params['Build URL'],
+                        "Final Local FW": localVer,
+                        "Final Remote FW": remoteVer
+                    ]
+
+                    def html = """
+                    <html><head><meta charset="utf-8"><title>CLI FW Upgrade Report</title>
                     <style>
-                        body {font-family: system-ui; background: #000; color: #0f0; text-align: center; padding: 80px;}
-                        h1 {font-size: 90px;} .big {font-size: 180px; font-weight: 900;}
-                    </style>
-                    </head>
-                    <body>
-                        <h1>CLI FIRMWARE UPGRADE</h1>
-                        <h2>${params.Model} • ${TARGET_STAND}</h2>
-                        <div class="big">${rate}%</div>
-                        <h1>${pass} / ${total} PASSED</h1>
-                        <h3>Final Version: ${finalVer}</h3>
-                    </body>
-                    </html>
+                        body{font-family:system-ui;background:#0f172a;color:#e2e8f0;margin:0;padding:20px;}
+                        .header{background:linear-gradient(135deg,#1e40af,#3b82f6);padding:30px;border-radius:16px;text-align:center;color:white;}
+                        .header img{height:70px;}
+                        h1{font-size:48px;margin:10px 0;}
+                        .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;margin:40px 0;}
+                        .stat{background:#1e293b;padding:30px;border-radius:16px;text-align:center;}
+                        .big{font-size:80px;font-weight:900;color:#22c55e;}
+                        table{width:100%;background:white;color:#1e293b;border-radius:12px;overflow:hidden;margin:30px 0;box-shadow:0 10px 30px rgba(0,0,0,0.4);}
+                        th{background:#1e40af;color:white;padding:15px;}
+                        td{padding:15px;text-align:center;}
+                        .pass{color:#22c55e;font-weight:bold;}
+                        .fail{color:#ef4444;font-weight:bold;}
+                    </style></head><body>
+                    <div class="header">
+                        <img src="${logo}" alt="Senao">
+                        <h1>CLI FIRMWARE UPGRADE REPORT</h1>
+                        <p>${params.Model} • ${TARGET_STAND} • ${now}</p>
+                    </div>
+                    <div class="stats">
+                        <div class="stat"><div class="big">${rate}%</div><div>Success Rate</div></div>
+                        <div class="stat"><div class="big">${pass}/${total}</div><div>Passed</div></div>
+                        <div class="stat"><div class="big">${localVer}</div><div>Final Version</div></div>
+                    </div>
+                    <h2 style="color:white;text-align:center;">Upgrade History</h2>
+                    <table><tr><th>Iteration</th><th>Status</th><th>Keep Config</th><th>Log</th></tr>
                     """
-                    publishHTML([reportName: 'CLI Firmware Upgrade Report', reportDir: '.', reportFiles: 'report.html', keepAll: true])
+
+                    json.iterations?.each { r ->
+                        def status = r.status == "PASS" ? "<span class='pass'>PASS</span>" : "<span class='fail'>FAIL</span>"
+                        def keep = r.'Keep Settings' == "YES" ? "YES" : "NO"
+                        html += "<tr><td>${r.iteration}</td><td>${status}</td><td>${keep}</td><td>${r.Log}</td></tr>"
+                    }
+
+                    html += "</table><table><tr><th>Parameter</th><th>Value</th></tr>"
+                    buildParams.each { k, v -> html += "<tr><td><b>${k}</b></td><td>${v}</td></tr>" }
+                    html += "</table></body></html>"
+
+                    writeFile file: 'report.html', text: html
                 }
             }
         }
@@ -85,12 +194,31 @@ pipeline {
 
     post {
         always {
-            emailext(
-                to: 'puneet.sharma@senao.com',
-                subject: "CLI FW Upgrade #${BUILD_NUMBER} → ${env.SUCCESS_RATE ?: rate}%",
-                body: "Success Rate: ${env.SUCCESS_RATE ?: rate}%<br><a href='${BUILD_URL}CLI_Firmware_Upgrade_Report/'>View Report</a>",
-                mimeType: 'text/html'
-            )
+            publishHTML([
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: '.',
+                reportFiles: 'report.html',
+                reportName: 'CLI Firmware Upgrade Report'
+            ])
+
+            script {
+                def userId = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')?.userId ?: "unknown"
+                def emailMap = [
+                    "puneet": "puneet.sharma@senao.com",
+                    "harman": "harmanjot.singh@senao.com"
+                ]
+                def emailTo = emailMap.get(userId, "puneet.sharma@senao.com")
+
+                emailext(
+                    to: emailTo,
+                    subject: "CLI FW Upgrade #${BUILD_NUMBER} → ${currentBuild.currentResult}",
+                    body: "<h2>CLI Firmware Upgrade Completed</h2><p>Success Rate: <b>${rate}%</b></p><p><a href='${BUILD_URL}CLI_Firmware_Upgrade_Report/'>View Full Report</a></p>",
+                    mimeType: 'text/html',
+                    attachmentsPattern: 'report.html'
+                )
+            }
         }
     }
 }
