@@ -9,14 +9,14 @@ pipeline {
         stage('Prepare') {
             steps {
                 echo """
-════════════════════════════════════════
+═══════════════════════════════════════════
   TARGET STAND      : ${TARGET_STAND}
   Local IP          : ${params['Local IP Address']}
   Remote IP         : ${params['Remote IP Address'] ?: 'N/A'}
   Model             : ${params.Model}
   Cycles            : ${params.FIRMWARE_UPGRADE_COUNT}
   Keep Settings     : ${params['Keep Setting'] ? 'YES' : 'NO'}
-════════════════════════════════════════
+═══════════════════════════════════════════
                 """
             }
         }
@@ -24,11 +24,10 @@ pipeline {
         stage('Deploy Test Script') {
             steps {
                 script {
-                    def scriptFile = findFiles(glob: "**/test_CLI_FW_Upgarde.py")[0]
-                    if (!scriptFile) error "test_CLI_FW_Upgarde.py not found in repository!"
-
+                    def py = findFiles(glob: "**/test_CLI_FW_Upgarde.py")[0]
+                    if (!py) error "test_CLI_FW_Upgarde.py not found!"
                     sh """
-                        cp -f "${scriptFile.path}" ./
+                        cp -f "${py.path}" ./
                         chmod +x test_CLI_FW_Upgarde.py
                         sed -i '1i#!/usr/bin/env python3' test_CLI_FW_Upgarde.py
                     """
@@ -39,26 +38,23 @@ pipeline {
 
         stage('Setup Passwordless SSH') {
             steps {
-                sh '''
-                    # Clean known_hosts for both IPs
-                    ssh-keygen -R "${params['Local IP Address']}" || true
-                    if [ -n "${params['Remote IP Address']}" ]; then
-                        ssh-keygen -R "${params['Remote IP Address']}" || true
-                    fi
+                script {
+                    def localIP  = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']?.trim() ?: ""
 
-                    # Use correct user home directory
-                    mkdir -p ~/.ssh && chmod 700 ~/.ssh
+                    // Use double quotes so Groovy variables are expanded
+                    sh """
+                        ssh-keygen -R ${localIP} || true
+                        [ -n "${remoteIP}" ] && ssh-keygen -R ${remoteIP} || true
 
-                    # Generate key if not exists
-                    [ -f ~/.ssh/id_rsa ] || ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -q -N ""
+                        mkdir -p ~/.ssh && chmod 700 ~/.ssh
+                        [ -f ~/.ssh/id_rsa ] || ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -q -N ""
 
-                    # Deploy public key (password asked only once)
-                    ssh-copy-id -f -o StrictHostKeyChecking=no root@${params['Local IP Address']} || true
-                    if [ -n "${params['Remote IP Address']}" ]; then
-                        ssh-copy-id -f -o StrictHostKeyChecking=no root@${params['Remote IP Address']} || true
-                    fi
-                '''
-                echo "SSH keys deployed successfully"
+                        ssh-copy-id -f -o StrictHostKeyChecking=no root@${localIP} || echo "Password may be required once"
+                        [ -n "${remoteIP}" ] && ssh-copy-id -f -o StrictHostKeyChecking=no root@${remoteIP} || true
+                    """
+                    echo "SSH keys deployed (password asked only once)"
+                }
             }
         }
 
@@ -73,13 +69,13 @@ pipeline {
                     sh 'echo \'{"iterations": []}\' > iteration_results.json'
 
                     for (int i = 1; i <= cycles; i++) {
-                        echo "=== STARTING UPGRADE CYCLE ${i}/${cycles} ==="
+                        echo "=== FIRMWARE UPGRADE CYCLE ${i}/${cycles} ==="
                         try {
                             timeout(time: 20, unit: 'MINUTES') {
                                 sh "python3 test_CLI_FW_Upgarde.py '${localIP}' '${fwPath}' '${i}' '${keepFlag}'"
                             }
                         } catch (err) {
-                            echo "Cycle ${i} FAILED → ${err}"
+                            echo "Cycle ${i} FAILED"
                             currentBuild.result = 'UNSTABLE'
                         }
                     }
@@ -90,8 +86,10 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    // Clean known_hosts again
-                    sh "ssh-keygen -R ${params['Local IP Address']} || true"
+                    def localIP = params['Local IP Address']
+
+                    // Final cleanup
+                    sh "ssh-keygen -R ${localIP} || true"
                     if (params['Remote IP Address']?.trim()) {
                         sh "ssh-keygen -R ${params['Remote IP Address']} || true"
                     }
@@ -99,7 +97,7 @@ pipeline {
                     def finalFW = "Unknown"
                     try {
                         finalFW = sh(
-                            script: "ssh -o StrictHostKeyChecking=no root@${params['Local IP Address']} 'cat /etc/version 2>/dev/null || echo Unknown'",
+                            script: "ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version 2>/dev/null || echo Unknown'",
                             returnStdout: true
                         ).trim()
                     } catch (e) {}
@@ -107,96 +105,69 @@ pipeline {
                     def json = readJSON file: 'iteration_results.json'
                     def total = json.iterations?.size() ?: 0
                     def pass  = json.iterations?.count { it.status == 'PASS' } ?: 0
-                    env.SUCCESS_RATE = total > 0 ? String.format("%.1f", (pass * 100.0 / total)) : "0.0"
+                    env.SUCCESS_RATE = total > 0 ? String.format("%.1f", pass * 100.0 / total) : "0.0"
 
                     def date = new Date().format("dd MMM yyyy, HH:mm:ss 'IST'", TimeZone.getTimeZone('Asia/Kolkata'))
 
-                    def htmlReport = """
+                    def html = """
                     <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta charset="utf-8">
-                        <title>CLI Firmware Upgrade - ${params.Model}</title>
-                        <style>
-                            body {font-family: system-ui; background: #0f172a; color: #e2e8f0; margin: 0;}
-                            .container {max-width: 1200px; margin: 40px auto; padding: 30px; background: #1e293b; border-radius: 16px; box-shadow: 0 20px 50px rgba(0,0,0,.5);}
-                            .header {background: linear-gradient(135deg,#7c3aed,#ec4899); padding: 50px; border-radius: 16px; text-align: center; color: white;}
-                            .header img {height: 80px; margin-bottom: 20px;}
-                            h1 {font-size: 38px; margin: 15px 0;}
-                            table {width: 100%; border-collapse: collapse; margin: 30px 0; background: #334155; border-radius: 12px; overflow: hidden;}
-                            th {background: #475569; color: white; padding: 16px;}
-                            td {padding: 14px; background: #1e293b; border-bottom: 1px solid #475569;}
-                            .pass {background: #22c55e; color: white;}
-                            .fail {background: #ef4444; color: white;}
-                            .pass, .fail {padding: 8px 16px; border-radius: 50px; font-weight: bold; display: inline-block;}
-                            .summary {display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 25px; margin: 40px 0;}
-                            .card {background: #334155; padding: 30px; border-radius: 16px; text-align: center;}
-                            .big {font-size: 52px; font-weight: 900;}
-                            .log-btn {background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer;}
-                            .modal {display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); justify-content: center; align-items: center;}
-                            .modal-content {background: #1e293b; padding: 30px; border-radius: 16px; max-width: 90%; max-height: 90%; overflow: auto;}
-                            pre {background: #0f172a; padding: 20px; border-radius: 8px; color: #a78bfa; white-space: pre-wrap;}
-                        </style>
-                    </head>
-                    <body>
-                    <div class="container">
-                        <div class="header">
-                            <img src="https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png" alt="Senao">
+                    <html><head><meta charset="utf-8"><title>CLI FW Upgrade - ${params.Model}</title>
+                    <style>
+                        body{font-family:system-ui;background:#0f172a;color:#e2e8f0;margin:0}
+                        .c{max-width:1200px;margin:40px auto;padding:30px;background:#1e293b;border-radius:16px;box-shadow:0 20px 50px rgba(0,0,0,.5)}
+                        .h{background:linear-gradient(135deg,#7c3aed,#ec4899);padding:50px;border-radius:16px;text-align:center;color:white}
+                        .h img{height:80px;margin-bottom:20px}
+                        h1{font-size:38px;margin:15px 0}
+                        table{width:100%;border-collapse:collapse;margin:30px 0;background:#334155;border-radius:12px;overflow:hidden}
+                        th{background:#475569;color:white;padding:16px}
+                        td{padding:14px;background:#1e293b;border-bottom:1px solid #475569}
+                        .p{background:#22c55e;color:white}.f{background:#ef4444;color:white}
+                        .p,.f{padding:8px 16px;border-radius:50px;font-weight:bold;display:inline-block}
+                        .s{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:25px;margin:40px 0}
+                        .card{background:#334155;padding:30px;border-radius:16px;text-align:center}
+                        .big{font-size:52px;font-weight:900}
+                        .log-btn{background:#3b82f6;color:white;padding:10px 20px;border:none;border-radius:8px;cursor:pointer}
+                        .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);justify-content:center;align-items:center}
+                        .modal-content{background:#1e293b;padding:30px;border-radius:16px;max-width:90%;max-height:90%;overflow:auto}
+                        pre{background:#0f172a;padding:20px;border-radius:8px;color:#a78bfa;white-space:pre-wrap}
+                    </style>
+                    </head><body><div class="c">
+                        <div class="h">
+                            <img src="https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png">
                             <h1>CLI Firmware Upgrade<br><small>${params.Model}</small></h1>
                             <p>${date}</p>
                         </div>
-
                         <table>
                             <tr><th>Parameter</th><th>Value</th></tr>
-                            <tr><td>Stand</td><td>${TARGET_STAND}</td></tr>
-                            <tr><td>Local IP</td><td>${params['Local IP Address']}</td></tr>
+                            <tr><td>Node</td><td>${TARGET_STAND}</td></tr>
+                            <tr><td>Local IP</td><td>${localIP}</td></tr>
                             <tr><td>Remote IP</td><td>${params['Remote IP Address'] ?: 'N/A'}</td></tr>
                             <tr><td>Cycles</td><td>${total}</td></tr>
                             <tr><td>Keep Settings</td><td>${params['Keep Setting'] ? 'YES' : 'NO'}</td></tr>
-                            <tr><td>Final FW Version</td><td>${finalFW}</td></tr>
+                            <tr><td>Final FW</td><td>${finalFW}</td></tr>
                         </table>
-
-                        <div class="summary">
+                        <div class="s">
                             <div class="card"><h3>Total</h3><div class="big">${total}</div></div>
                             <div class="card"><h3>Pass</h3><div class="big" style="color:#22c55e">${pass}</div></div>
-                            <div class="card"><h3>Fail</h3><div class="big" style="color:#ef4444">${total - pass}</div></div>
-                            <div class="card"><h3>Success Rate</h3><div class="big" style="color:#22c55e">${env.SUCCESS_RATE}%</div></div>
+                            <div class="card"><h3>Fail</h3><div class="big" style="color:#ef4444">${total-pass}</div></div>
+                            <div class="card"><h3>Rate</h3><div class="big" style="color:#22c55e">${env.SUCCESS_RATE}%</div></div>
                         </div>
-
                         <table>
-                            <tr><th>Iteration</th><th>Status</th><th>Log</th></tr>
+                            <tr><th>#</th><th>Status</th><th>Log</th></tr>
                     """
 
                     json.iterations?.each { r ->
-                        def statusClass = r.status == "PASS" ? "pass" : "fail"
+                        def status = r.status == "PASS" ? "<span class=p>PASS</span>" : "<span class=f>FAIL</span>"
                         def logId = "log${r.iteration}"
-                        def logContent = fileExists("test-${r.iteration}.log") ?
-                            readFile("test-${r.iteration}.log").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") :
-                            "No log file generated"
-
-                        htmlReport += """
-                            <tr>
-                                <td>${r.iteration}</td>
-                                <td><span class="${statusClass}">${r.status}</span></td>
-                                <td><button class="log-btn" onclick="document.getElementById('${logId}').style.display='flex'">View Log</button></td>
-                            </tr>
-                            <div id="${logId}" class="modal" onclick="this.style.display='none'">
-                                <div class="modal-content" onclick="event.stopPropagation()">
-                                    <pre>${logContent}</pre>
-                                    <button onclick="document.getElementById('${logId}').style.display='none'" style="background:#ef4444;padding:10px 20px;border:none;color:white;border-radius:8px;cursor:pointer">Close</button>
-                                </div>
-                            </div>
-                        """
+                        def log = fileExists("test-${r.iteration}.log") ?
+                            readFile("test-${r.iteration}.log").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;") :
+                            "No log"
+                        html += "<tr><td>${r.iteration}</td><td>${status}</td><td><button class=log-btn onclick=\"document.getElementById('${logId}').style.display='flex'\">View</button></td></tr>"
+                        html += "<div id='${logId}' class=modal onclick=\"this.style.display='none'\"><div class=modal-content onclick=\"event.stopPropagation()\"><pre>${log}</pre><br><button onclick=\"this.parentNode.parentNode.style.display='none'\" style=\"background:#ef4444;padding:10px 20px;border:none;color:white;border-radius:8px\">Close</button></div></div>"
                     }
 
-                    htmlReport += """
-                        </table>
-                    </div>
-                    </body>
-                    </html>
-                    """
-
-                    writeFile file: 'report.html', text: htmlReport
+                    html += "</table></div></body></html>"
+                    writeFile file: 'report.html', text: html
                 }
             }
         }
@@ -212,18 +183,12 @@ pipeline {
                 reportFiles: 'report.html',
                 reportName: 'CLI Firmware Upgrade Report'
             ])
-
             sh 'rm -f test-*.log || true'
 
             emailext(
                 to: 'puneet.sharma@senao.com',
                 subject: "FW Upgrade #${BUILD_NUMBER} - ${currentBuild.currentResult} (${env.SUCCESS_RATE}%)",
-                body: """
-                    <h2>CLI Firmware Upgrade Completed</h2>
-                    <p>Model: ${params.Model}</p>
-                    <p>Success Rate: <strong>${env.SUCCESS_RATE}%</strong></p>
-                    <p><a href="${env.BUILD_URL}CLI_Firmware_Upgrade_Report/">Click here to view full report</a></p>
-                """,
+                body: "<h2>CLI Firmware Upgrade Finished</h2><p>Model: ${params.Model} | Rate: ${env.SUCCESS_RATE}%</p><p><a href='${env.BUILD_URL}CLI_Firmware_Upgrade_Report/'>View Report</a></p>",
                 mimeType: 'text/html'
             )
         }
