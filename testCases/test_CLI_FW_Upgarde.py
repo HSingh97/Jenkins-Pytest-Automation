@@ -1,82 +1,101 @@
+#!/usr/bin/env python3
 import os
 import sys
 import time
 import json
-import subprocess
 from datetime import datetime
 
-def run(cmd, timeout=30):
-    try:
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
-        return result.returncode, result.stdout.strip(), result.stderr.strip()
-    except subprocess.TimeoutExpired:
-        return 1, "", "TIMEOUT"
+# ========= CONFIGURATION =========
+USERNAME = "root"
+PASSWORD = "admin"                  # ← Confirmed working by you
+TIMEOUT = 600                       # Max wait after upgrade (seconds)
+# =================================
 
+def run_ssh(cmd, ip):
+    full_cmd = f"sshpass -p '{PASSWORD}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 {USERNAME}@{ip} \"{cmd}\""
+    return os.system(full_cmd)
+
+def run_scp(local_path, remote_path, ip):
+    full_cmd = f"sshpass -p '{PASSWORD}' scp -o StrictHostKeyChecking=no '{local_path}' {USERNAME}@{ip}:{remote_path}"
+    return os.system(full_cmd)
+
+def wait_for_device(ip, timeout=TIMEOUT):
+    print(f"\nWaiting for device {ip} to come back online (max {timeout}s)...", end="", flush=True)
+    for _ in range(timeout // 8):
+        if os.system(f"ping -c 1 -W 2 {ip} > /dev/null 2>&1") == 0:
+            time.sleep(20)  # Extra wait for full boot
+            print(f"\nDEVICE {ip} IS BACK ONLINE!")
+            return True
+        time.sleep(8)
+        print(".", end="", flush=True)
+    print(f"\nTIMEOUT: {ip} did not respond after {timeout}s")
+    return False
+
+def get_version(ip):
+    cmd = "cat /etc/version 2>/dev/null || ubus call system board | grep description | cut -d\\\" -f2 || echo Unknown"
+    result = os.popen(f"sshpass -p '{PASSWORD}' ssh -o StrictHostKeyChecking=no {USERNAME}@{ip} \"{cmd}\"").read().strip()
+    return result if result else "Unknown"
+
+# =============== MAIN ===============
 if len(sys.argv) != 5:
-    print("Usage: test_CLI_FW_Upgarde.py <local_ip> <firmware_path> <iteration> <keep_flag>")
+    print("Usage: test_CLI_FW_Upgrade.py <local_ip> <firmware_path> <iteration> <keep_flag>")
     sys.exit(1)
 
-local_ip   = sys.argv[1]
-fw_path    = sys.argv[2]
-iteration  = sys.argv[3]
-keep_flag  = sys.argv[4]  # "" = keep settings, "-n" = factory reset
+local_ip     = sys.argv[1]
+fw_path      = sys.argv[2]   # Full path to .tgz or .bin on Jenkins
+iteration    = sys.argv[3]
+keep_flag    = sys.argv[4]   # "" = keep settings, "-n" = factory reset
 
 keep_text = "YES" if keep_flag == "" else "NO"
 
 result = {
     "iteration": iteration,
-    "test": "Test_FW_Upgrade",
+    "test": "CLI_FW_Upgrade",
     "status": "FAIL",
     "Local IP": local_ip,
     "Keep Settings": keep_text,
-    "Device Logs": ""
+    "Firmware File": os.path.basename(fw_path),
+    "Final Version": "",
+    "Log": ""
 }
 
-print(f"\n{'='*80}")
-print(f" FIRMWARE UPGRADE ITERATION {iteration} | Keep Settings = {keep_text} ")
-print(f"{'='*80}")
+print(f"\n{'='*90}")
+print(f" CLI FIRMWARE UPGRADE – ITERATION {iteration}")
+print(f" DUT IP      : {local_ip}")
+print(f" Keep Config : {keep_text}")
+print(f" File        : {os.path.basename(fw_path)}")
+print(f"{'='*90}")
 
 try:
-    # Upload firmware
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Uploading firmware...")
-    rc, _, err = run(f"scp -o StrictHostKeyChecking=no '{fw_path}' root@{local_ip}:/tmp/firmware.bin", timeout=180)
-    if rc != 0:
-        raise Exception(f"Upload failed: {err}")
+    # Step 1: Upload firmware
+    print(f"[{datetime.now():%H:%M:%S}] Uploading firmware...")
+    if run_scp(fw_path, "/tmp/firmware.tgz", local_ip) != 0:
+        raise Exception("Failed to upload firmware via SCP")
 
-    rc, out, _ = run(f"ssh -o StrictHostKeyChecking=no root@{local_ip} 'ls -lh /tmp/firmware.bin'")
-    print(out)
+    # Step 2: Trigger sysupgrade (supports .tgz directly!)
+    upgrade_cmd = f"sysupgrade {keep_flag} -v /tmp/firmware.tgz"
+    print(f"[{datetime.now():%H:%M:%S}] Starting upgrade: {upgrade_cmd}")
+    if run_ssh(upgrade_cmd, local_ip) != 0:
+        raise Exception("Failed to trigger sysupgrade")
 
-    # Trigger sysupgrade
-    cmd = f"sysupgrade {keep_flag} -v /tmp/firmware.bin"
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Executing: {cmd}")
-    run(f"ssh -o StrictHostKeyChecking=no root@{local_ip} '{cmd} > /tmp/upgrade.log 2>&1 &'")
+    # Step 3: Wait for reboot
+    if not wait_for_device(local_ip):
+        raise Exception("Device did not come back after upgrade")
 
-    # Wait for reboot
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Waiting for device to come online...", end="")
-    for _ in range(100):
-        time.sleep(5)
-        if run(f"ping -c 1 -W 3 {local_ip}")[0] == 0:
-            time.sleep(15)
-            if run(f"ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no root@{local_ip} 'echo OK'")[1] == "OK":
-                print(" ONLINE!")
-                break
-        print(".", end="", flush=True)
-    else:
-        raise Exception("Device did not recover after upgrade")
-
-    # Get version
-    _, version, _ = run(f"ssh -o StrictHostKeyChecking=no root@{local_ip} 'cat /etc/version 2>/dev/null || ubus call system board | grep description'", 20)
-    version = version.split('"')[1] if '"' in version else version[:80]
+    # Step 4: Get final version
+    final_ver = get_version(local_ip)
+    print(f"[{datetime.now():%H:%M:%S}] UPGRADE SUCCESSFUL! New version: {final_ver}")
 
     result["status"] = "PASS"
-    result["Device Logs"] = f"Upgrade successful | Version: {version}"
+    result["Final Version"] = final_ver
+    result["Log"] = f"Success → {final_ver}"
 
 except Exception as e:
-    result["Device Logs"] = f"ERROR: {str(e)}"
-    print(f"\nFAILED: {e}")
+    result["Log"] = f"FAILED → {str(e)}"
+    print(f"\nUPGRADE FAILED: {e}")
 
 finally:
-    # Append result
+    # Save result
     try:
         with open("iteration_results.json", "r") as f:
             data = json.load(f)
@@ -86,4 +105,5 @@ finally:
     with open("iteration_results.json", "w") as f:
         json.dump(data, f, indent=4)
 
-    print(f"\nRESULT → {result['status']}\n")
+    print(f"\nFINAL RESULT → {result['status']}")
+    print(f"{'='*90}\n")
