@@ -1,85 +1,48 @@
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
 
-    environment {
-        SUCCESS_RATE = "0.0"
-        SSH_DIR      = "/home/senao/.ssh"
+    parameters {
+        string(name: 'Local IP Address', defaultValue: '192.168.1.10')
+        string(name: 'Remote IP Address', defaultValue: '192.168.1.11')
+        string(name: 'FIRMWARE_UPGRADE_COUNT', defaultValue: '10')
+        booleanParam(name: 'Keep Setting', defaultValue: true)
+        choice(name: 'Model', choices: ['UBR655', 'EOC655', 'ENH1750', 'Custom'], description: 'Select model')
+        string(name: 'CUSTOM_FIRMWARE', defaultValue: '', description: 'Optional full path to .tgz/.bin')
     }
 
     stages {
-        stage('Prepare') {
+        stage('Install sshpass') {
             steps {
-                echo """
-═══════════════════════════════════════════════
-  CLI FIRMWARE UPGRADE — FINAL VERSION
-  Stand    : ${TARGET_STAND}
-  Local IP : ${params['Local IP Address']}
-  Model    : ${params.Model}
-  Cycles   : ${params.FIRMWARE_UPGRADE_COUNT}
-  Keep     : ${params['Keep Setting'] ? 'YES' : 'NO'}
-═══════════════════════════════════════════════
-                """
+                sh 'which sshpass || (sudo yum install -y sshpass || sudo apt install -y sshpass)'
             }
         }
 
-        stage('Deploy Test Script') {
+        stage('Deploy CLI Script') {
             steps {
-                script {
-                    def py = findFiles(glob: "**/test_CLI_FW_Upgarde.py")[0]
-                    sh "cp -f '${py.path}' ./ && chmod +x test_CLI_FW_Upgarde.py"
-                }
+            steps {
+                sh '''
+                    cp -f testCases/test_CLI_FW_Upgrade.py ./
+                    chmod +x test_CLI_FW_Upgrade.py
+                '''
             }
         }
 
-        stage('Setup Passwordless SSH — 100% WORKING') {
+        stage('Run Upgrade Cycles') {
             steps {
                 script {
-                    def localIP = params['Local IP Address']
-
-                    sh """
-                        mkdir -p ${env.SSH_DIR} && chmod 700 ${env.SSH_DIR}
-                        [ -f ${env.SSH_DIR}/id_rsa ] || ssh-keygen -t rsa -b 4096 -f ${env.SSH_DIR}/id_rsa -q -N ""
-                    """
-
-                    def pubkey = sh(script: "cat ${env.SSH_DIR}/id_rsa.pub", returnStdout: true).trim()
-
-                    // Properly escaped multi-line shell with Groovy variable
-                    sh """
-                        echo "Injecting our permanent SSH key into DUT..."
-                        ssh -o StrictHostKeyChecking=no root@${localIP} \
-                            "mkdir -p /etc/dropbear && \
-                             echo '${pubkey}' >> /etc/dropbear/authorized_keys && \
-                             chmod 600 /etc/dropbear/authorized_keys && \
-                             echo 'KEY INJECTED SUCCESSFULLY'"
-
-                        echo "Testing passwordless access..."
-                        ssh -o BatchMode=yes -o ConnectTimeout=10 root@${localIP} "cat /etc/version | head -1" && \
-                            echo "PASSWORDLESS SSH 100% WORKING!" || \
-                            echo "Still not working — but it WILL work next run"
-                    """
-                }
-            }
-        }
-
-        stage('Firmware Upgrade Cycles') {
-            steps {
-                script {
-                    def ip     = params['Local IP Address']
-                    def fwPath = params.CUSTOM_FIRMWARE?.trim() ?: "/var/lib/jenkins/firmware/${params.Model}-latest.bin"
+                    def ip = params['Local IP Address']
+                    def fw = params.CUSTOM_FIRMWARE?.trim() ?: "/var/lib/jenkins/firmware/${params.Model}-latest.tgz"
                     def cycles = params.FIRMWARE_UPGRADE_COUNT.toInteger()
-                    def keep   = params['Keep Setting'] ? "" : "-n"
+                    def keep = params['Keep Setting'] ? "" : "-n"
 
                     sh 'echo \'{"iterations": []}\' > iteration_results.json'
 
                     for (int i = 1; i <= cycles; i++) {
-                        echo "CYCLE ${i}/${cycles} — STARTING"
-                        try {
-                            timeout(time: 20, unit: 'MINUTES') {
-                                sh "python3 test_CLI_FW_Upgarde.py '${ip}' '${fwPath}' '${i}' '${keep}'"
-                            }
-                        } catch (err) {
-                            echo "Cycle ${i} FAILED"
-                            currentBuild.result = 'UNSTABLE'
+                        echo "CYCLE ${i}/${cycles} – CLI UPGRADE"
+                        timeout(time: 22, unit: 'MINUTES') {
+                            sh """
+                                python3 test_CLI_FW_Upgrade.py '${ip}' '${fw}' '${i}' '${keep}'
+                            """
                         }
                     }
                 }
@@ -89,35 +52,32 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def json = readJSON file: 'iteration_results.json'
-                    def total = json.iterations?.size() ?: 0
-                    def pass  = json.iterations?.count { it.status == 'PASS' } ?: 0
-                    env.SUCCESS_RATE = total > 0 ? String.format("%.1f", pass * 100.0 / total) : "0.0"
+                    def data = readJSON file: 'iteration_results.json'
+                    def total = data.iterations.size()
+                    def pass  = data.iterations.count { it.status == 'PASS' }
+                    def rate  = total > 0 ? String.format("%.1f", pass * 100.0 / total) : "0.0"
 
-                    def finalFW = "Unknown"
-                    try {
-                        finalFW = sh(script: "ssh root@${params['Local IP Address']} 'cat /etc/version 2>/dev/null || ubus call system board | grep release.description || echo Unknown'", returnStdout: true).trim()
-                    } catch (e) {}
+                    def finalVer = sh(script: "sshpass -p admin ssh -o StrictHostKeyChecking=no root@${params['Local IP Address']} 'cat /etc/version || echo Unknown'", returnStdout: true).trim()
 
                     writeFile file: 'report.html', text: """
                     <!DOCTYPE html>
-                    <html><head><meta charset="utf-8"><title>CLI FW Upgrade - ${params.Model}</title>
+                    <html>
+                    <head><meta charset="utf-8"><title>CLI FW Upgrade Result</title>
                     <style>
-                        body {font-family: system-ui; background: #0f172a; color: #e2e8f0; text-align: center; padding: 50px;}
-                        h1 {font-size: 60px; color: #22c55e;}
-                        .big {font-size: 120px; font-weight: 900;}
-                        .box {background: #1e293b; padding: 40px; border-radius: 20px; margin: 20px auto; max-width: 800px;}
-                    </style></head>
+                        body {font-family: system-ui; background: #000; color: #0f0; text-align: center; padding: 80px;}
+                        h1 {font-size: 90px;} .big {font-size: 180px; font-weight: 900;}
+                    </style>
+                    </head>
                     <body>
-                        <div class="box">
-                            <h1>CLI FIRMWARE UPGRADE</h1>
-                            <h2>${params.Model} • ${TARGET_STAND}</h2>
-                            <div class="big">${env.SUCCESS_RATE}%</div>
-                            <h3>${pass} / ${total} PASSED</h3>
-                            <p>Final Version: <strong>${finalFW}</strong></p>
-                        </div>
-                    </body></html>
+                        <h1>CLI FIRMWARE UPGRADE</h1>
+                        <h2>${params.Model} • ${TARGET_STAND}</h2>
+                        <div class="big">${rate}%</div>
+                        <h1>${pass} / ${total} PASSED</h1>
+                        <h3>Final Version: ${finalVer}</h3>
+                    </body>
+                    </html>
                     """
+                    publishHTML([reportName: 'CLI Firmware Upgrade Report', reportDir: '.', reportFiles: 'report.html', keepAll: true])
                 }
             }
         }
@@ -125,19 +85,10 @@ pipeline {
 
     post {
         always {
-            publishHTML([
-                allowMissing: false,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: '.',
-                reportFiles: 'report.html',
-                reportName: 'CLI Firmware Upgrade Report'
-            ])
-            sh 'rm -f test-*.log || true'
             emailext(
                 to: 'puneet.sharma@senao.com',
-                subject: "FW Upgrade #${BUILD_NUMBER} — ${env.SUCCESS_RATE}% SUCCESS",
-                body: "<h1>IT WORKED</h1><p>Success Rate: <b>${env.SUCCESS_RATE}%</b></p><p><a href='${env.BUILD_URL}CLI_Firmware_Upgrade_Report/'>View Report</a></p>",
+                subject: "CLI FW Upgrade #${BUILD_NUMBER} → ${env.SUCCESS_RATE ?: rate}%",
+                body: "Success Rate: ${env.SUCCESS_RATE ?: rate}%<br><a href='${BUILD_URL}CLI_Firmware_Upgrade_Report/'>View Report</a>",
                 mimeType: 'text/html'
             )
         }
