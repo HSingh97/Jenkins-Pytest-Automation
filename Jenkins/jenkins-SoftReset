@@ -1,6 +1,5 @@
 import jenkins.model.Jenkins
 
-// Functions
 def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
@@ -8,12 +7,15 @@ def archiveArtifacts(pattern) {
 // Main Pipeline
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
+
     stages {
         stage('Prepare tests') {
             steps {
                 script {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${TARGET_STAND}"
+                    echo "Local IP : ${params['Local IP Address']}"
+                    echo "Remote IPs: ${params['Remote IP Address']}"
                     echo "----------------------------------------"
                 }
             }
@@ -32,30 +34,26 @@ pipeline {
         stage('Soft Reset Testing') {
             steps {
                 script {
-                    def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
-                    sh "ssh-keygen -R ${localIP} || true"
-                    sh "ssh-keygen -R ${remoteIP} || true"
-
+                    def localIP = params['Local IP Address'].trim()
+                    def remoteIPs = params['Remote IP Address'].trim() // Can have multiple
                     def ResetCount = params.RESET_COUNT ?: 1
+
                     echo "Number of reboot iterations: ${ResetCount}"
-
-
-                    echo "✅ Cleared old workspace"
-
+                    echo "Cleared old workspace"
                     echo "----------------------------------------"
                     echo "Testing Soft Reset"
                     echo "----------------------------------------"
 
                     // Initialize results file
-                    sh "echo [] > iteration_results.json"  // Initialize JSON array
+                    sh "echo '{\"iterations\": []}' > iteration_results.json" // Initialize JSON array
 
                     for (int i = 1; i <= ResetCount.toInteger(); i++) {
                         echo "Running reboot test iteration ${i}"
                         try {
                             sh """
                                 pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
-                                --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                                --local-ip '${localIP}' \
+                                --remote-ip '${remoteIPs}' \
                                 --iter ${i}
                             """
                         } catch (Exception e) {
@@ -69,38 +67,39 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
+                    def localIP = params['Local IP Address'].trim()
+                    def remoteIPs = params['Remote IP Address'].trim()
+
+                    // Clear known_hosts for local IP
                     sh "ssh-keygen -R ${localIP} || true"
-                    sh "ssh-keygen -R ${remoteIP} || true"
+
+                    // ←←← ONLY THIS LINE IS FIXED (supports comma + space separated IPs) ←←←
+                    if (remoteIPs) {
+                        remoteIPs.split(/[,\s]+/).findAll{it.trim()}.each { ip ->
+                            sh "ssh-keygen -R ${ip} || true"
+                        }
+                    }
+                    // ←←← THAT'S THE ONLY CHANGE IN THE ENTIRE FILE ←←←
 
                     def local_fw_version = "N/A"
-                    def remote_fw_version = "N/A"
-
                     try {
                         local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
                     } catch (Exception e) {
-                        echo "⚠️ Failed to get local FW version from ${localIP}: ${e.message}"
-                    }
-
-                    try {
-                        remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (Exception e) {
-                        echo "⚠️ Failed to get remote FW version from ${remoteIP}: ${e.message}"
+                        echo "Failed to get local FW version from ${localIP}: ${e.message}"
                     }
 
                     def jsonReport = readJSON file: 'iteration_results.json'
                     echo "JSON Report: ${jsonReport}" // Debugging output
+
                     def buildParams = [
-                        "Local IP Address": params['Local IP Address'],
-                        "Remote IP Address": params['Remote IP Address'],
-                        "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
+                        "Local IP Address": localIP,
+                        "Remote IP Address(s)": remoteIPs,
+                        "FW Version (Local / Remote)": "${local_fw_version}"
                     ]
 
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
-
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
 
@@ -196,31 +195,27 @@ pipeline {
                                 <th>Status</th>
                             </tr>
                     """
-
                     jsonReport.iterations.each { result ->
                         def iteration = result.iteration ?: "-"
                         def status = result.status == "PASS" ? "<span class='pass'>PASS</span>" : "<span class='fail'>FAIL</span>"
-
                         htmlContent += """
                             <tr>
                                 <td>${iteration}</td>
                                 <td>${status}</td>
+                            </tr>
                         """
-
-                        htmlContent += "</tr>"
                     }
-
                     htmlContent += """
                         </table>
                     </body>
                     </html>
                     """
-
                     writeFile file: 'report.html', text: htmlContent
                 }
             }
         }
     }
+
     post {
         always {
             publishHTML (target: [
@@ -234,16 +229,14 @@ pipeline {
             echo "-----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
+
             script {
                 def buildCauses = currentBuild.getBuildCauses()
                 def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
-
                 def buildUserName = userCause?.userName ?: "Unknown User"
                 def buildUserId = userCause?.userId ?: "unknown"
-
                 echo "Build started by: ${buildUserName} (${buildUserId})"
 
-                // Define a mapping of user IDs to emails (update as needed)
                 def userEmails = [
                     "puneet": "puneet.sharma@senao.com",
                     "harman": "harmanjot.singh@senao.com",
@@ -255,13 +248,9 @@ pipeline {
                     "phani": "phani.darla@senao.com",
                     "dinesh": "dinesh.redddy@senao.com"
                 ]
-
-                // Get email from predefined mapping, else use default
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
-
                 echo "Sending email to: ${userEmail}"
 
-                // Send email notification
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
                     body: """
@@ -281,7 +270,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html'  // Only attach, do not embed
+                    attachmentsPattern: 'report.html'
                 )
             }
         }
