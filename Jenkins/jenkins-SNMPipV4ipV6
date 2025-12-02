@@ -1,9 +1,5 @@
 import jenkins.model.Jenkins
 
-def archiveArtifacts(pattern) {
-    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
-}
-
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
 
@@ -24,12 +20,10 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                script {
-                    echo "----------------------------------------"
-                    echo "Installing SNMP + Ping Tools"
-                    echo "----------------------------------------"
-                    sh 'apt-get update && apt-get install -y snmp iputils-ping || true'
-                }
+                sh '''
+                    apt-get update
+                    apt-get install -y snmp iputils-ping sshpass
+                '''
             }
         }
 
@@ -40,17 +34,15 @@ pipeline {
                     def ipv6    = params.IPV6_ADDR.trim()
                     def prefix  = params.PREFIX.trim()
                     def gateway = params.GATEWAY.trim()
-                    def count   = params.ITERATIONS.trim().toInteger()
+                    def count   = params.ITERATIONS.toInteger()
 
+                    // Clean workspace
                     sh 'rm -f ipv6_results.json test-*.log || true'
-                    sh 'echo {"iterations": []} > ipv6_results.json'
-                    echo "Cleared old workspace"
-                    echo "----------------------------------------"
-                    echo "Starting IPv4 + Static IPv6 Configuration Test"
-                    echo "----------------------------------------"
+                    sh 'echo \'{"iterations": []}\' > ipv6_results.json'
 
                     for (int i = 1; i <= count; i++) {
                         echo "=== ITERATION ${i} of ${count} ==="
+                        def logFile = "test-${i}.log"
                         try {
                             sh """
                                 set -x
@@ -59,10 +51,11 @@ pipeline {
                                     --ipv6 '${ipv6}' \
                                     --prefix '${prefix}' \
                                     --gateway '${gateway}' \
-                                    --iter ${i}
+                                    --iter ${i} | tee ${logFile}
                             """
                         } catch (err) {
-                            echo "Iteration ${i} FAILED: ${err}"
+                            echo "Iteration ${i} FAILED"
+                            writeFile file: logFile, text: "ERROR: Script failed\n${err}"
                         }
                     }
                 }
@@ -72,37 +65,28 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def suIP = params['SU IP Address'].trim()
-                    def su_fw = "N/A"
+                    def localIP = params.LOCAL_IP
+                    def fwVersion = "N/A"
                     try {
-                        su_fw = sh(
-                            script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${suIP} 'cat /etc/version 2>/dev/null || echo Unknown'",
-                            returnStdout: true
-                        ).trim()
-                    } catch (e) { echo "Could not fetch FW version" }
+                        fwVersion = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version || echo Unknown'", returnStdout: true).trim()
+                    } catch (e) { echo "FW fetch failed" }
 
-                    def jsonReport = readJSON file: 'iteration_results.json'
-                    def total = jsonReport.iterations?.size() ?: 0
-                    def pass = jsonReport.iterations?.count { it.status == 'PASS' } ?: 0
-                    def fail = total - pass
-                    def rate = total > 0 ? String.format("%.1f", (pass * 100.0 / total)) : "0.0"
+                    def jsonReport = readJSON file: 'ipv6_results.json'
+                    def total = jsonReport.iterations.size()
+                    def pass  = jsonReport.iterations.count { it.status == 'PASS' }
+                    def fail  = total - pass
+                    def rate  = total > 0 ? String.format("%.1f", pass * 100.0 / total) : "0.0"
 
                     def buildParams = [
-                        "SU IP Address": suIP,
-                        "FW Version (SU)": su_fw,
-                        "Roaming Count": params.ROAMING_COUNT
+                        "Local IP Address" : localIP,
+                        "IPv6 Address"     : "${params.IPV6_ADDR}/${params.PREFIX}",
+                        "IPv6 Gateway"     : params.GATEWAY,
+                        "Firmware Version" : fwVersion,
+                        "Iterations"       : params.ITERATIONS
                     ]
-                    def istDate = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
 
-                    // FIXED: ALL VARIABLES AT TOP — BEFORE HTML
-                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
-                    def pipelineName = env.JOB_NAME
-                    def currentDateTime = istDate
-                    def successPercentageStr = rate
-                    def totalTests = total
-                    def passCount = pass
-                    def failCount = fail
-                    def reportFilename = "report.html"
+                    def istDate = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
+                    def companyLogo = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
                     def htmlContent = """
                     <html>
@@ -285,42 +269,53 @@ pipeline {
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
                 reportDir: '.',
-                reportFiles: 'report.html',
+                reportFiles: 'ipv6_report.html',
                 reportName: 'IPv4 + IPv6 Test Report'
             ])
-            archiveArtifacts artifacts: 'ipv6_results.json,report.html', allowEmptyArchive: true
+            echo "Cleaning up test log files..."
             sh 'rm -f test-*.log || true'
-            echo "----------------------------------------"
-            echo "IPv4 + IPv6 Test Completed!"
-            echo "----------------------------------------"
-
-            // Email notification (same as your roaming job)
+            echo "-----------------------------------------"
+            echo 'Script Done!'
+            echo "-----------------------------------------"
             script {
                 def buildCauses = currentBuild.getBuildCauses()
                 def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
-                def userName = userCause?.userName ?: "Unknown"
-                def userId   = userCause?.userId ?: "unknown"
-                def emails = [
-                    "puneet": "puneet.sharma@senao.com", "harman": "harmanjot.singh@senao.com",
-                    "mahesh": "mahesh.battala@senao.com", "sandeep": "sandeep.manchikanti@senao.com"
+                def buildUserName = userCause?.userName ?: "Unknown User"
+                def buildUserId = userCause?.userId ?: "unknown"
+                echo "Build started by: ${buildUserName} (${buildUserId})"
+                def userEmails = [
+                    "puneet": "puneet.sharma@senao.com",
+                    "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@senao.com",
+                    "sandeep": "sandeep.manchikanti@senao.com",
+                    "sampath": "sampath.marella@senao.com",
+                    "jayanth": "jayanth.munnaluru@senao.com",
+                    "srilatha": "srilatha.tadiboina@senao.com",
+                    "phani": "phani.darla@senao.com",
+                    "dinesh": "dinesh.redddy@senao.com"
                 ]
-                def toEmail = emails.get(userId, "puneet.sharma@senao.com")
-
+                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+                echo "Sending email to: ${userEmail}"
                 emailext(
-                    subject: "IPv6 Test: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
                     body: """
-                    <h2>Jenkins IPv4 + IPv6 Static Test</h2>
-                    <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult=='SUCCESS'?'green':'red'}">${currentBuild.currentResult}</span></p>
-                    <p><strong>Started by:</strong> ${userName}</p>
-                    <p><a href="${env.BUILD_URL}">View Build</a> | <a href="${env.BUILD_URL}console">Console</a></p>
+                        <html><body>
+                            <h2 style="color:blue;">Jenkins Build Notification</h2>
+                            <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
+                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">${currentBuild.currentResult}</span></p>
+                            <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
+                            <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                            <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                            <br/><p style="color:gray;">--<br/>Jenkins Automated Notification</p>
+                        </body></html>
                     """,
-                    to: toEmail,
+                    to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html,ipv6_results.json'
+                    attachmentsPattern: "ipv6_report.html,ipv6_results.json"
                 )
             }
         }
-        success { echo "IPv6 Test PASSED" }
-        failure { echo "IPv6 Test FAILED" }
+        success { echo "Script Success" }
+        failure { echo "Script Failure" }
     }
 }
