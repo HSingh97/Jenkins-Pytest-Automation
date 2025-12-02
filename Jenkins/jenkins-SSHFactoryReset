@@ -1,0 +1,268 @@
+import jenkins.model.Jenkins
+
+// Functions
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
+pipeline {
+    agent { node { label "${TARGET_STAND}" } }
+
+    stages {
+        stage('Prepare tests') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "--- TARGET STAND: ${TARGET_STAND}"
+                    echo "----------------------------------------"
+                    if (!params['Local IP Address']) {
+                        error "Missing required parameter: Local IP Address"
+                    }
+                }
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "Installing Dependencies"
+                    echo "----------------------------------------"
+                }
+            }
+        }
+
+        stage('Factory Reset Test') {
+            steps {
+                script {
+                    def localIP = params['Local IP Address']
+                    def resetCount = params.RESET_COUNT ?: 1
+
+                    echo "DUT Current IP       : ${localIP}"
+                    echo "Expected IP after reset : 192.168.1.1"
+                    echo "Number of iterations : ${resetCount}"
+                    echo "----------------------------------------"
+                    echo "Starting Factory Reset Test via SSH (command: reset)"
+                    echo "----------------------------------------"
+
+                    sh "echo [] > iteration_results.json"  // Initialize JSON
+
+                    for (int i = 1; i <= resetCount.toInteger(); i++) {
+                        echo "Running Factory Reset - Iteration ${i}"
+                        try {
+                            sh """
+                                pytest -v -s testCases/test_SSHFactoryReset.py::test_factory_reset \
+                                --local-ip '${localIP}' \
+                                --iter ${i}
+                            """
+                        } catch (Exception e) {
+                            echo "Iteration ${i} failed: ${e.message}"
+                        }
+                        sleep(time: 30, unit: 'SECONDS')  // Safe delay before next reset
+                    }
+                }
+            }
+        }
+
+        stage('Generate Report') {
+            steps {
+                script {
+                    def localIP = params['Local IP Address']
+                    sh "ssh-keygen -R ${localIP} || true"
+                    sh "ssh-keygen -R 192.168.1.1 || true"
+
+                    def local_fw_version = "N/A"
+                    try {
+                        local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@192.168.1.1 'cat /etc/version 2>/dev/null || echo Unknown'", returnStdout: true).trim()
+                    } catch (Exception e) {
+                        echo "Could not fetch FW version from 192.168.1.1: ${e.message}"
+                    }
+
+                    def jsonReport = readJSON file: 'iteration_results.json'
+                    echo "JSON Report: ${jsonReport}"
+
+                    // --- Calculate Stats ---
+                    def totalTests = 0
+                    def passCount = 0
+                    if (jsonReport.iterations) {
+                        totalTests = jsonReport.iterations.size()
+                        passCount = jsonReport.iterations.count { it.status == 'PASS' }
+                    }
+                    def failCount = totalTests - passCount
+                    def successPercentage = (totalTests > 0) ? (passCount / (double)totalTests) * 100 : 0
+                    def successPercentageStr = String.format("%.1f", successPercentage)
+
+                    def buildParams = [
+                        "DUT IP (before reset)"       : params['Local IP Address'],
+                        "Expected IP after reset"     : "192.168.1.1",
+                        "Iterations"                  : params.RESET_COUNT,
+                        "FW Version (post-reset)"     : "${local_fw_version}"
+                    ]
+
+                    def istZone = TimeZone.getTimeZone("Asia/Kolkata")
+                    def istDate = Calendar.getInstance(istZone).getTime()
+                    def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
+                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+                    def pipelineName = env.JOB_NAME
+
+                    def htmlContent = """
+                    <html>
+                    <head>
+                        <title>Factory Reset Test Report</title>
+                        <style>
+                            body {font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;margin:0;padding:0;background-color:#f9fafb;color:#1f2937;}
+                            .container {max-width:1200px;margin:24px auto;padding:24px;}
+                            .header {display:flex;justify-content:space-between;align-items:center;background:linear-gradient(to right,#ffffff 10%,#f9fafb 100%);padding:28px 36px;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.04);}
+                            .header img {height:65px;transition:transform .2s;}.header img:hover{transform:scale(1.03);}
+                            .header-info h1 {margin:0;font-size:30px;font-weight:700;color:#0a2540;}
+                            .header-info p {margin:5px 0;font-size:15px;color:#4a5568;}
+                            h2 {margin-top:32px;font-size:24px;font-weight:600;color:#111827;border-bottom:2px solid #e5e7eb;padding-bottom:12px;}
+                            .summary-container {display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:24px;margin-top:24px;}
+                            .summary-card {background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 2px 4px rgba(0,0,0,0.04);padding:24px;display:flex;align-items:center;border-top:4px solid;}
+                            .card-icon {font-size:32px;margin-right:20px;padding:12px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
+                            .card-info-title {font-size:16px;color:#6b7280;margin:0 0 4px;}
+                            .card-info-value {font-size:32px;font-weight:700;color:#111827;margin:0;}
+                            .percent .percent-sign {font-size:20px;font-weight:600;}
+                            .card-percent {border-color:#6b7280;}.card-percent .card-icon {background:#f3f4f6;color:#6b7280;}
+                            .card-total {border-color:#3b82f6;}.card-total .card-icon {background:#dbeafe;color:#3b82f6;}
+                            .card-pass {border-color:#10b981;}.card-pass .card-icon {background:#d1fae5;color:#10b981;}
+                            .card-fail {border-color:#ef4444;}.card-fail .card-icon {background:#fee2e2;color:#ef4444;}
+                            table {width:100%;border-collapse:collapse;margin-top:24px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,0.04);}
+                            th,td {padding:16px 20px;border-bottom:1px solid #e5e7eb;text-align:left;}
+                            th {background:#f9fafb;font-weight:600;color:#6b7280;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;}
+                            tr:hover {background:#f9fafb;}
+                            .status-pass {color:#059669;background:#d1fae5;padding:5px 10px;border-radius:99px;font-weight:600;}
+                            .status-fail {color:#dc2626;background:#fee2e2;padding:5px 10px;border-radius:99px;font-weight:600;}
+                            .log-button {background:#3b82f6;color:white;padding:8px 16px;border-radius:8px;font-weight:600;cursor:pointer;}
+                            .log-button:hover {background:#2563eb;}
+                            .modal {display:none;position:fixed;z-index:100;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.6);}
+                            .modal-content {background:#fff;margin:5% auto;border-radius:12px;width:80%;max-width:900px;box-shadow:0 10px 25px rgba(0,0,0,0.1);}
+                            .modal-header {padding:20px 32px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;}
+                            .modal-close {font-size:28px;cursor:pointer;}
+                            #log-content-pre {background:#1f2937;color:#e5e7eb;padding:24px 32px;max-height:60vh;overflow:auto;font-family:SFMono-Regular,Consolas,monospace;font-size:14px;}
+                        </style>
+                        <script>
+                            function showLog(id) { document.getElementById('log-content-pre').innerHTML = document.getElementById(id).innerHTML; document.getElementById('logModal').style.display='block'; }
+                            function closeModal() { document.getElementById('logModal').style.display='none'; }
+                            window.onclick = function(e) { if(e.target == document.getElementById('logModal')) closeModal(); }
+                        </script>
+                    </head>
+                    <body>
+                        <div class="container">
+                            <div class="header">
+                                <img src="${companyLogoUrl}" alt="Logo"/>
+                                <div class="header-info">
+                                    <h1>Factory Reset Test Report</h1>
+                                    <p><strong>Pipeline:</strong> ${pipelineName}</p>
+                                    <p><strong>Date & Time:</strong> ${currentDateTime}</p>
+                                </div>
+                            </div>
+                            <h2>Build Parameters</h2>
+                            <table>
+                                <tr><th>Parameter</th><th>Value</th></tr>
+                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('')}
+                            </table>
+                            <h2>Test Summary</h2>
+                            <div class="summary-container">
+                                <div class="summary-card card-percent"><div class="card-icon">Target</div><div class="card-info"><p class="card-info-title">Success Rate</p><p class="card-info-value percent">${successPercentageStr}<span class="percent-sign">%</span></p></div></div>
+                                <div class="summary-card card-total"><div class="card-icon">Box</div><div class="card-info"><p class="card-info-title">Total Iterations</p><p class="card-info-value">${totalTests}</p></div></div>
+                                <div class="summary-card card-pass"><div class="card-icon">Check</div><div class="card-info"><p class="card-info-title">Passed</p><p class="card-info-value">${passCount}</p></div></div>
+                                <div class="summary-card card-fail"><div class="card-icon">Cross</div><div class="card-info"><p class="card-info-title">Failed</p><p class="card-info-value">${failCount}</p></div></div>
+                            </div>
+                            <h2>Test Results</h2>
+                            <table>
+                                <tr><th>Iteration</th><th style="text-align:center;">Status</th><th style="text-align:center;">Logs</th></tr>
+                    """
+
+                    def tableRows = ""
+                    def logDataBlocks = ""
+                    if (jsonReport.iterations) {
+                        jsonReport.iterations.each { result ->
+                            def iter = result.iteration
+                            def status = result.status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
+                            def logId = "log-${iter}"
+                            def logContent = "No log captured"
+                            try {
+                                def logFile = "test-${iter}.log"
+                                logContent = readFile(file: logFile).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                            } catch (e) { logContent = "Log file missing" }
+                            tableRows += "<tr><td>${iter}</td><td style='text-align:center;'>${status}</td><td style='text-align:center;'><button class='log-button' onclick=\"showLog('${logId}')\">See Logs</button></td></tr>"
+                            logDataBlocks += "<div id='${logId}' style='display:none;'>${logContent}</div>"
+                        }
+                    } else {
+                        tableRows += "<tr><td colspan='3' style='text-align:center;'>No results found</td></tr>"
+                    }
+
+                    htmlContent += tableRows + """
+                            </table>
+                            <div id="logModal" class="modal">
+                                <div class="modal-content">
+                                    <div class="modal-header"><h2>Iteration Log</h2><span class="modal-close" onclick="closeModal()">×</span></div>
+                                    <div class="modal-body"><pre id="log-content-pre"></pre></div>
+                                </div>
+                            </div>
+                            ${logDataBlocks}
+                        </div>
+                    </body></html>
+                    """
+
+                    writeFile file: 'report.html', text: htmlContent
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            publishHTML(target: [
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: '.',
+                reportFiles: 'report.html',
+                reportName: 'Factory Reset Test Report'
+            ])
+            sh 'rm -f test-*.log || true'
+            echo "-----------------------------------------"
+            echo 'Factory Reset Test Script Done!'
+            echo "-----------------------------------------"
+
+            script {
+                def buildCauses = currentBuild.getBuildCauses()
+                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+                def buildUserName = userCause?.userName ?: "Unknown User"
+                def buildUserId = userCause?.userId ?: "unknown"
+
+                def userEmails = [
+                    "puneet": "puneet.sharma@senao.com",
+                    "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@senao.com",
+                    "sandeep": "sandeep.manchikanti@senao.com",
+                    "sampath": "sampath.marella@senao.com",
+                    "jayanth": "jayanth.munnaluru@senao.com",
+                    "srilatha": "srilatha.tadiboina@senao.com",
+                    "phani": "phani.darla@senao.com",
+                    "dinesh": "dinesh.redddy@senao.com"
+                ]
+                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+
+                emailext(
+                    subject: "Factory Reset Test • ${currentBuild.fullDisplayName} • ${currentBuild.currentResult}",
+                    body: """
+                    <h2 style="color:blue;">Factory Reset Test Completed</h2>
+                    <p><strong>DUT IP (before):</strong> ${params['Local IP Address']}</p>
+                    <p><strong>Expected IP after reset:</strong> 192.168.1.1</p>
+                    <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};font-weight:bold;">${currentBuild.currentResult}</span></p>
+                    <p><strong>Report:</strong> <a href="${env.BUILD_URL}Factory_20Reset_20Test_20Report/">Click here to view detailed report</a></p>
+                    <p><strong>Console:</strong> <a href="${env.BUILD_URL}console">View Console Output</a></p>
+                    """,
+                    to: userEmail,
+                    mimeType: 'text/html',
+                    attachmentsPattern: 'report.html,iteration_results.json'
+                )
+            }
+        }
+        success { echo "Factory Reset Test → SUCCESS" }
+        failure { echo "Factory Reset Test → FAILED" }
+    }
+}
