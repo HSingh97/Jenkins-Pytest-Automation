@@ -56,13 +56,13 @@ def test_factory_reset(local_ip, iter):
     #factory reset
     try:
         print(f"Sending command: reset → {local_ip}", flush=True)
-        output = ssh_netmiko.runcommand(local_ip, "reset", timeout=30)
+        output = ssh_netmiko.runcommand(local_ip, "ucidyn set tftp.retip.retainip 0 ", timeout=5)
+        output = ssh_netmiko.runcommand(local_ip, "/usr/sbin/factory_reset.sh ", timeout=60)
         print("Factory reset command sent. Device is rebooting...", flush=True)
         time.sleep(10)
     except Exception as e:
         print(f"SSH connection dropped after 'reset' → Expected behavior: {e}", flush=True)
 
-    # Wait up to 3 minutes and ping 192.168.1.1
     if wait_for_default_ip(duration=180, interval=5):
         result["ping_after_reset"] = True
         result["status"] = "PASS"
