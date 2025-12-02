@@ -1,0 +1,326 @@
+import jenkins.model.Jenkins
+
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
+pipeline {
+    agent { node { label "${TARGET_STAND}" } }
+
+    stages {
+        stage('Prepare') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "TARGET STAND: ${TARGET_STAND}"
+                    echo "Local IP Address: ${params.LOCAL_IP}"
+                    echo "IPv6 Address: ${params.IPV6_ADDR}/${params.PREFIX}"
+                    echo "IPv6 Gateway: ${params.GATEWAY}"
+                    echo "Iterations: ${params.ITERATIONS}"
+                    echo "----------------------------------------"
+                }
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "Installing SNMP + Ping Tools"
+                    echo "----------------------------------------"
+                    sh 'apt-get update && apt-get install -y snmp iputils-ping || true'
+                }
+            }
+        }
+
+        stage('IPv4 + IPv6 Static Test') {
+            steps {
+                script {
+                    def localIP = params.LOCAL_IP.trim()
+                    def ipv6    = params.IPV6_ADDR.trim()
+                    def prefix  = params.PREFIX.trim()
+                    def gateway = params.GATEWAY.trim()
+                    def count   = params.ITERATIONS.trim().toInteger()
+
+                    sh 'rm -f ipv6_results.json test-*.log || true'
+                    sh 'echo {"iterations": []} > ipv6_results.json'
+                    echo "Cleared old workspace"
+                    echo "----------------------------------------"
+                    echo "Starting IPv4 + Static IPv6 Configuration Test"
+                    echo "----------------------------------------"
+
+                    for (int i = 1; i <= count; i++) {
+                        echo "=== ITERATION ${i} of ${count} ==="
+                        try {
+                            sh """
+                                set -x
+                                python3 testCases/test_SNMP_IpV4_IpV6.py \
+                                    --local-ip '${localIP}' \
+                                    --ipv6 '${ipv6}' \
+                                    --prefix '${prefix}' \
+                                    --gateway '${gateway}' \
+                                    --iter ${i}
+                            """
+                        } catch (err) {
+                            echo "Iteration ${i} FAILED: ${err}"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Generate Report') {
+            steps {
+                script {
+                    def suIP = params['SU IP Address'].trim()
+                    def su_fw = "N/A"
+                    try {
+                        su_fw = sh(
+                            script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${suIP} 'cat /etc/version 2>/dev/null || echo Unknown'",
+                            returnStdout: true
+                        ).trim()
+                    } catch (e) { echo "Could not fetch FW version" }
+
+                    def jsonReport = readJSON file: 'iteration_results.json'
+                    def total = jsonReport.iterations?.size() ?: 0
+                    def pass = jsonReport.iterations?.count { it.status == 'PASS' } ?: 0
+                    def fail = total - pass
+                    def rate = total > 0 ? String.format("%.1f", (pass * 100.0 / total)) : "0.0"
+
+                    def buildParams = [
+                        "SU IP Address": suIP,
+                        "FW Version (SU)": su_fw,
+                        "Roaming Count": params.ROAMING_COUNT
+                    ]
+                    def istDate = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
+
+                    // FIXED: ALL VARIABLES AT TOP — BEFORE HTML
+                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+                    def pipelineName = env.JOB_NAME
+                    def currentDateTime = istDate
+                    def successPercentageStr = rate
+                    def totalTests = total
+                    def passCount = pass
+                    def failCount = fail
+                    def reportFilename = "report.html"
+
+                    def htmlContent = """
+                    <html>
+                    <head>
+                        <title>Test Report</title>
+                        <style>
+                            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f9fafb; color: #1f2937; }
+                            .container { max-width: 1200px; margin: 24px auto; padding: 24px; }
+                            .header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%); padding: 28px 36px; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04); }
+                            .header img { height: 65px; transition: transform 0.2s ease-in-out; }
+                            .header img:hover { transform: scale(1.03); }
+                            .header-info { text-align: right; }
+                            .header-info h1 { margin: 0; font-size: 30px; font-weight: 700; color: #0a2540; }
+                            .header-info p { margin: 5px 0; font-size: 15px; color: #4a5568; }
+                            h2 { margin-top: 32px; font-size: 24px; font-weight: 600; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; }
+                            .summary-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-top: 24px; }
+                            .summary-card { background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.04); display: flex; padding: 24px; align-items: center; border-top-width: 4px; border-top-style: solid; }
+                            .card-icon { font-size: 32px; margin-right: 20px; padding: 12px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+                            .card-info { text-align: left; }
+                            .card-info-title { font-size: 16px; color: #6b7280; margin: 0 0 4px 0; }
+                            .card-info-value { font-size: 32px; font-weight: 700; color: #111827; margin: 0; }
+                            .percent .percent-sign { font-size: 20px; font-weight: 600; }
+                            .card-percent { border-color: #6b7280; }
+                            .card-percent .card-icon { background-color: #f3f4f6; color: #6b7280; }
+                            .card-total { border-color: #3b82f6; }
+                            .card-total .card-icon { background-color: #dbeafe; color: #3b82f6; }
+                            .card-pass { border-color: #10b981; }
+                            .card-pass .card-icon { background-color: #d1fae5; color: #10b981; }
+                            .card-fail { border-color: #ef4444; }
+                            .card-fail .card-icon { background-color: #fee2e2; color: #ef4444; }
+                            table { width: 100%; border-collapse: collapse; margin-top: 24px; background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
+                            th, td { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle; }
+                            th { background-color: #f9fafb; font-weight: 600; color: #6b7280; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+                            tr:last-child td { border-bottom: none; }
+                            tr:hover { background-color: #f9fafb; }
+                            .status-pass { color: #059669; font-weight: 600; background-color: #d1fae5; padding: 5px 10px; border-radius: 99px; display: inline-block; }
+                            .status-fail { color: #dc2626; font-weight: 600; background-color: #fee2e2; padding: 5px 10px; border-radius: 99px; display: inline-block; }
+                            .log-button { background-color: #3b82f6; color: white; padding: 8px 16px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; transition: background-color 0.2s ease, box-shadow 0.2s ease; display: inline-block; border: none; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+                            .log-button:hover { background-color: #2563eb; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                            .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); }
+                            .modal-content { background-color: #ffffff; margin: 5% auto; border: 1px solid #e5e7eb; border-radius: 12px; width: 80%; max-width: 900px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); animation-name: animatetop; animation-duration: 0.4s; overflow: hidden; }
+                            .modal-header { padding: 20px 32px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+                            .modal-header h2 { margin: 0; padding: 0; border: none; font-size: 20px; }
+                            .modal-close { color: #9ca3af; font-size: 28px; font-weight: bold; cursor: pointer; transition: color 0.2s ease; }
+                            .modal-close:hover, .modal-close:focusprese { color: #1f2937; text-decoration: none; }
+                            .modal-body { padding: 0; }
+                            #log-content-pre { background-color: #1f2937; color: #e5e7eb; padding: 24px 32px; max-height: 60vh; overflow: auto; white-space: pre-wrap; word-wrap: break-word; margin: 0; border-radius: 0 0 12px 12px; font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace; font-size: 14px; }
+                            @keyframes animatetop { from {transform: translateY(-50px); opacity: 0} to {transform: translateY(0); opacity: 1} }
+                        </style>
+                        <script>
+                            function showLog(logDataId) {
+                                var logContent = document.getElementById(logDataId).innerHTML;
+                                document.getElementById('log-content-pre').innerHTML = logContent;
+                                document.getElementById('logModal').style.display = 'block';
+                            }
+                            function closeModal() {
+                                document.getElementById('logModal').style.display = 'none';
+                            }
+                            window.onclick = function(event) {
+                                var modal = document.getElementById('logModal');
+                                if (event.target == modal) {
+                                    modal.style.display = 'none';
+                                }
+                            }
+                        </script>
+                    </head>
+                    <body>
+                        <div class="container">
+                            <div class="header">
+                                <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
+                                <div class="header-info">
+                                    <h1>Automated Test Report</h1>
+                                    <p><strong>Pipeline:</strong> ${pipelineName}</p>
+                                    <p><strong>Date & Time:</strong> ${currentDateTime}</p>
+                                </div>
+                            </div>
+
+                            <h2>Build Parameters</h2>
+                            <table>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Value</th>
+                                </tr>
+                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
+                            </table>
+
+                            <h2>Test Summary</h2>
+                            <div class="summary-container">
+                                <div class="summary-card card-percent">
+                                    <div class="card-icon">🎯</div>
+                                    <div class="card-info">
+                                        <p class="card-info-title">Success Rate</p>
+                                        <p class="card-info-value percent">${successPercentageStr}<span class="percent-sign">%</span></p>
+                                    </div>
+                                </div>
+                                <div class="summary-card card-total">
+                                    <div class="card-icon">📦</div>
+                                    <div class="card-info">
+                                        <p class="card-info-title">Total Iterations</p>
+                                        <p class="card-info-value">${totalTests}</p>
+                                    </div>
+                                </div>
+                                <div class="summary-card card-pass">
+                                    <div class="card-icon">✅</div>
+                                    <div class="card-info">
+                                        <p class="card-info-title">Passed</p>
+                                        <p class="card-info-value">${passCount}</p>
+                                    </div>
+                                </div>
+                                <div class="summary-card card-fail">
+                                    <div class="card-icon">❌</div>
+                                    <div class="card-info">
+                                        <p class="card-info-title">Failed</p>
+                                        <p class="card-info-value">${failCount}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <h2>Test Results</h2>
+                            <table>
+                                <tr>
+                                    <th>Iteration</th>
+                                    <th style="text-align:center;">Status</th>
+                                    <th style="text-align:center;">Logs</th>
+                                </tr>
+                    """
+
+                    def tableRows = ""
+                    def logDataBlocks = ""
+                    if (jsonReport.iterations) {
+                        jsonReport.iterations.each { result ->
+                            def iteration = result.iteration ?: "-"
+                            def status = result.status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
+                            def logFile = "test-${iteration}.log"
+                            def logDataId = "log-data-${iteration}"
+                            def logContent = ""
+                            try {
+                                logContent = readFile(file: logFile)
+                                logContent = logContent.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                            } catch (e) {
+                                logContent = "ERROR: Log file not found (${logFile})."
+                            }
+                            def logButton = "<button class='log-button' onclick=\\\"showLog('${logDataId}')\\\">See Logs</button>"
+                            tableRows += "<tr><td>${iteration}</td><td style='text-align:center;'>${status}</td><td style='text-align:center;'>${logButton}</td></tr>"
+                            logDataBlocks += "<div id='${logDataId}' style='display:none;'>${logContent}</div>"
+                        }
+                    } else {
+                        tableRows += "<tr><td colspan='3' style='text-align:center;'>No iteration results found.</td></tr>"
+                    }
+
+                    htmlContent += tableRows + """
+                            </table>
+                        </div>
+                        <div id="logModal" class="modal">
+                          <div class="modal-content">
+                            <div class="modal-header">
+                                <h2>Iteration Log</h2>
+                                <span class="modal-close" onclick="closeModal()">×</span>
+                            </div>
+                            <div class="modal-body">
+                                <pre id="log-content-pre"></pre>
+                            </div>
+                          </div>
+                        </div>
+                        ${logDataBlocks}
+                    </body>
+                    </html>
+                    """
+
+                    writeFile file: 'report.html', text: htmlContent
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            publishHTML(target: [
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: '.',
+                reportFiles: 'report.html',
+                reportName: 'IPv4 + IPv6 Test Report'
+            ])
+            archiveArtifacts artifacts: 'ipv6_results.json,report.html', allowEmptyArchive: true
+            sh 'rm -f test-*.log || true'
+            echo "----------------------------------------"
+            echo "IPv4 + IPv6 Test Completed!"
+            echo "----------------------------------------"
+
+            // Email notification (same as your roaming job)
+            script {
+                def buildCauses = currentBuild.getBuildCauses()
+                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+                def userName = userCause?.userName ?: "Unknown"
+                def userId   = userCause?.userId ?: "unknown"
+                def emails = [
+                    "puneet": "puneet.sharma@senao.com", "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@senao.com", "sandeep": "sandeep.manchikanti@senao.com"
+                ]
+                def toEmail = emails.get(userId, "puneet.sharma@senao.com")
+
+                emailext(
+                    subject: "IPv6 Test: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    body: """
+                    <h2>Jenkins IPv4 + IPv6 Static Test</h2>
+                    <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult=='SUCCESS'?'green':'red'}">${currentBuild.currentResult}</span></p>
+                    <p><strong>Started by:</strong> ${userName}</p>
+                    <p><a href="${env.BUILD_URL}">View Build</a> | <a href="${env.BUILD_URL}console">Console</a></p>
+                    """,
+                    to: toEmail,
+                    mimeType: 'text/html',
+                    attachmentsPattern: 'report.html,ipv6_results.json'
+                )
+            }
+        }
+        success { echo "IPv6 Test PASSED" }
+        failure { echo "IPv6 Test FAILED" }
+    }
+}
