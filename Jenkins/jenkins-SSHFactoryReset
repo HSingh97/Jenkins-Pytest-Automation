@@ -42,7 +42,7 @@ pipeline {
                     echo "Expected IP after reset : 192.168.1.1"
                     echo "Number of iterations : ${resetCount}"
                     echo "----------------------------------------"
-                    echo "Starting Factory Reset Test via SSH (command: reset)"
+                    echo "Starting Factory Reset Test via SSH"
                     echo "----------------------------------------"
 
                     sh "echo [] > iteration_results.json"  // Initialize JSON
