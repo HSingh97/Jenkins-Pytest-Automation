@@ -31,16 +31,12 @@ def run(cmd):
 
 
 def is_ping_successful(stdout):
-    """Checks if ping output indicates success (less than 100% packet loss)."""
-    # This is the most reliable check: look for received packets or 0% loss
-    if "0% packet loss" in stdout:
-        return True
-
-    # Regex to find packet loss percentage
-    match_loss = re.search(r"(\d+)% packet loss", stdout)
-    if match_loss and int(match_loss.group(1)) < 100:
-        return True
-
+    """STRICT CHECK: Returns True only if 'received' packets count > 0."""
+    match = re.search(r"(\d+) packets transmitted, (\d+) received", stdout)
+    if match:
+        received_count = int(match.group(2))
+        if received_count > 0:
+            return True
     return False
 
 
@@ -51,11 +47,11 @@ def ping_once(ip, v6=False):
 
     r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
-    # --- FIX: Print the output of the single ping attempt ---
+    # --- Print the output of the single ping attempt ---
     print(f"--- PING RETRY ({proto}) ---")
     print(r.stdout.strip())
 
-    return r.returncode == 0 or is_ping_successful(r.stdout)
+    return is_ping_successful(r.stdout)
 
 
 def ping_with_retry(ip, v6=False, wait_time=1, max_total_time=60):
@@ -69,20 +65,23 @@ def ping_with_retry(ip, v6=False, wait_time=1, max_total_time=60):
     r_initial = subprocess.run(cmd_initial, shell=True, capture_output=True, text=True)
     print(r_initial.stdout)
 
-    # --- CRITICAL FIX: Only proceed if the initial ping failed (100% loss) ---
+    # --- CRITICAL FIX: Only succeed if the initial ping received packets ---
     if is_ping_successful(r_initial.stdout):
-        print("Initial full ping succeeded (Packet Loss < 100%).")
+        print("Initial full ping succeeded (Received packets > 0).")
         return True
 
-    # --- 2. Retry loop (only if initial ping failed with 100% loss) ---
-    print(f"Initial 5-packet ping failed (100% loss). Starting retry loop for max {max_total_time} seconds...")
+    # --- 2. Retry loop (only if initial ping failed) ---
+    print(f"Initial 5-packet ping failed (Received 0 packets). Starting retry loop for max {max_total_time} seconds...")
     while time.time() - start_time < max_total_time:
         if ping_once(ip, v6):
             print(f"\nSUCCESS: Ping succeeded after {int(time.time() - start_time)} seconds.")
             return True
 
         elapsed = int(time.time() - start_time)
-        print(f"Ping failed (Elapsed: {elapsed}s). Waiting {wait_time}s...")
+        # Avoid printing 'Waiting 1s' if time's up
+        if elapsed < max_total_time - 1:
+            print(f"Ping failed (Elapsed: {elapsed}s). Waiting {wait_time}s...")
+
         time.sleep(wait_time)
 
     print(f"\nFAIL: Ping failed after max {max_total_time} seconds timeout.")
@@ -116,8 +115,6 @@ print("=" * 100 + "\n")
 
 # Phase 1: Check IPv4 reachability (max 10s retry)
 print("\n--- Phase 1: Initial IPv4 Reachability Check (max 10s) ---")
-# Use a separate simpler function for the initial check if you're sure it always passes,
-# but ping_with_retry is safer. Keeping it simple for the initial phase.
 if not ping_with_retry(args.local_ip, v6=False, max_total_time=MAX_IPV4_PING_WAIT_SECONDS):
     status = "FAIL (IPv4 Unreachable)"
 else:
