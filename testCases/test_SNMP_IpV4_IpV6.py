@@ -15,59 +15,78 @@ OID_APPLY = ".1.3.6.1.4.1.52619.1.2.1.1.0"  # i 1
 
 COMMUNITY = "private"
 RESULT_FILE = "ipv6_results.json"
+MAX_PING_WAIT_SECONDS = 180  # 3 minutes
 
 
 def run(cmd):
     """Executes a shell command and prints its output."""
     print(f">>> {cmd}")
-    # Setting text=True captures output as strings
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     print(result.stdout.strip())
     if result.stderr.strip():
         print("ERROR:", result.stderr.strip())
-    # Note: snmpset might return 0 even if it prints a warning.
     return result.returncode == 0
 
 
-def ping(ip, v6=False):
-    """Pings an IP address and checks for success."""
+def ping_once(ip, v6=False):
+    """Pings an IP address once (-c 1) and returns True/False."""
     proto = "-6" if v6 else "-4"
-    # Use -c 5 (count 5 packets), -W 5 (timeout 5 seconds)
-    cmd = f"ping {proto} -c 5 -W 5 {ip}"
-    print(f"\nPING {proto} → {ip}")
-
-    # Run the ping command
+    # Use -c 1 (count 1 packet), -W 5 (timeout 5 seconds)
+    cmd = f"ping {proto} -c 1 -W 5 {ip}"
     r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    print(r.stdout)
 
-    # Check 1: Rely on the return code (0 = success)
+    # Check if the return code is 0 (success) or if any packet was received
     if r.returncode == 0:
         return True
 
-    # Check 2 (Fallback for when return code is non-zero but some packets passed):
-    # This is useful if the target is slow to respond, but since -W 5 is used,
-    # relying mostly on returncode is best practice for ping utility.
-
-    # Check if '0% packet loss' is in the output for extra robustness, or if at least one packet succeeded.
-    if re.search(r"(\d+) packets transmitted, (\d+) received", r.stdout):
-        match = re.search(r"(\d+)% packet loss", r.stdout)
-        if match and int(match.group(1)) < 100:
-            return True
+    # Fallback check (less reliable, but handles edge cases): check for 0% loss
+    if "0% packet loss" in r.stdout:
+        return True
 
     return False
 
 
-# CAPITAL HEX - NO SPACES. This is the fix for the SNMP error.
+def ping_with_retry(ip, v6=False, wait_time=1, max_total_time=60):
+    """Continuously pings until success or timeout is reached."""
+    start_time = time.time()
+
+    # First, run the full 5-packet ping to log initial status clearly
+    proto = "-6" if v6 else "-4"
+    cmd_initial = f"ping {proto} -c 5 -W 5 {ip}"
+    print(f"\nSTARTING PING TEST {proto} → {ip}")
+    r_initial = subprocess.run(cmd_initial, shell=True, capture_output=True, text=True)
+    print(r_initial.stdout)
+
+    if r_initial.returncode == 0:
+        print("Initial ping succeeded.")
+        return True
+
+    # Retry loop
+    print(f"Initial ping failed. Starting retry for max {max_total_time} seconds...")
+    while time.time() - start_time < max_total_time:
+        if ping_once(ip, v6):
+            print(f"\nSUCCESS: Ping succeeded after {int(time.time() - start_time)} seconds.")
+            return True
+
+        elapsed = int(time.time() - start_time)
+        print(f"Ping failed (Elapsed: {elapsed}s). Waiting {wait_time}s...")
+        time.sleep(wait_time)
+
+    print(f"\nFAIL: Ping failed after max {max_total_time} seconds timeout.")
+    return False
+
+
 def ipv6_to_hex(ip):
+    """Converts IPv6 address to contiguous CAPITAL hexadecimal string (required by snmpset x type)."""
     clean = ip.split('/')[0]
-    # Removed the ' '.join() to ensure a continuous hex string
     return ''.join(f'{b:02X}' for b in socket.inet_pton(socket.AF_INET6, clean))
 
 
 # --- Script execution starts here ---
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--local-ip", required=True)
+# Renamed argument in script to use underscore, matching common Python style
+parser.add_argument("--local-ip", dest="local_ip", required=True)
 parser.add_argument("--ipv6", required=True)
 parser.add_argument("--prefix", required=True)
 parser.add_argument("--gateway", required=True)
@@ -79,35 +98,48 @@ gateway_clean = args.gateway.split('/')[0] if '/' in args.gateway else args.gate
 prefix_len = args.prefix.split('/')[-1] if '/' in args.prefix else args.prefix
 
 print("\n" + "=" * 100)
-print(f"UBR655 IPv6 TEST | ITER {args.iter} | {args.local - ip} → {ipv6_clean}")
+# FIXED: Accessing the argument using the correct attribute name args.local_ip
+print(f"UBR655 IPv6 TEST | ITER {args.iter} | {args.local_ip} → {ipv6_clean}")
 print(f"Prefix: {prefix_len} | Gateway: {gateway_clean}")
 print("=" * 100 + "\n")
 
-# Store the correctly formatted hex strings (using the fix from the previous response)
-ipv6_hex = ipv6_to_hex(ipv6_clean)
-gateway_hex = ipv6_to_hex(gateway_clean)
-
-if not ping(args.local - ip):
+# Phase 1: Check IPv4 reachability (quick ping)
+print("\n--- Phase 1: Initial IPv4 Reachability Check ---")
+# Use the simpler ping_once here for a quick test
+if not ping_with_retry(args.local_ip, v6=False, max_total_time=10):
     status = "FAIL"
 else:
-    # SNMP Set commands using the correct NO-SPACE HEX strings
-    # OID_ADDR_TYPE: s static
-    run(f"snmpset -v2c -c {COMMUNITY} {args.local - ip} {OID_ADDR_TYPE} s static")
-    # OID_IPV6_ADDR: x HEX (no spaces)
-    run(f"snmpset -v2c -c {COMMUNITY} {args.local - ip} {OID_IPV6_ADDR} x {ipv6_hex}")
-    # OID_PREFIX: i prefix length
-    run(f"snmpset -v2c -c {COMMUNITY} {args.local - ip} {OID_PREFIX} i {prefix_len}")
-    # OID_GATEWAY: x HEX (no spaces)
-    run(f"snmpset -v2c -c {COMMUNITY} {args.local - ip} {OID_GATEWAY} x {gateway_hex}")
-    time.sleep(5)
-    # OID_APPLY: i 1
-    run(f"snmpset -v2c -c {COMMUNITY} {args.local - ip} {OID_APPLY} i 1")
+    # Store the correctly formatted hex strings
+    ipv6_hex = ipv6_to_hex(ipv6_clean)
+    gateway_hex = ipv6_to_hex(gateway_clean)
 
-    print("\nWaiting 100 seconds for IPv6...")
-    time.sleep(100)
+    print("\n--- Phase 2: SNMP Configuration ---")
+    # 1. Set Address Type (static)
+    run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_ADDR_TYPE} s static")
+    # 2. Set IPv6 Address (x HEX)
+    run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_IPV6_ADDR} x {ipv6_hex}")
+    # 3. Set Prefix Length (i integer)
+    run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_PREFIX} i {prefix_len}")
+    # 4. Set Gateway (x HEX)
+    run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_GATEWAY} x {gateway_hex}")
 
-    # Final IPv6 ping check
-    status = "PASS" if ping(ipv6_clean, v6=True) else "FAIL"
+    # 5. Wait for 10 seconds before applying (as requested)
+    print("\nWaiting 10 seconds before applying...")
+    time.sleep(10)
+
+    # 6. Apply configuration
+    run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_APPLY} i 1")
+
+    # 7. Wait 60 seconds (as requested for link up) + retry ping for max 3 minutes
+    print("\nWaiting 60 seconds for link establishment...")
+    time.sleep(60)
+
+    print("\n--- Phase 3: IPv6 Reachability Check (Retry) ---")
+    # Use the ping_with_retry function
+    if ping_with_retry(ipv6_clean, v6=True, max_total_time=MAX_PING_WAIT_SECONDS):
+        status = "PASS"
+    else:
+        status = "FAIL"
 
 print(f"\nFINAL RESULT → {status}\n" + "=" * 100)
 
@@ -116,10 +148,8 @@ data = {"iterations": []}
 try:
     with open(RESULT_FILE, 'r') as f:
         data = json.load(f)
-except FileNotFoundError:
-    pass
-except json.JSONDecodeError:
-    pass  # Keep default data if file is empty or corrupted
+except (FileNotFoundError, json.JSONDecodeError):
+    pass  # Initialize with default data
 
 data["iterations"].append({"iteration": args.iter, "status": status})
 with open(RESULT_FILE, "w") as f:
