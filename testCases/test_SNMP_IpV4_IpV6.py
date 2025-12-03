@@ -7,20 +7,19 @@ import json
 import os
 import re
 
-OID_ADDR_TYPE = ".1.3.6.1.4.1.52619.1.1.2.14.0"  # s static
-OID_IPV6_ADDR = ".1.3.6.1.4.1.52619.1.1.2.15.0"  # x HEX (CAPITAL! NO SPACES)
-OID_PREFIX = ".1.3.6.1.4.1.52619.1.1.2.16.0"  # i prefix length
-OID_GATEWAY = ".1.3.6.1.4.1.52619.1.1.2.17.0"  # x HEX (CAPITAL! NO SPACES)
-OID_APPLY = ".1.3.6.1.4.1.52619.1.2.1.1.0"  # i 1
+OID_ADDR_TYPE = ".1.3.6.1.4.1.52619.1.1.2.14.0"
+OID_IPV6_ADDR = ".1.3.6.1.4.1.52619.1.1.2.15.0"
+OID_PREFIX = ".1.3.6.1.4.1.52619.1.1.2.16.0"
+OID_GATEWAY = ".1.3.6.1.4.1.52619.1.1.2.17.0"
+OID_APPLY = ".1.3.6.1.4.1.52619.1.2.1.1.0"
 
 COMMUNITY = "private"
 RESULT_FILE = "ipv6_results.json"
-MAX_IPV6_PING_WAIT_SECONDS = 300  # 5 minutes
+MAX_IPV6_PING_WAIT_SECONDS = 300
 MAX_IPV4_PING_WAIT_SECONDS = 10
 
 
 def run(cmd):
-    """Executes a shell command and prints its output."""
     print(f">>> {cmd}")
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     print(result.stdout.strip())
@@ -30,7 +29,6 @@ def run(cmd):
 
 
 def is_ping_successful(stdout):
-    """STRICT CHECK: Returns True only if 'received' packets count > 0."""
     match = re.search(r"(\d+) packets transmitted, (\d+) received", stdout)
     if match:
         received_count = int(match.group(2))
@@ -40,13 +38,11 @@ def is_ping_successful(stdout):
 
 
 def ping_once(ip, v6=False):
-    """Pings an IP address once (-c 1), prints its output, and returns True/False."""
     proto = "-6" if v6 else "-4"
     cmd = f"ping {proto} -c 1 -W 5 {ip}"
 
     r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
-    # Print the output of the single ping attempt
     print(f"--- PING RETRY ({proto}) ---")
     print(r.stdout.strip())
 
@@ -54,22 +50,18 @@ def ping_once(ip, v6=False):
 
 
 def ping_with_retry(ip, v6=False, wait_time=1, max_total_time=60):
-    """Handles the initial 5-packet ping and then the continuous retry loop."""
     start_time = time.time()
 
-    # 1. Initial 5-packet ping
     proto = "-6" if v6 else "-4"
     cmd_initial = f"ping {proto} -c 5 -W 5 {ip}"
     print(f"\nSTARTING INITIAL PING TEST {proto} → {ip}")
     r_initial = subprocess.run(cmd_initial, shell=True, capture_output=True, text=True)
     print(r_initial.stdout)
 
-    # Only succeed if the initial ping received packets
     if is_ping_successful(r_initial.stdout):
         print("Initial full ping succeeded (Received packets > 0).")
         return True
 
-    # 2. Retry loop (only if initial ping failed)
     print(f"Initial 5-packet ping failed (Received 0 packets). Starting retry loop for max {max_total_time} seconds...")
     while time.time() - start_time < max_total_time:
         if ping_once(ip, v6):
@@ -87,12 +79,9 @@ def ping_with_retry(ip, v6=False, wait_time=1, max_total_time=60):
 
 
 def ipv6_to_hex(ip):
-    """Converts IPv6 address to contiguous CAPITAL hexadecimal string (required by snmpset x type)."""
     clean = ip.split('/')[0]
     return ''.join(f'{b:02X}' for b in socket.inet_pton(socket.AF_INET6, clean))
 
-
-# --- Script execution starts here ---
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--local-ip", dest="local_ip", required=True)
@@ -111,19 +100,17 @@ print(f"UBR655 IPv6 TEST | ITER {args.iter} | {args.local_ip} → {ipv6_clean}")
 print(f"Prefix: {prefix_len} | Gateway: {gateway_clean}")
 print("=" * 100 + "\n")
 
-# Phase 1: Check IPv4 reachability (max 10s retry)
+
 print("\n--- Phase 1: Initial IPv4 Reachability Check (max 10s) ---")
 if not ping_with_retry(args.local_ip, v6=False, max_total_time=MAX_IPV4_PING_WAIT_SECONDS):
     status = "FAIL (IPv4 Unreachable)"
 else:
-    # Store the correctly formatted hex strings
+
     ipv6_hex = ipv6_to_hex(ipv6_clean)
     gateway_hex = ipv6_to_hex(gateway_clean)
 
     print("\n--- Phase 2: SNMP Configuration (Single Transaction) ---")
 
-    # --- CRITICAL FIX: Combine all SETS into one command ---
-    # This ensures all parameters (Type, IP, Gateway, Prefix) are sent before the APPLY action.
     combined_snmpset_cmd = (
         f"snmpset -v2c -c {COMMUNITY} {args.local_ip} "
         f"{OID_ADDR_TYPE} s static "
@@ -133,12 +120,7 @@ else:
         f"{OID_APPLY} i 1"
     )
 
-    # 1. Execute the single combined set and apply command
     run(combined_snmpset_cmd)
-
-    # We no longer need the delay before the apply or the explicit apply command.
-
-    # 2. Wait 60 seconds + retry ping for max 5 minutes total
     print("\nWaiting 60 seconds for link establishment...")
     time.sleep(60)
 
