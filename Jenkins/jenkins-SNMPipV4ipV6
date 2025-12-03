@@ -6,22 +6,29 @@ def archiveArtifacts(pattern) {
 }
 
 pipeline {
+    // Note: Assuming TARGET_STAND is a standard parameter defining the node label
     agent { node { label "${TARGET_STAND}" } }
 
     // Define environment variables from build parameters for easier access
     environment {
+        // These variables are set by the pipeline job parameters
         LOCAL_IP = "${params.LOCAL_IP}"
         IPV6_ADDR = "${params.IPV6_ADDR}"
         PREFIX = "${params.PREFIX}"
         GATEWAY = "${params.GATEWAY}"
         ITERATIONS = "${params.ITERATIONS}"
-        REPORT_FILE_NAME = 'IPv6_Test_Report.html'
-        RESULTS_JSON = 'ipv6_results.json'
+
+        // Consistent file names for the Python script and report generator
+        REPORT_FILE_NAME = 'IPv6_Test_Report.html' // Keeping your preferred report name
+        RESULTS_JSON = 'ipv6_results.json'        // Keeping your Python script's output file name
 
         // Initialize for email/post-action use
         TOTAL_TESTS = "0"
         PASSED_TESTS = "0"
         SUCCESS_RATE = "0.00"
+
+        // Defining variables used for dynamic FW version retrieval
+        LOCAL_IP_FOR_SSH = "${params.LOCAL_IP}"
     }
 
     stages {
@@ -78,33 +85,46 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
+                    // --- 1. Fetch Firmware Version (using LOCAL_IP_FOR_SSH) ---
+                    // This uses the explicit SSH variable to prevent Jenkins from complaining
+                    // that params['Local IP Address'] isn't defined if the job doesn't use that exact name.
+                    def local_fw_version = "N/A"
+                    sh "ssh-keygen -R ${LOCAL_IP_FOR_SSH} || true"
+
+                    try {
+                        local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${LOCAL_IP_FOR_SSH} 'cat /etc/version'", returnStdout: true).trim()
+                    } catch (Exception e) {
+                        echo "⚠️ Failed to get local FW version from ${LOCAL_IP_FOR_SSH}: ${e.message}"
+                    }
+
+                    // --- 2. Read Results ---
                     def jsonReport = readJSON file: RESULTS_JSON
 
-                    // --- Calculate Stats ---
+                    // --- 3. Calculate Stats ---
                     def totalTests = jsonReport.iterations.size()
                     def passCount = jsonReport.iterations.count { it.status == 'PASS' }
                     def failCount = totalTests - passCount
 
-                    // FIX: Use multiplication by 100.0 to force floating-point arithmetic, avoiding toBigDecimal()
+                    // FIX: Use safe floating-point division
                     def successPercentage = (totalTests > 0) ? ((passCount * 100.0) / totalTests) : 0.0
                     def successPercentageStr = String.format("%.2f", successPercentage)
 
+                    // Update Env variables for post actions
                     env.TOTAL_TESTS = String.valueOf(totalTests)
                     env.PASSED_TESTS = String.valueOf(passCount)
                     env.SUCCESS_RATE = successPercentageStr
 
-                    // --- HTML Report Data ---
-                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
-                    def pipelineName = env.JOB_NAME
-                    def buildParams = [
+                    // --- 4. Build Report Parameters ---
+                    def buildParamsList = [
                         "Device IPv4": env.LOCAL_IP,
                         "IPv6 Address": env.IPV6_ADDR,
                         "Prefix Length": env.PREFIX,
                         "Gateway": env.GATEWAY,
-                        "Iterations": env.ITERATIONS
+                        "Iterations": env.ITERATIONS,
+                        "FW Version (Local)": local_fw_version
                     ]
 
-                    // --- Generate Table Rows and Log Blocks ---
+                    // --- 5. Generate Table Rows and Log Blocks ---
                     def rows = ""
                     def logDataBlocks = ""
 
@@ -133,11 +153,17 @@ pipeline {
                                 <td style="text-align: center;">${logButton}</td>
                             </tr>
                         """
-                        // Store log data in hidden divs
                         logDataBlocks += "<div id='${logDataId}' style='display:none;'>${logContent}</div>\\n"
                     }
 
-                    // --- Construct HTML Content ---
+                    // --- 6. Prepare Metadata for HTML Header ---
+                    def istZone = TimeZone.getTimeZone("Asia/Kolkata")
+                    def istDate = Calendar.getInstance(istZone).getTime()
+                    def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
+                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+                    def pipelineName = env.JOB_NAME
+
+                    // --- 7. Construct HTML Content ---
                     def htmlContent = """
                         <!DOCTYPE html>
                         <html>
@@ -207,6 +233,7 @@ pipeline {
                                         <h1>IPv6 Static Configuration Test</h1>
                                         <p><strong>Pipeline:</strong> ${pipelineName}</p>
                                         <p><strong>Build:</strong> #${BUILD_NUMBER}</p>
+                                        <p><strong>Date & Time:</strong> ${currentDateTime}</p>
                                     </div>
                                 </div>
 
@@ -216,7 +243,7 @@ pipeline {
                                         <th>Parameter</th>
                                         <th>Value</th>
                                     </tr>
-                                    ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\\n')}
+                                    ${buildParamsList.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\\n')}
                                 </table>
 
                                 <h2>Test Summary</h2>
@@ -279,6 +306,7 @@ pipeline {
                         </html>
                     """
 
+                    // --- 8. Write Report ---
                     writeFile file: REPORT_FILE_NAME, text: htmlContent
                 }
             }
@@ -287,7 +315,7 @@ pipeline {
 
     post {
         always {
-            // Publish HTML report using the requested file name and report name
+            // Publish HTML report using the correct file name (IPv6_Test_Report.html)
             publishHTML(target: [
                 allowMissing: false,
                 alwaysLinkToLastBuild: true,
@@ -332,8 +360,9 @@ pipeline {
 
                 echo "Sending email to: ${userEmail}"
 
-                // Send email notification
+                // Send email notification using calculated success rate and original file names
                 emailext(
+                    // Subject now includes the result summary (Passed/Total)
                     subject: "IPv6 Static Test #${BUILD_NUMBER} - ${currentBuild.currentResult} (${env.PASSED_TESTS}/${env.TOTAL_TESTS})",
                     body: """
                         <html>
