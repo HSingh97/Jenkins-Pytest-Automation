@@ -32,12 +32,13 @@ def run(cmd):
 
 def is_ping_successful(stdout):
     """Checks if ping output indicates success (less than 100% packet loss)."""
+    # This is the most reliable check: look for received packets or 0% loss
     if "0% packet loss" in stdout:
         return True
 
     # Regex to find packet loss percentage
-    match = re.search(r"(\d+)% packet loss", stdout)
-    if match and int(match.group(1)) < 100:
+    match_loss = re.search(r"(\d+)% packet loss", stdout)
+    if match_loss and int(match_loss.group(1)) < 100:
         return True
 
     return False
@@ -46,7 +47,6 @@ def is_ping_successful(stdout):
 def ping_once(ip, v6=False):
     """Pings an IP address once (-c 1), prints its output, and returns True/False."""
     proto = "-6" if v6 else "-4"
-    # Use -c 1 (count 1 packet), -W 5 (timeout 5 seconds)
     cmd = f"ping {proto} -c 1 -W 5 {ip}"
 
     r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
@@ -69,12 +69,12 @@ def ping_with_retry(ip, v6=False, wait_time=1, max_total_time=60):
     r_initial = subprocess.run(cmd_initial, shell=True, capture_output=True, text=True)
     print(r_initial.stdout)
 
-    # --- FIX: Use robust success check for initial ping ---
+    # --- CRITICAL FIX: Only proceed if the initial ping failed (100% loss) ---
     if is_ping_successful(r_initial.stdout):
         print("Initial full ping succeeded (Packet Loss < 100%).")
         return True
 
-    # --- 2. Retry loop (only if initial ping failed) ---
+    # --- 2. Retry loop (only if initial ping failed with 100% loss) ---
     print(f"Initial 5-packet ping failed (100% loss). Starting retry loop for max {max_total_time} seconds...")
     while time.time() - start_time < max_total_time:
         if ping_once(ip, v6):
@@ -116,31 +116,30 @@ print("=" * 100 + "\n")
 
 # Phase 1: Check IPv4 reachability (max 10s retry)
 print("\n--- Phase 1: Initial IPv4 Reachability Check (max 10s) ---")
+# Use a separate simpler function for the initial check if you're sure it always passes,
+# but ping_with_retry is safer. Keeping it simple for the initial phase.
 if not ping_with_retry(args.local_ip, v6=False, max_total_time=MAX_IPV4_PING_WAIT_SECONDS):
-    status = "FAIL"
+    status = "FAIL (IPv4 Unreachable)"
 else:
     # Store the correctly formatted hex strings
     ipv6_hex = ipv6_to_hex(ipv6_clean)
     gateway_hex = ipv6_to_hex(gateway_clean)
 
     print("\n--- Phase 2: SNMP Configuration ---")
-    # 1. Set Address Type (static)
+    # SNMP Set operations
     run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_ADDR_TYPE} s static")
-    # 2. Set IPv6 Address (x HEX)
     run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_IPV6_ADDR} x {ipv6_hex}")
-    # 3. Set Prefix Length (i integer)
     run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_PREFIX} i {prefix_len}")
-    # 4. Set Gateway (x HEX)
     run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_GATEWAY} x {gateway_hex}")
 
-    # 5. Wait for 10 seconds before applying
+    # Wait for 10 seconds before applying
     print("\nWaiting 10 seconds before applying...")
     time.sleep(10)
 
-    # 6. Apply configuration
+    # Apply configuration
     run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_APPLY} i 1")
 
-    # 7. Wait 60 seconds + retry ping for max 5 minutes total
+    # Wait 60 seconds + retry ping for max 5 minutes total
     print("\nWaiting 60 seconds for link establishment...")
     time.sleep(60)
 
@@ -148,7 +147,7 @@ else:
     if ping_with_retry(ipv6_clean, v6=True, max_total_time=MAX_IPV6_PING_WAIT_SECONDS):
         status = "PASS"
     else:
-        status = "FAIL"
+        status = "FAIL (IPv6 Unreachable after max retry)"
 
 print(f"\nFINAL RESULT → {status}\n" + "=" * 100)
 
