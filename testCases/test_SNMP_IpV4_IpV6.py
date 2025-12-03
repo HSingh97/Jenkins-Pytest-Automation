@@ -15,7 +15,9 @@ OID_APPLY = ".1.3.6.1.4.1.52619.1.2.1.1.0"  # i 1
 
 COMMUNITY = "private"
 RESULT_FILE = "ipv6_results.json"
-MAX_PING_WAIT_SECONDS = 180  # 3 minutes
+# Updated max wait time to 5 minutes (300 seconds) for Phase 3 IPv6 check
+MAX_IPV6_PING_WAIT_SECONDS = 300
+MAX_IPV4_PING_WAIT_SECONDS = 10  # Keep IPv4 initial check short
 
 
 def run(cmd):
@@ -28,49 +30,52 @@ def run(cmd):
     return result.returncode == 0
 
 
+def is_ping_successful(stdout):
+    """Checks if ping output indicates success (less than 100% packet loss)."""
+    if "0% packet loss" in stdout:
+        return True
+
+    # Regex to find packet loss percentage
+    match = re.search(r"(\d+)% packet loss", stdout)
+    if match and int(match.group(1)) < 100:
+        return True
+
+    return False
+
+
 def ping_once(ip, v6=False):
     """Pings an IP address once (-c 1), prints its output, and returns True/False."""
     proto = "-6" if v6 else "-4"
     # Use -c 1 (count 1 packet), -W 5 (timeout 5 seconds)
     cmd = f"ping {proto} -c 1 -W 5 {ip}"
 
-    # Run the command and capture output
     r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
     # --- FIX: Print the output of the single ping attempt ---
     print(f"--- PING RETRY ({proto}) ---")
     print(r.stdout.strip())
 
-    # Check if the return code is 0 (success)
-    if r.returncode == 0:
-        return True
-
-    # Fallback check for any successful packet
-    if re.search(r"(\d+) received", r.stdout):
-        received_packets = int(re.search(r"(\d+) received", r.stdout).group(1))
-        return received_packets > 0
-
-    return False
+    return r.returncode == 0 or is_ping_successful(r.stdout)
 
 
 def ping_with_retry(ip, v6=False, wait_time=1, max_total_time=60):
-    """Continuously pings until success or timeout is reached."""
+    """Handles the initial 5-packet ping and then the continuous retry loop."""
     start_time = time.time()
 
-    # --- Always run the full 5-packet ping for initial log clarity ---
+    # --- 1. Initial 5-packet ping ---
     proto = "-6" if v6 else "-4"
     cmd_initial = f"ping {proto} -c 5 -W 5 {ip}"
     print(f"\nSTARTING INITIAL PING TEST {proto} → {ip}")
     r_initial = subprocess.run(cmd_initial, shell=True, capture_output=True, text=True)
     print(r_initial.stdout)
 
-    # Check initial result
-    if r_initial.returncode == 0 or (re.search(r"0% packet loss", r_initial.stdout)):
-        print("Initial full ping succeeded.")
+    # --- FIX: Use robust success check for initial ping ---
+    if is_ping_successful(r_initial.stdout):
+        print("Initial full ping succeeded (Packet Loss < 100%).")
         return True
 
-    # Retry loop
-    print(f"Initial ping failed. Starting retry loop for max {max_total_time} seconds...")
+    # --- 2. Retry loop (only if initial ping failed) ---
+    print(f"Initial 5-packet ping failed (100% loss). Starting retry loop for max {max_total_time} seconds...")
     while time.time() - start_time < max_total_time:
         if ping_once(ip, v6):
             print(f"\nSUCCESS: Ping succeeded after {int(time.time() - start_time)} seconds.")
@@ -109,9 +114,9 @@ print(f"UBR655 IPv6 TEST | ITER {args.iter} | {args.local_ip} → {ipv6_clean}")
 print(f"Prefix: {prefix_len} | Gateway: {gateway_clean}")
 print("=" * 100 + "\n")
 
-# Phase 1: Check IPv4 reachability (using a max 10s retry)
+# Phase 1: Check IPv4 reachability (max 10s retry)
 print("\n--- Phase 1: Initial IPv4 Reachability Check (max 10s) ---")
-if not ping_with_retry(args.local_ip, v6=False, max_total_time=10):
+if not ping_with_retry(args.local_ip, v6=False, max_total_time=MAX_IPV4_PING_WAIT_SECONDS):
     status = "FAIL"
 else:
     # Store the correctly formatted hex strings
@@ -135,12 +140,12 @@ else:
     # 6. Apply configuration
     run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_APPLY} i 1")
 
-    # 7. Wait 60 seconds + retry ping for max 3 minutes total
+    # 7. Wait 60 seconds + retry ping for max 5 minutes total
     print("\nWaiting 60 seconds for link establishment...")
     time.sleep(60)
 
-    print("\n--- Phase 3: IPv6 Reachability Check (Max 3-Minute Retry) ---")
-    if ping_with_retry(ipv6_clean, v6=True, max_total_time=MAX_PING_WAIT_SECONDS):
+    print(f"\n--- Phase 3: IPv6 Reachability Check (Max {MAX_IPV6_PING_WAIT_SECONDS}s Retry) ---")
+    if ping_with_retry(ipv6_clean, v6=True, max_total_time=MAX_IPV6_PING_WAIT_SECONDS):
         status = "PASS"
     else:
         status = "FAIL"
