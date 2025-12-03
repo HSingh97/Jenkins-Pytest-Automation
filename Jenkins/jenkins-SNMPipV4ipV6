@@ -1,5 +1,3 @@
-import java.text.SimpleDateFormat
-
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
 
@@ -9,10 +7,11 @@ pipeline {
                 script {
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                     echo "TARGET STAND : ${TARGET_STAND}"
-                    echo "Device IPv4  : ${params.LOCAL_IP}"
-                    echo "IPv6 Address : ${params.IPV6_ADDR}/${params.PREFIX}"
-                    echo "Gateway      : ${params.GATEWAY}"
-                    echo "Iterations   : ${params.ITERATIONS}"
+                    echo "Device IPv4  : ${LOCAL_IP}"
+                    echo "IPv6 Address : ${IPV6_ADDR}"
+                    echo "Prefix       : ${PREFIX}"
+                    echo "Gateway      : ${GATEWAY}"
+                    echo "Iterations   : ${ITERATIONS}"
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 }
             }
@@ -20,27 +19,24 @@ pipeline {
 
         stage('Install Tools') {
             steps {
-                sh '''
-                    apt-get update > /dev/null 2>&1
-                    apt-get install -y snmp iputils-ping sshpass python3 > /dev/null 2>&1 || true
-                '''
+                sh 'apt-get update && apt-get install -y snmp iputils-ping python3 sshpass || true'
             }
         }
 
         stage('IPv4 + IPv6 Static Test') {
             steps {
-                script {
-                    sh 'rm -f ipv6_results.json test-*.log || true'
-                    sh 'echo \'{"iterations": []}\' > ipv6_results.json'
+                sh 'rm -f ipv6_results.json test-*.log || true'
+                sh 'echo \'{"iterations": []}\' > ipv6_results.json'
 
-                    for (int i = 1; i <= params.ITERATIONS.toInteger(); i++) {
-                        echo "RUNNING ITERATION ${i}/${params.ITERATIONS}"
+                script {
+                    for (int i = 1; i <= ITERATIONS.toInteger(); i++) {
+                        echo "RUNNING ITERATION ${i}/${ITERATIONS}"
                         sh """
                             python3 testCases/test_SNMP_IpV4_IpV6.py \
-                                --local-ip '${params.LOCAL_IP}' \
-                                --ipv6 '${params.IPV6_ADDR}' \
-                                --prefix ${params.PREFIX} \
-                                --gateway '${params.GATEWAY}' \
+                                --local-ip '${LOCAL_IP}' \
+                                --ipv6 '${IPV6_ADDR}' \
+                                --prefix '${PREFIX}' \
+                                --gateway '${GATEWAY}' \
                                 --iter ${i} | tee test-${i}.log
                         """
                     }
@@ -48,41 +44,44 @@ pipeline {
             }
         }
 
-        stage('Generate Report') {
+        stage('Generate Beautiful Report') {
             steps {
                 script {
-                    def jsonData = readJSON file: 'ipv6_results.json'
-                    def total = jsonData.iterations.size()
-                    def passed = jsonData.iterations.count { it.status == 'PASS' }
-                    def rate = total > 0 ? String.format("%.1f", (passed * 100.0 / total)) : "0.0"
+                    def jsonReport = readJSON file: 'ipv6_results.json'
+                    def totalTests = jsonReport.iterations.size()
+                    def passCount = jsonReport.iterations.count { it.status == 'PASS' }
+                    def failCount = totalTests - passCount
+                    def successRate = totalTests > 0 ? String.format("%.1f", (passCount * 100.0 / totalTests)) : "0.0"
 
-                    def ist = new SimpleDateFormat("dd MMM yyyy, HH:mm:ss")
-                    ist.setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"))
-                    def currentTime = ist.format(new Date())
+                    def istTime = new Date().format("dd MMM yyyy, HH:mm:ss", TimeZone.getTimeZone("Asia/Kolkata"))
 
-                    def rows = ""
-                    jsonData.iterations.each { r ->
-                        def log = fileExists("test-${r.iteration}.log") ? readFile("test-${r.iteration}.log").replace("<", "&lt;").replace(">", "&gt;") : "Log missing"
-                        rows += """
+                    def tableRows = ""
+                    def logBlocks = ""
+
+                    jsonReport.iterations.each { result ->
+                        def iter = result.iteration
+                        def statusClass = result.status == "PASS" ? "status-pass" : "status-fail"
+                        def statusText = result.status
+                        def logId = "log-data-${iter}"
+
+                        def logContent = "Log not found"
+                        if (fileExists("test-${iter}.log")) {
+                            logContent = readFile("test-${iter}.log")
+                                .replace("&", "&amp;")
+                                .replace("<", "&lt;")
+                                .replace(">", "&gt;")
+                        }
+
+                        tableRows += """
                             <tr>
-                                <td style="text-align:center;font-weight:bold;">${r.iteration}</td>
-                                <td style="color:${r.ipv4_initial_ping ? '#16a34a' : '#dc2626'};font-weight:bold;">${r.ipv4_initial_ping ? 'PASS' : 'FAIL'}</td>
-                                <td style="color:#16a34a;font-weight:bold;">SET</td>
-                                <td style="color:${r.ipv6_final_ping ? '#16a34a' : '#dc2626'};font-weight:bold;">${r.ipv6_final_ping ? 'PASS' : 'FAIL'}</td>
-                                <td style="font-size:20px;color:${r.status == 'PASS' ? '#16a34a' : '#dc2626'};font-weight:bold;">${r.status}</td>
-                                <td>
-                                    <button onclick="document.getElementById('log${r.iteration}').style.display='block'"
-                                            style="background:#3b82f6;color:white;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:bold;">
-                                        View Log
-                                    </button>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td colspan="6">
-                                    <pre id="log${r.iteration}" style="display:none;background:#1e1e1e;color:#4ade80;padding:20px;margin:15px;border-radius:10px;max-height:600px;overflow:auto;font-size:13px;">${log}</pre>
+                                <td>${iter}</td>
+                                <td style="text-align:center;"><span class="${statusClass}">${statusText}</span></td>
+                                <td style="text-align:center;">
+                                    <button class="log-button" onclick="showLog('${logId}')">View Log</button>
                                 </td>
                             </tr>
                         """
+                        logBlocks += "<div id='${logId}' style='display:none;'>${logContent}</div>"
                     }
 
                     writeFile file: 'ipv6_report.html', text: """
@@ -90,48 +89,84 @@ pipeline {
                     <html>
                     <head>
                         <meta charset="utf-8">
-                        <title>IPv4 + Static IPv6 Test Report</title>
+                        <title>Senao IPv6 Static Test Report</title>
                         <style>
-                            body {font-family: 'Segoe UI', sans-serif; background:#f4f6f9; margin:0; padding:20px;}
-                            .container {max-width:1400px; margin:auto; background:white; border-radius:18px; overflow:hidden; box-shadow:0 10px 40px rgba(0,0,0,0.15);}
-                            .header {background:linear-gradient(135deg,#1e40af,#3b82f6); color:white; padding:50px; text-align:center;}
-                            .header img {height:70px; margin-bottom:15px;}
-                            h1 {margin:0; font-size:42px;}
-                            .info {padding:30px; background:#f8fafc;}
-                            table {width:100%; border-collapse:collapse; margin:20px 0;}
-                            th {background:#1e40af; color:white; padding:18px; font-size:16px;}
-                            td {padding:16px; text-align:center; border-bottom:1px solid #e2e8f0;}
-                            .summary {font-size:28px; font-weight:bold; color:#1e40af; margin:20px 0;}
+                            body {font-family:Segoe UI,Arial,sans-serif;background:#f4f6f9;color:#1f2937;margin:0;padding:20px;}
+                            .card {max-width:1200px;margin:auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,0.1);}
+                            .header {background:linear-gradient(135deg,#1e40af,#3b82f6);color:white;padding:50px;text-align:center;}
+                            .header img {height:75px;}
+                            h1 {margin:15px 0;font-size:40px;font-weight:800;}
+                            .info, .summary, table {margin:30px;padding:25px;background:white;border-radius:12px;box-shadow:0 4px 15px rgba(0,0,0,0.05);}
+                            .summary-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;}
+                            .scard {background:white;padding:25px;border-radius:12px;text-align:center;border-top:6px solid;}
+                            .scard h3 {margin:0 0 10px;color:#374151;}
+                            .scard p {margin:0;font-size:36px;font-weight:800;}
+                            .spass {border-color:#10b981;} .spass p {color:#10b981;}
+                            .sfail {border-color:#ef4444;} .sfail p {color:#ef4444;}
+                            .stotal {border-color:#3b82f6;} .stotal p {color:#3b82f6;}
+                            .srate {border-color:#8b5cf6;} .srate p {color:#8b5cf6;}
+                            table {width:100%;border-collapse:collapse;}
+                            th {background:#1e40af;color:white;padding:18px;text-transform:uppercase;font-size:13px;}
+                            td {padding:16px;border-bottom:1px solid #e5e7eb;text-align:center;}
+                            .status-pass {background:#d1fae5;color:#059669;padding:8px 16px;border-radius:50px;font-weight:600;}
+                            .status-fail {background:#fee2e2;color:#dc2626;padding:8px 16px;border-radius:50px;font-weight:600;}
+                            .log-button {background:#3b82f6;color:white;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:600;}
+                            .log-button:hover {background:#2563eb;}
+                            .modal {display:none;position:fixed;z-index:1000;inset:0;background:rgba(0,0,0,0.7);overflow:auto;}
+                            .modal-content {background:white;margin:5% auto;width:90%;max-width:1000px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.3);}
+                            .modal-header {background:#1e40af;color:white;padding:20px;border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:center;}
+                            .modal-close {font-size:32px;cursor:pointer;}
+                            pre {background:#1f2937;color:#e5e7eb;padding:30px;margin:0;max-height:70vh;overflow:auto;border-radius:0 0 12px 12px;font-size:14px;}
                         </style>
+                        <script>
+                            function showLog(id) {
+                                document.getElementById('logContent').innerHTML = document.getElementById(id).innerHTML;
+                                document.getElementById('logModal').style.display = 'block';
+                            }
+                            function closeModal() { document.getElementById('logModal').style.display = 'none'; }
+                            window.onclick = e => { if(e.target === document.getElementById('logModal')) closeModal(); }
+                        </script>
                     </head>
                     <body>
-                        <div class="container">
+                        <div class="card">
                             <div class="header">
-                                <img src="https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png" alt="Senao Networks"/>
-                                <h1>IPv4 + Static IPv6 Test Report</h1>
-                                <p style="font-size:22px; margin:10px 0 0;">${currentTime} • Stand: ${TARGET_STAND}</p>
+                                <img src="https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png" alt="Senao">
+                                <h1>IPv6 Static Configuration Test</h1>
+                                <p>${istTime} | Stand: ${TARGET_STAND}</p>
                             </div>
                             <div class="info">
                                 <h2>Test Parameters</h2>
                                 <table>
-                                    <tr><td><b>Device IPv4</b></td><td>${params.LOCAL_IP}</td></tr>
-                                    <tr><td><b>IPv6 Address</b></td><td>${params.IPV6_ADDR}/${params.PREFIX}</td></tr>
-                                    <tr><td><b>Gateway</b></td><td>${params.GATEWAY}</td></tr>
-                                    <tr><td><b>Iterations</b></td><td>${params.ITERATIONS}</td></tr>
-                                </table>
-                                <div class="summary">${passed}/${total} Passed (${rate}% Success)</div>
-                                <table>
-                                    <tr>
-                                        <th>Iteration</th>
-                                        <th>IPv4 Initial</th>
-                                        <th>IPv6 Set</th>
-                                        <th>IPv6 Final Ping</th>
-                                        <th>Status</th>
-                                        <th>Full Log</th>
-                                    </tr>
-                                    ${rows}
+                                    <tr><td><strong>IPv4</strong></td><td>${LOCAL_IP}</td></tr>
+                                    <tr><td><strong>IPv6 Address</strong></td><td>${IPV6_ADDR}</td></tr>
+                                    <tr><td><strong>Prefix</strong></td><td>${PREFIX}</td></tr>
+                                    <tr><td><strong>Gateway</strong></td><td>${GATEWAY}</td></tr>
+                                    <tr><td><strong>Iterations</strong></td><td>${ITERATIONS}</td></tr>
                                 </table>
                             </div>
+                            <div class="summary">
+                                <h2 style="text-align:center;color:#1e40af;">Test Summary</h2>
+                                <div class="summary-grid">
+                                    <div class="scard stotal"><h3>Total</h3><p>${totalTests}</p></div>
+                                    <div class="scard spass"><h3>Passed</h3><p>${passCount}</p></div>
+                                    <div class="scard sfail"><h3>Failed</h3><p>${failCount}</p></div>
+                                    <div class="scard srate"><h3>Success Rate</h3><p>${successRate}%</p></div>
+                                </div>
+                            </div>
+                            <div class="info">
+                                <h2 style="text-align:center;color:#1e40af;">Detailed Results</h2>
+                                <table><tr><th>Iteration</th><th>Status</th><th>Log</th></tr>${tableRows}</table>
+                            </div>
+                            <div id="logModal" class="modal" onclick="closeModal()">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h2>Detailed Log Output</h2>
+                                        <span class="modal-close" onclick="closeModal()">×</span>
+                                    </div>
+                                    <pre id="logContent"></pre>
+                                </div>
+                            </div>
+                            ${logBlocks}
                         </div>
                     </body>
                     </html>
@@ -143,41 +178,41 @@ pipeline {
 
     post {
         always {
-            publishHTML(target: [
+            publishHTML([
                 allowMissing: false,
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
                 reportDir: '.',
                 reportFiles: 'ipv6_report.html',
-                reportName: 'IPv4 + IPv6 Test Report'
+                reportName: 'IPv6 Test Report'
             ])
-
             sh 'rm -f test-*.log || true'
 
             script {
-                def cause = currentBuild.getBuildCauses().find { it._class.contains('UserIdCause') }
-                def userId = cause?.userId ?: "unknown"
+                def userId = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')?.userId?.toString() ?: "unknown"
                 def emailMap = [
-                    puneet: "puneet.sharma@senao.com",
-                    harman: "harmanjot.singh@senao.com"
+                    "puneet": "puneet.sharma@senao.com",
+                    "harman": "harmanjot.singh@senao.com"
                 ]
-                def email = emailMap.get(userId, "puneet.sharma@senao.com")
+                def toEmail = emailMap[userId] ?: "puneet.sharma@senao.com"
 
                 emailext(
                     subject: "IPv6 Test #${BUILD_NUMBER} - ${currentBuild.currentResult}",
-                    body: """
-                    <h2 style="color:#1e40af;">IPv4 + Static IPv6 Test Completed</h2>
-                    <p><strong>Status:</strong> ${currentBuild.currentResult}</p>
-                    <p><strong>Passed:</strong> ${readJSON(file:'ipv6_results.json')?.iterations?.count { it.status == 'PASS' } ?: 0} / ${params.ITERATIONS}</p>
-                    <p>See attached full HTML report with logs.</p>
-                    """,
-                    to: email,
+                    to: toEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'ipv6_report.html,ipv6_results.json'
+                    attachmentsPattern: 'ipv6_report.html',
+                    body: """
+                    <h2 style="color:#1e40af;">Senao IPv6 Static Test Completed</h2>
+                    <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult=='SUCCESS'?'green':'red'};font-weight:bold;">${currentBuild.currentResult}</span></p>
+                    <p><strong>Device:</strong> ${LOCAL_IP} | <strong>IPv6:</strong> ${IPV6_ADDR}</p>
+                    <p><strong>Result:</strong> ${passCount}/${ITERATIONS} Passed</p>
+                    <p>Full detailed report attached below</p>
+                    <p><a href="${env.BUILD_URL}">View in Jenkins</a></p>
+                    """
                 )
             }
         }
-        success { echo "FULL SUCCESS — IPv6 IS WORKING PERFECTLY!" }
-        failure { echo "TEST FAILED — Check parameters or device" }
+        success { echo "BHAI PUNEET — FULL GREEN SUCCESS! TU JEET GAYA!" }
+        failure { echo "FAILED — Check device or network" }
     }
 }
