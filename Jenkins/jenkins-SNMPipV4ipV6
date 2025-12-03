@@ -6,7 +6,6 @@ def archiveArtifacts(pattern) {
 }
 
 pipeline {
-    // Note: Assuming these parameters are defined in the Jenkins job configuration
     agent { node { label "${TARGET_STAND}" } }
 
     // Define environment variables from build parameters for easier access
@@ -86,9 +85,9 @@ pipeline {
                     def passCount = jsonReport.iterations.count { it.status == 'PASS' }
                     def failCount = totalTests - passCount
 
-                    // Explicitly convert to BigDecimal for precise floating-point division to avoid Groovy casting errors
-                    def successPercentage = (totalTests > 0) ? (passCount.toBigDecimal() / totalTests.toBigDecimal()) * 100 : 0
-                    def successPercentageStr = String.format("%.2f", successPercentage.toDouble())
+                    // FIX: Use multiplication by 100.0 to force floating-point arithmetic, avoiding toBigDecimal()
+                    def successPercentage = (totalTests > 0) ? ((passCount * 100.0) / totalTests) : 0.0
+                    def successPercentageStr = String.format("%.2f", successPercentage)
 
                     env.TOTAL_TESTS = String.valueOf(totalTests)
                     env.PASSED_TESTS = String.valueOf(passCount)
@@ -139,7 +138,6 @@ pipeline {
                     }
 
                     // --- Construct HTML Content ---
-                    // Includes all custom styles and structure from your desired format.
                     def htmlContent = """
                         <!DOCTYPE html>
                         <html>
