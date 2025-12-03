@@ -56,9 +56,8 @@ pipeline {
                     def passed = jsonData.iterations.count { it.status == 'PASS' }
                     def rate = total > 0 ? String.format("%.1f", (passed * 100.0 / total)) : "0.0"
 
-                    def ist = new SimpleDateFormat("dd MMM yyyy, HH:mm:ss").tap {
-                        setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"))
-                    }
+                    def ist = new SimpleDateFormat("dd MMM yyyy, HH:mm:ss")
+                    ist.setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"))
                     def currentTime = ist.format(new Date())
 
                     def rows = ""
