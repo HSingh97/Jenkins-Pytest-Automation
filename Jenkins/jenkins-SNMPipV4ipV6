@@ -2,60 +2,48 @@ pipeline {
     agent { node { label "${TARGET_STAND}" } }
 
     parameters {
-        string(name: 'LOCAL_IP', defaultValue: '192.168.1.10', description: 'Device Management IP')
-        string(name: 'IPV6_ADDR', defaultValue: '2001:db8:1::1011', description: 'Static IPv6 Address')
-        string(name: 'PREFIX', defaultValue: '64', description: 'IPv6 Prefix Length (e.g. 64)')
+        string(name: 'LOCAL_IP', defaultValue: '192.168.1.10', description: 'Device IPv4 Address')
+        string(name: 'IPV6_ADDR', defaultValue: '2001:db8:1::1011', description: 'Static IPv6 Address (without prefix)')
+        string(name: 'PREFIX', defaultValue: '64', description: 'Prefix Length (number only)')
         string(name: 'GATEWAY', defaultValue: '2001:db8:1::1', description: 'IPv6 Gateway')
-        string(name: 'ITERATIONS', defaultValue: '1', description: 'Number of iterations')
+        string(name: 'ITERATIONS', defaultValue: '1', description: 'Number of test iterations')
     }
 
     stages {
         stage('Prepare') {
             steps {
-                script {
-                    echo "----------------------------------------"
-                    echo "TARGET STAND: ${TARGET_STAND}"
-                    echo "Local IP Address: ${params.LOCAL_IP}"
-                    echo "IPv6 Address: ${params.IPV6_ADDR}/${params.PREFIX}"
-                    echo "IPv6 Gateway: ${params.GATEWAY}"
-                    echo "Iterations: ${params.ITERATIONS}"
-                    echo "----------------------------------------"
-                }
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "TARGET STAND : ${TARGET_STAND}"
+                echo "Local IP     : ${params.LOCAL_IP}"
+                echo "IPv6 Address : ${params.IPV6_ADDR}/${params.PREFIX}"
+                echo "Gateway      : ${params.GATEWAY}"
+                echo "Iterations   : ${params.ITERATIONS}"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Install Tools') {
             steps {
-                sh '''
-                    apt-get update
-                    apt-get install -y snmp iputils-ping sshpass
-                '''
+                sh 'apt-get update && apt-get install -y snmp iputils-ping sshpass > /dev/null 2>&1 || true'
             }
         }
 
         stage('IPv4 + IPv6 Static Test') {
             steps {
                 script {
-                    def localIP = params.LOCAL_IP.trim()
-                    def ipv6    = params.IPV6_ADDR.trim()
-                    def prefix  = params.PREFIX.trim() as Integer
-                    def gateway = params.GATEWAY.trim()
-                    def count   = params.ITERATIONS.toInteger()
-
+                    def count = params.ITERATIONS.toInteger()
                     sh 'rm -f ipv6_results.json test-*.log || true'
                     sh 'echo \'{"iterations": []}\' > ipv6_results.json'
 
                     for (int i = 1; i <= count; i++) {
-                        echo "=== ITERATION ${i} of ${count} ==="
-                        def logFile = "test-${i}.log"
+                        echo "RUNNING ITERATION ${i} of ${count}"
                         sh """
-                            set -x
                             python3 testCases/test_SNMP_IpV4_IpV6.py \
-                                --local-ip '${localIP}' \
-                                --ipv6 '${ipv6}' \
-                                --prefix ${prefix} \
-                                --gateway '${gateway}' \
-                                --iter ${i} 2>&1 | tee ${logFile}
+                                --local-ip '${params.LOCAL_IP}' \
+                                --ipv6 '${params.IPV6_ADDR}' \
+                                --prefix ${params.PREFIX} \
+                                --gateway '${params.GATEWAY}' \
+                                --iter ${i} 2>&1 | tee test-${i}.log
                         """
                     }
                 }
@@ -65,112 +53,88 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def localIP = params.LOCAL_IP
-                    def fwVersion = "N/A"
-                    try {
-                        fwVersion = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version || echo Unknown'", returnStdout: true).trim()
-                    } catch (e) { echo "Could not fetch firmware version" }
+                    def jsonData = readJSON file: 'ipv6_results.json'
+                    def total = jsonData.iterations.size()
+                    def passed = jsonData.iterations.count { it.status == 'PASS' }
+                    def rate = total > 0 ? String.format("%.1f", passed * 100.0 / total) : "0.0"
+                    def now = new Date().format("dd MMM yyyy, HH:mm:ss", TimeZone.getTimeZone("Asia/Kolkata"))
 
-                    def jsonReport = readJSON file: 'ipv6_results.json'
-                    def total = jsonReport.iterations.size()
-                    def pass  = jsonReport.iterations.count { it.status == 'PASS' }
-                    def fail  = total - pass
-                    def rate  = total > 0 ? String.format("%.1f", pass * 100.0 / total) : "0.0"
-                    def now   = new Date().format("dd MMM yyyy, HH:mm:ss", TimeZone.getTimeZone("Asia/Kolkata"))
+                    def tableRows = ""
+                    jsonData.iterations.each { r ->
+                        def logFile = "test-${r.iteration}.log"
+                        def logContent = fileExists(logFile) ? readFile(logFile).replace("<", "&lt;").replace(">", "&gt;") : "Log missing"
+                        tableRows += """
+                            <tr>
+                                <td style="padding:12px;border:1px solid #ddd;text-align:center;">${r.iteration}</td>
+                                <td style="padding:12px;border:1px solid #ddd;color:${r.ipv4_initial_ping?'#16a34a':'#dc2626'};font-weight:bold;">${r.ipv4_initial_ping?'PASS':'FAIL'}</td>
+                                <td style="padding:12px;border:1px solid #ddd;color:#16a34a;font-weight:bold;">SET</td>
+                                <td style="padding:12px;border:1px solid #ddd;color:${r.ipv6_final_ping?'#16a34a':'#dc2626'};font-weight:bold;">${r.ipv6_final_ping?'PASS':'FAIL'}</td>
+                                <td style="padding:12px;border:1px solid #ddd;font-weight:bold;color:${r.status=='PASS'?'#16a34a':'#dc2626'};font-size:18px;">${r.status}</td>
+                                <td style="padding:12px;border:1px solid #ddd;text-align:center;">
+                                    <button onclick="document.getElementById('log${r.iteration}').style.display='block'" style="padding:8px 16px;background:#3b82f6;color:white;border:none;border-radius:8px;cursor:pointer;">View Full Log</button>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td colspan="6">
+                                    <pre id="log${r.iteration}" style="display:none;background:#1a1a1a;color:#4ade80;padding:20px;margin:10px;border-radius:10px;max-height:600px;overflow:auto;font-size:13px;">${logContent}</pre>
+                                </td>
+                            </tr>
+                        """
+                    }
 
-                    def html = """
+                    writeFile file: 'ipv6_report.html', text: """
+                    <!DOCTYPE html>
                     <html>
                     <head>
-                        <title>IPv4 + IPv6 Test Report</title>
+                        <title>IPv4 + Static IPv6 Test Report</title>
+                        <meta charset="utf-8">
                         <style>
-                            body {font-family:Arial,sans-serif;background:#f5f5f5;color:#333;margin:0;padding:20px;}
-                            .container {max-width:1200px;margin:0 auto;background:white;padding:30px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.1);}
-                            .header {background:linear-gradient(135deg,#1e40af,#3b82f6);color:white;padding:30px;border-radius:12px;text-align:center;margin-bottom:30px;}
-                            .header h1 {margin:0;font-size:32px;}
-                            .header img {height:70px;vertical-align:middle;margin-right:15px;}
-                            h2 {color:#1e40af;border-bottom:3px solid #3b82f6;padding-bottom:10px;}
-                            table {width:100%;border-collapse:collapse;margin:20px 0;}
-                            th {background:#1e40af;color:white;padding:15px;}
-                            td {padding:12px;border-bottom:1px solid #ddd;text-align:center;}
-                            .pass {background:#d4edda;color:#155724;font-weight:bold;}
-                            .fail {background:#f8d7da;color:#721c24;font-weight:bold;}
-                            .btn {background:#3b82f6;color:white;padding:8px 16px;border:none;border-radius:8px;cursor:pointer;font-size:14px;}
-                            .modal {display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:999;}
-                            .modal-content {background:white;margin:5% auto;width:90%;max-width:1000px;max-height:80vh;overflow:auto;padding:20px;border-radius:12px;}
-                            pre {background:#1e293b;color:#86efac;padding:20px;border-radius:8px;overflow-x:auto;font-size:14px;}
+                            body {font-family: system-ui, sans-serif; background:#f3f4f6; margin:0; padding:20px;}
+                            .container {max-width:1300px; margin:auto; background:white; border-radius:16px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,0.1);}
+                            .header {background:linear-gradient(135deg,#1e40af,#3b82f6); color:white; padding:40px; text-align:center;}
+                            .header h1 {margin:0; font-size:36px;}
+                            .header p {font-size:20px; margin:10px 0 0;}
+                            .info, .summary {padding:30px; background:#f8fafc;}
+                            table {width:100%; border-collapse:collapse; margin:20px 0;}
+                            th {background:#1e40af; color:white; padding:16px; text-align:center;}
+                            td {padding:14px; border-bottom:1px solid #e5e7eb;}
+                            .pass {color:#16a34a; font-weight:bold;}
+                            .fail {color:#dc2626; font-weight:bold;}
                         </style>
-                        <script>
-                            function showLog(id) {
-                                document.getElementById('modal').style.display = 'block';
-                                document.getElementById('logContent').innerText = document.getElementById(id).innerText;
-                            }
-                            function closeModal() { document.getElementById('modal').style.display = 'none'; }
-                        </script>
                     </head>
                     <body>
                         <div class="container">
                             <div class="header">
-                                <img src="https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png" alt="Senao">
                                 <h1>IPv4 + Static IPv6 Test Report</h1>
-                                <p>${now}</p>
+                                <p>${now} | Stand: ${TARGET_STAND}</p>
                             </div>
-
-                            <h2>Test Parameters</h2>
-                            <table>
-                                <tr><th>Parameter</th><th>Value</th></tr>
-                                <tr><td>Local IP</td><td>${localIP}</td></tr>
-                                <tr><td>IPv6 Address</td><td>${params.IPV6_ADDR}/${params.PREFIX}</td></tr>
-                                <tr><td>Gateway</td><td>${params.GATEWAY}</td></tr>
-                                <tr><td>Firmware</td><td>${fwVersion}</td></tr>
-                                <tr><td>Iterations</td><td>${params.ITERATIONS}</td></tr>
-                            </table>
-
-                            <h2>Summary</h2>
-                            <table>
-                                <tr><th>Total</th><th>Passed</th><th>Failed</th><th>Success Rate</th></tr>
-                                <tr><td>${total}</td><td class="pass">${pass}</td><td class="fail">${fail}</td><td><b>${rate}%</b></td></tr>
-                            </table>
-
-                            <h2>Detailed Results</h2>
-                            <table>
-                                <tr>
-                                    <th>Iteration</th>
-                                    <th>IPv4 Ping</th>
-                                    <th>IPv6 Set</th>
-                                    <th>IPv6 Ping</th>
-                                    <th>Status</th>
-                                    <th>Log</th>
-                                </tr>
-                                ${jsonReport.iterations.collect { r ->
-                                    def logId = "log-${r.iteration}"
-                                    def logContent = fileExists("test-${r.iteration}.log") ? readFile("test-${r.iteration}.log").replace("<", "&lt;").replace(">", "&gt;") : "No log available"
-                                    """
+                            <div class="info">
+                                <h2>Test Parameters</h2>
+                                <table>
+                                    <tr><td><b>Local IPv4</b></td><td>${params.LOCAL_IP}</td></tr>
+                                    <tr><td><b>IPv6 Address</b></td><td>${params.IPV6_ADDR}/${params.PREFIX}</td></tr>
+                                    <tr><td><b>Gateway</b></td><td>${params.GATEWAY}</td></tr>
+                                    <tr><td><b>Iterations</b></td><td>${params.ITERATIONS}</td></tr>
+                                </table>
+                            </div>
+                            <div class="summary">
+                                <h2>Test Results → ${passed}/${total} Passed (${rate}% Success)</h2>
+                                <table>
                                     <tr>
-                                        <td>${r.iteration}</td>
-                                        <td class="${r.ipv4_ping ? 'pass' : 'fail'}">${r.ipv4_ping ? 'PASS' : 'FAIL'}</td>
-                                        <td class="${r.ipv6_set ? 'pass' : 'fail'}">${r.ipv6_set ? 'PASS' : 'FAIL'}</td>
-                                        <td class="${r.ipv6_ping ? 'pass' : 'fail'}">${r.ipv6_ping ? 'PASS' : 'FAIL'}</td>
-                                        <td><b>${r.status}</b></td>
-                                        <td><button class="btn" onclick="showLog('${logId}')">View Log</button></td>
+                                        <th>Iteration</th>
+                                        <th>IPv4 Initial</th>
+                                        <th>IPv6 Set</th>
+                                        <th>IPv6 Final</th>
+                                        <th>Status</th>
+                                        <th>Full Log</th>
                                     </tr>
-                                    <div id="${logId}" style="display:none"><pre>${logContent}</pre></div>
-                                    """
-                                }.join()}
-                            </table>
-
-                            <div id="modal" class="modal" onclick="closeModal()">
-                                <div class="modal-content" onclick="event.stopPropagation()">
-                                    <h2>Detailed Log Output</h2>
-                                    <pre id="logContent"></pre>
-                                    <br><button class="btn" onclick="closeModal()" style="background:#dc3545">Close</button>
-                                </div>
+                                    ${tableRows}
+                                </table>
                             </div>
                         </div>
                     </body>
                     </html>
                     """
-
-                    writeFile file: 'ipv6_report.html', text: html
                 }
             }
         }
@@ -187,20 +151,12 @@ pipeline {
                 reportName: 'IPv4_IPv6 Test Report'
             ])
 
-            echo "Cleaning up test log files..."
+            echo "Cleaning up logs..."
             sh 'rm -f test-*.log || true'
-            echo "-----------------------------------------"
-            echo 'Script Done!'
-            echo "-----------------------------------------"
 
             script {
-                def buildCauses = currentBuild.getBuildCauses()
-                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
-                def buildUserName = userCause?.userName ?: "Unknown User"
-                def buildUserId = userCause?.userId ?: "unknown"
-                echo "Build started by: ${buildUserName} (${buildUserId})"
-
-                def userEmails = [
+                def userId = currentBuild.getBuildCauses().find { it._class.contains('UserIdCause') }?.userId ?: "unknown"
+                def emailMap = [
                     "puneet": "puneet.sharma@senao.com",
                     "harman": "harmanjot.singh@senao.com",
                     "mahesh": "mahesh.battala@senao.com",
@@ -211,29 +167,23 @@ pipeline {
                     "phani": "phani.darla@senao.com",
                     "dinesh": "dinesh.redddy@senao.com"
                 ]
-                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
-                echo "Sending email to: ${userEmail}"
+                def email = emailMap.get(userId, "puneet.sharma@senao.com")
 
                 emailext(
-                    subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    subject: "IPv6 Test #${BUILD_NUMBER} - ${currentBuild.currentResult}",
                     body: """
-                        <html><body>
-                            <h2 style="color:blue;">Jenkins Build Notification</h2>
-                            <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
-                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">${currentBuild.currentResult}</span></p>
-                            <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
-                            <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
-                            <p><strong>Report:</strong> Attached (ipv6_report.html)</p>
-                            <br/><p style="color:gray;">--<br/>Jenkins Automated Notification</p>
-                        </body></html>
+                    <h2>IPv4 + Static IPv6 Test Completed</h2>
+                    <p><strong>Status:</strong> ${currentBuild.currentResult}</p>
+                    <p><strong>Iterations Passed:</strong> ${readJSON(file: 'ipv6_results.json')?.iterations?.count { it.status == 'PASS' } ?: 0} / ${params.ITERATIONS}</p>
+                    <p>Report and JSON attached.</p>
                     """,
-                    to: userEmail,
+                    to: email,
                     mimeType: 'text/html',
-                    attachmentsPattern: "ipv6_report.html,ipv6_results.json"
+                    attachmentsPattern: 'ipv6_report.html,ipv6_results.json'
                 )
             }
         }
-        success { echo "Script Success" }
-        failure { echo "Script Failure" }
+        success { echo "ALL TESTS PASSED SUCCESSFULLY!" }
+        failure { echo "TEST FAILED - CHECK LOGS" }
     }
 }
