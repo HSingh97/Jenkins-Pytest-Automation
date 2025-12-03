@@ -18,6 +18,9 @@ RESULT_FILE = "ipv6_results.json"
 MAX_IPV6_PING_WAIT_SECONDS = 300  # 5 minutes
 MAX_IPV4_PING_WAIT_SECONDS = 10
 
+# --- FIX: New increased delay value ---
+DELAY_BEFORE_APPLY = 20
+
 
 def run(cmd):
     """Executes a shell command and prints its output."""
@@ -121,16 +124,21 @@ else:
     gateway_hex = ipv6_to_hex(gateway_clean)
 
     print("\n--- Phase 2: SNMP Configuration ---")
+
+    # 1. Set Address Type (static)
     run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_ADDR_TYPE} s static")
+    # 2. Set IPv6 Address (x HEX)
     run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_IPV6_ADDR} x {ipv6_hex}")
-    run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_PREFIX} i {prefix_len}")
+    # 3. Set Gateway (x HEX) - Before prefix for good measure
     run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_GATEWAY} x {gateway_hex}")
+    # 4. Set Prefix Length (i integer) - LAST configuration before applying
+    run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_PREFIX} i {prefix_len}")
 
-    # Wait for 10 seconds before applying
-    print("\nWaiting 10 seconds before applying...")
-    time.sleep(10)
+    # Wait for 20 seconds before applying (increased delay)
+    print(f"\nWaiting {DELAY_BEFORE_APPLY} seconds before applying...")
+    time.sleep(DELAY_BEFORE_APPLY)
 
-    # Apply configuration
+    # 5. Apply configuration
     run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_APPLY} i 1")
 
     # Wait 60 seconds + retry ping for max 5 minutes total
