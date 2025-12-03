@@ -39,9 +39,6 @@ pipeline {
                     sh 'rm -f ipv6_results.json test-*.log || true'
                     sh 'echo \'{"iterations": []}\' > ipv6_results.json'
 
-                    sh "ssh-keygen -R ${localIP} || true"
-                    sh "ssh-keygen -R ${remoteIP} || true"
-
                     for (int i = 1; i <= count; i++) {
                         echo "=== ITERATION ${i} of ${count} ==="
                         def logFile = "test-${i}.log"
