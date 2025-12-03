@@ -18,9 +18,6 @@ RESULT_FILE = "ipv6_results.json"
 MAX_IPV6_PING_WAIT_SECONDS = 300  # 5 minutes
 MAX_IPV4_PING_WAIT_SECONDS = 10
 
-# --- FIX: New increased delay value ---
-DELAY_BEFORE_APPLY = 20
-
 
 def run(cmd):
     """Executes a shell command and prints its output."""
@@ -123,25 +120,25 @@ else:
     ipv6_hex = ipv6_to_hex(ipv6_clean)
     gateway_hex = ipv6_to_hex(gateway_clean)
 
-    print("\n--- Phase 2: SNMP Configuration ---")
+    print("\n--- Phase 2: SNMP Configuration (Single Transaction) ---")
 
-    # 1. Set Address Type (static)
-    run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_ADDR_TYPE} s static")
-    # 2. Set IPv6 Address (x HEX)
-    run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_IPV6_ADDR} x {ipv6_hex}")
-    # 3. Set Gateway (x HEX) - Before prefix for good measure
-    run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_GATEWAY} x {gateway_hex}")
-    # 4. Set Prefix Length (i integer) - LAST configuration before applying
-    run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_PREFIX} i {prefix_len}")
+    # --- CRITICAL FIX: Combine all SETS into one command ---
+    # This ensures all parameters (Type, IP, Gateway, Prefix) are sent before the APPLY action.
+    combined_snmpset_cmd = (
+        f"snmpset -v2c -c {COMMUNITY} {args.local_ip} "
+        f"{OID_ADDR_TYPE} s static "
+        f"{OID_IPV6_ADDR} x {ipv6_hex} "
+        f"{OID_GATEWAY} x {gateway_hex} "
+        f"{OID_PREFIX} i {prefix_len} "
+        f"{OID_APPLY} i 1"
+    )
 
-    # Wait for 20 seconds before applying (increased delay)
-    print(f"\nWaiting {DELAY_BEFORE_APPLY} seconds before applying...")
-    time.sleep(DELAY_BEFORE_APPLY)
+    # 1. Execute the single combined set and apply command
+    run(combined_snmpset_cmd)
 
-    # 5. Apply configuration
-    run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_APPLY} i 1")
+    # We no longer need the delay before the apply or the explicit apply command.
 
-    # Wait 60 seconds + retry ping for max 5 minutes total
+    # 2. Wait 60 seconds + retry ping for max 5 minutes total
     print("\nWaiting 60 seconds for link establishment...")
     time.sleep(60)
 
