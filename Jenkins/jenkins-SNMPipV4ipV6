@@ -27,7 +27,7 @@ pipeline {
             }
         }
 
-        stage('IPv4 + IPv6 Static Test') {
+        stage('IPv4 and IPv6 Static Test') {
             steps {
                 script {
                     def localIP = params.LOCAL_IP.trim()
@@ -38,6 +38,9 @@ pipeline {
 
                     sh 'rm -f ipv6_results.json test-*.log || true'
                     sh 'echo \'{"iterations": []}\' > ipv6_results.json'
+
+                    sh "ssh-keygen -R ${localIP} || true"
+                    sh "ssh-keygen -R ${remoteIP} || true"
 
                     for (int i = 1; i <= count; i++) {
                         echo "=== ITERATION ${i} of ${count} ==="
@@ -60,6 +63,9 @@ pipeline {
             steps {
                 script {
                     def localIP = params.LOCAL_IP
+                    sh "ssh-keygen -R ${localIP} || true"
+                    sh "ssh-keygen -R ${remoteIP} || true"
+
                     def fwVersion = "N/A"
                     try {
                         fwVersion = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version || echo Unknown'", returnStdout: true).trim()
