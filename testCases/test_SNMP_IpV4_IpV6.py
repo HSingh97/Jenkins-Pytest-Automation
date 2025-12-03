@@ -29,19 +29,26 @@ def run(cmd):
 
 
 def ping_once(ip, v6=False):
-    """Pings an IP address once (-c 1) and returns True/False."""
+    """Pings an IP address once (-c 1), prints its output, and returns True/False."""
     proto = "-6" if v6 else "-4"
     # Use -c 1 (count 1 packet), -W 5 (timeout 5 seconds)
     cmd = f"ping {proto} -c 1 -W 5 {ip}"
+
+    # Run the command and capture output
     r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
-    # Check if the return code is 0 (success) or if any packet was received
+    # --- FIX: Print the output of the single ping attempt ---
+    print(f"--- PING RETRY ({proto}) ---")
+    print(r.stdout.strip())
+
+    # Check if the return code is 0 (success)
     if r.returncode == 0:
         return True
 
-    # Fallback check (less reliable, but handles edge cases): check for 0% loss
-    if "0% packet loss" in r.stdout:
-        return True
+    # Fallback check for any successful packet
+    if re.search(r"(\d+) received", r.stdout):
+        received_packets = int(re.search(r"(\d+) received", r.stdout).group(1))
+        return received_packets > 0
 
     return False
 
@@ -50,19 +57,20 @@ def ping_with_retry(ip, v6=False, wait_time=1, max_total_time=60):
     """Continuously pings until success or timeout is reached."""
     start_time = time.time()
 
-    # First, run the full 5-packet ping to log initial status clearly
+    # --- Always run the full 5-packet ping for initial log clarity ---
     proto = "-6" if v6 else "-4"
     cmd_initial = f"ping {proto} -c 5 -W 5 {ip}"
-    print(f"\nSTARTING PING TEST {proto} → {ip}")
+    print(f"\nSTARTING INITIAL PING TEST {proto} → {ip}")
     r_initial = subprocess.run(cmd_initial, shell=True, capture_output=True, text=True)
     print(r_initial.stdout)
 
-    if r_initial.returncode == 0:
-        print("Initial ping succeeded.")
+    # Check initial result
+    if r_initial.returncode == 0 or (re.search(r"0% packet loss", r_initial.stdout)):
+        print("Initial full ping succeeded.")
         return True
 
     # Retry loop
-    print(f"Initial ping failed. Starting retry for max {max_total_time} seconds...")
+    print(f"Initial ping failed. Starting retry loop for max {max_total_time} seconds...")
     while time.time() - start_time < max_total_time:
         if ping_once(ip, v6):
             print(f"\nSUCCESS: Ping succeeded after {int(time.time() - start_time)} seconds.")
@@ -85,7 +93,6 @@ def ipv6_to_hex(ip):
 # --- Script execution starts here ---
 
 parser = argparse.ArgumentParser()
-# Renamed argument in script to use underscore, matching common Python style
 parser.add_argument("--local-ip", dest="local_ip", required=True)
 parser.add_argument("--ipv6", required=True)
 parser.add_argument("--prefix", required=True)
@@ -98,14 +105,12 @@ gateway_clean = args.gateway.split('/')[0] if '/' in args.gateway else args.gate
 prefix_len = args.prefix.split('/')[-1] if '/' in args.prefix else args.prefix
 
 print("\n" + "=" * 100)
-# FIXED: Accessing the argument using the correct attribute name args.local_ip
 print(f"UBR655 IPv6 TEST | ITER {args.iter} | {args.local_ip} → {ipv6_clean}")
 print(f"Prefix: {prefix_len} | Gateway: {gateway_clean}")
 print("=" * 100 + "\n")
 
-# Phase 1: Check IPv4 reachability (quick ping)
-print("\n--- Phase 1: Initial IPv4 Reachability Check ---")
-# Use the simpler ping_once here for a quick test
+# Phase 1: Check IPv4 reachability (using a max 10s retry)
+print("\n--- Phase 1: Initial IPv4 Reachability Check (max 10s) ---")
 if not ping_with_retry(args.local_ip, v6=False, max_total_time=10):
     status = "FAIL"
 else:
@@ -123,19 +128,18 @@ else:
     # 4. Set Gateway (x HEX)
     run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_GATEWAY} x {gateway_hex}")
 
-    # 5. Wait for 10 seconds before applying (as requested)
+    # 5. Wait for 10 seconds before applying
     print("\nWaiting 10 seconds before applying...")
     time.sleep(10)
 
     # 6. Apply configuration
     run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_APPLY} i 1")
 
-    # 7. Wait 60 seconds (as requested for link up) + retry ping for max 3 minutes
+    # 7. Wait 60 seconds + retry ping for max 3 minutes total
     print("\nWaiting 60 seconds for link establishment...")
     time.sleep(60)
 
-    print("\n--- Phase 3: IPv6 Reachability Check (Retry) ---")
-    # Use the ping_with_retry function
+    print("\n--- Phase 3: IPv6 Reachability Check (Max 3-Minute Retry) ---")
     if ping_with_retry(ipv6_clean, v6=True, max_total_time=MAX_PING_WAIT_SECONDS):
         status = "PASS"
     else:
@@ -149,7 +153,7 @@ try:
     with open(RESULT_FILE, 'r') as f:
         data = json.load(f)
 except (FileNotFoundError, json.JSONDecodeError):
-    pass  # Initialize with default data
+    pass
 
 data["iterations"].append({"iteration": args.iter, "status": status})
 with open(RESULT_FILE, "w") as f:
