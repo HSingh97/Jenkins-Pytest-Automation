@@ -15,9 +15,8 @@ OID_APPLY = ".1.3.6.1.4.1.52619.1.2.1.1.0"  # i 1
 
 COMMUNITY = "private"
 RESULT_FILE = "ipv6_results.json"
-# Updated max wait time to 5 minutes (300 seconds) for Phase 3 IPv6 check
-MAX_IPV6_PING_WAIT_SECONDS = 300
-MAX_IPV4_PING_WAIT_SECONDS = 10  # Keep IPv4 initial check short
+MAX_IPV6_PING_WAIT_SECONDS = 300  # 5 minutes
+MAX_IPV4_PING_WAIT_SECONDS = 10
 
 
 def run(cmd):
@@ -47,7 +46,7 @@ def ping_once(ip, v6=False):
 
     r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
-    # --- Print the output of the single ping attempt ---
+    # Print the output of the single ping attempt
     print(f"--- PING RETRY ({proto}) ---")
     print(r.stdout.strip())
 
@@ -58,19 +57,19 @@ def ping_with_retry(ip, v6=False, wait_time=1, max_total_time=60):
     """Handles the initial 5-packet ping and then the continuous retry loop."""
     start_time = time.time()
 
-    # --- 1. Initial 5-packet ping ---
+    # 1. Initial 5-packet ping
     proto = "-6" if v6 else "-4"
     cmd_initial = f"ping {proto} -c 5 -W 5 {ip}"
     print(f"\nSTARTING INITIAL PING TEST {proto} → {ip}")
     r_initial = subprocess.run(cmd_initial, shell=True, capture_output=True, text=True)
     print(r_initial.stdout)
 
-    # --- CRITICAL FIX: Only succeed if the initial ping received packets ---
+    # Only succeed if the initial ping received packets
     if is_ping_successful(r_initial.stdout):
         print("Initial full ping succeeded (Received packets > 0).")
         return True
 
-    # --- 2. Retry loop (only if initial ping failed) ---
+    # 2. Retry loop (only if initial ping failed)
     print(f"Initial 5-packet ping failed (Received 0 packets). Starting retry loop for max {max_total_time} seconds...")
     while time.time() - start_time < max_total_time:
         if ping_once(ip, v6):
@@ -78,7 +77,6 @@ def ping_with_retry(ip, v6=False, wait_time=1, max_total_time=60):
             return True
 
         elapsed = int(time.time() - start_time)
-        # Avoid printing 'Waiting 1s' if time's up
         if elapsed < max_total_time - 1:
             print(f"Ping failed (Elapsed: {elapsed}s). Waiting {wait_time}s...")
 
@@ -123,7 +121,6 @@ else:
     gateway_hex = ipv6_to_hex(gateway_clean)
 
     print("\n--- Phase 2: SNMP Configuration ---")
-    # SNMP Set operations
     run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_ADDR_TYPE} s static")
     run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_IPV6_ADDR} x {ipv6_hex}")
     run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_PREFIX} i {prefix_len}")
