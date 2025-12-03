@@ -1,8 +1,6 @@
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
 
-    // NO PARAMETERS HERE — YOU CONFIGURE IN UI ONLY
-
     stages {
         stage('Prepare') {
             steps {
