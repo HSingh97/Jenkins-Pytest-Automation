@@ -6,6 +6,7 @@ def archiveArtifacts(pattern) {
 }
 
 pipeline {
+    // Note: Assuming these parameters are defined in the Jenkins job configuration
     agent { node { label "${TARGET_STAND}" } }
 
     // Define environment variables from build parameters for easier access
@@ -17,6 +18,11 @@ pipeline {
         ITERATIONS = "${params.ITERATIONS}"
         REPORT_FILE_NAME = 'IPv6_Test_Report.html'
         RESULTS_JSON = 'ipv6_results.json'
+
+        // Initialize for email/post-action use
+        TOTAL_TESTS = "0"
+        PASSED_TESTS = "0"
+        SUCCESS_RATE = "0.00"
     }
 
     stages {
@@ -45,7 +51,7 @@ pipeline {
 
         stage('Install Tools') {
             steps {
-                // Installs snmp, ping utilities, and python3. Added a check for success.
+                // Installs snmp, ping utilities, and python3.
                 sh 'apt-get update && apt-get install -y snmp iputils-ping python3'
             }
         }
@@ -65,7 +71,6 @@ pipeline {
                                 --gateway '${GATEWAY}' \\
                                 --iter ${i} | tee test-${i}.log
                         """
-                        // Check script exit code if needed, but Python script saves result to JSON anyway
                     }
                 }
             }
@@ -80,11 +85,13 @@ pipeline {
                     def totalTests = jsonReport.iterations.size()
                     def passCount = jsonReport.iterations.count { it.status == 'PASS' }
                     def failCount = totalTests - passCount
-                    def successPercentage = (totalTests > 0) ? (passCount / (double)totalTests) * 100 : 0
-                    def successPercentageStr = String.format("%.2f", successPercentage)
 
-                    env.TOTAL_TESTS = totalTests
-                    env.PASSED_TESTS = passCount
+                    // Explicitly convert to BigDecimal for precise floating-point division to avoid Groovy casting errors
+                    def successPercentage = (totalTests > 0) ? (passCount.toBigDecimal() / totalTests.toBigDecimal()) * 100 : 0
+                    def successPercentageStr = String.format("%.2f", successPercentage.toDouble())
+
+                    env.TOTAL_TESTS = String.valueOf(totalTests)
+                    env.PASSED_TESTS = String.valueOf(passCount)
                     env.SUCCESS_RATE = successPercentageStr
 
                     // --- HTML Report Data ---
@@ -98,9 +105,7 @@ pipeline {
                         "Iterations": env.ITERATIONS
                     ]
 
-                    // Note: Removed the FW version section as the original pipeline did not have it.
-                    // If you want to keep the reboot pipeline style, you'd re-add that logic here.
-
+                    // --- Generate Table Rows and Log Blocks ---
                     def rows = ""
                     def logDataBlocks = ""
 
@@ -129,18 +134,18 @@ pipeline {
                                 <td style="text-align: center;">${logButton}</td>
                             </tr>
                         """
+                        // Store log data in hidden divs
                         logDataBlocks += "<div id='${logDataId}' style='display:none;'>${logContent}</div>\\n"
                     }
 
                     // --- Construct HTML Content ---
-                    // Used a Groovy Multiline String for easier HTML structure
+                    // Includes all custom styles and structure from your desired format.
                     def htmlContent = """
                         <!DOCTYPE html>
                         <html>
                         <head>
                             <title>Senao IPv6 Static Test Report</title>
                             <style>
-                                /* Basic styles from your desired format */
                                 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f9fafb; color: #1f2937; }
                                 .container { max-width: 1200px; margin: 24px auto; padding: 24px; }
                                 .header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%); padding: 28px 36px; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04); }
@@ -222,21 +227,21 @@ pipeline {
                                         <div class="card-icon">🎯</div>
                                         <div class="card-info">
                                             <p class="card-info-title">Success Rate</p>
-                                            <p class="card-info-value percent">${successPercentageStr}<span class="percent-sign">%</span></p>
+                                            <p class="card-info-value percent">${SUCCESS_RATE}<span class="percent-sign">%</span></p>
                                         </div>
                                     </div>
                                     <div class="summary-card card-total">
                                         <div class="card-icon">📦</div>
                                         <div class="card-info">
                                             <p class="card-info-title">Total Iterations</p>
-                                            <p class="card-info-value">${totalTests}</p>
+                                            <p class="card-info-value">${TOTAL_TESTS}</p>
                                         </div>
                                     </div>
                                     <div class="summary-card card-pass">
                                         <div class="card-icon">✅</div>
                                         <div class="card-info">
                                             <p class="card-info-title">Passed</p>
-                                            <p class="card-info-value">${passCount}</p>
+                                            <p class="card-info-value">${PASSED_TESTS}</p>
                                         </div>
                                     </div>
                                     <div class="summary-card card-fail">
@@ -284,6 +289,7 @@ pipeline {
 
     post {
         always {
+            // Publish HTML report using the requested file name and report name
             publishHTML(target: [
                 allowMissing: false,
                 alwaysLinkToLastBuild: true,
@@ -293,6 +299,7 @@ pipeline {
                 reportName: 'IPv6 Static Test Report'
             ])
 
+            // Archive the report, results JSON, and all logs
             archiveArtifacts "${env.REPORT_FILE_NAME},${env.RESULTS_JSON},test-*.log"
 
             // Clean up the temporary log files
@@ -304,11 +311,13 @@ pipeline {
             echo "-----------------------------------------"
 
             script {
+                // Get build information for email
                 def buildCauses = currentBuild.getBuildCauses()
                 def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
                 def buildUserId = userCause?.userId ?: "unknown"
+                def buildUserName = userCause?.userName ?: "Unknown User"
 
-                // Define a mapping of user IDs to emails (update as needed)
+                // Define a mapping of user IDs to emails
                 def userEmails = [
                     "puneet": "puneet.sharma@senao.com",
                     "harman": "harmanjot.singh@senao.com",
@@ -321,9 +330,7 @@ pipeline {
                     "dinesh": "dinesh.redddy@senao.com"
                 ]
 
-                // Get email from predefined mapping, else use default
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
-                def buildUserName = userCause?.userName ?: "Unknown User"
 
                 echo "Sending email to: ${userEmail}"
 
