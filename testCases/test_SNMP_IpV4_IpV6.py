@@ -4,86 +4,109 @@ import time
 import json
 import subprocess
 import socket
+import os
 
 COMMUNITY = "private"
 RESULT_FILE = "ipv6_results.json"
 
-# REAL SENA OAP OIDs FROM YOUR MIB BROWSER (1.1.2.14 to 1.1.2.17)
-OID_ADDR_TYPE = ".1.3.6.1.4.1.52619.1.1.2.14.0"   # STRING: "static"
-OID_ADDRESS   = ".1.3.6.1.4.1.52619.1.1.2.15.0"   # OctetString hex
-OID_PREFIX    = ".1.3.6.1.4.1.52619.1.1.2.16.0"   # OctetString hex mask
-OID_GATEWAY   = ".1.3.6.1.4.1.52619.1.1.2.17.0"   # OctetString hex
-OID_APPLY     = ".1.3.6.1.4.1.52619.1.2.1.1.0"    # INTEGER 1
+# Correct OIDs for Senao Devices
+OID_ADDR_TYPE = ".1.3.6.1.4.1.52619.1.1.2.14.0"  # s "static"
+OID_ADDRESS = ".1.3.6.1.4.1.52619.1.1.2.15.0"  # x 16-byte hex IPv6 address
+OID_PREFIX = ".1.3.6.1.4.1.52619.1.1.2.16.0"  # x 16-byte prefix mask
+OID_GATEWAY = ".1.3.6.1.4.1.52619.1.1.2.17.0"  # x 16-byte gateway
+OID_APPLY = ".1.3.6.1.4.1.52619.1.2.1.1.0"  # i 1 = apply
+
 
 def run(cmd):
-    print(f"\n>>> {cmd}", flush=True)
-    r = subprocess.run(cmd.split(), capture_output=True, text=True)
-    print(r.stdout.strip() if r.stdout.strip() else r.stderr.strip(), flush=True)
-    return r.returncode == 0
+    print(f">>> {cmd}")
+    result = subprocess.run(cmd.split(), capture_output=True, text=True)
+    print(result.stdout.strip())
+    if result.stderr:
+        print("ERROR:", result.stderr.strip())
+    return result.returncode == 0
 
-def ping(ip, v6=False):
+
+def ping(ip, count=5, v6=False):
     proto = "-6" if v6 else "-4"
-    print(f"\nPING {proto} → {ip}", flush=True)
-    subprocess.run(["ping", proto, "-c", "5", "-W", "3", ip])
-    return subprocess.run(["ping", proto, "-c", "1", "-W", "2", ip], capture_output=True).returncode == 0
+    cmd = ["ping", proto, "-c", str(count), "-W", "3", ip]
+    print(f"\nPING {proto} → {ip}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    print(result.stdout)
+    success = " 0% packet loss" in result.stdout or " 0.0% packet loss" in result.stdout
+    return success
 
-def ipv6_to_hex(ip):
-    clean = ip.split('/')[0]
-    return ' '.join(f'{b:02x}' for b in socket.inet_pton(socket.AF_INET6, clean))
 
-def prefix_to_hex_mask(prefix_len):
-    prefix_len = int(prefix_len)
-    full = prefix_len // 8
-    bits = prefix_len % 8
+def ip_to_hex(ip):
+    clean_ip = ip.split('/')[0]
+    return ' '.join(f'{b:02x}' for b in socket.inet_pton(socket.AF_INET6, clean_ip))
+
+
+def prefix_to_hex_mask(prefix_input):
+    # Accept: "64" or "2001:db8::/48" → extract only number
+    if '/' in prefix_input:
+        prefix_len = int(prefix_input.split('/')[-1])
+    else:
+        prefix_len = int(prefix_input) if prefix_input.isdigit() else 64
+
     mask = bytearray(16)
-    for i in range(full): mask[i] = 0xFF
-    if bits: mask[full] = 0xFF << (8 - bits)
+    full_bytes = prefix_len // 8
+    for i in range(full_bytes):
+        mask[i] = 0xFF
+    remainder = prefix_len % 8
+    if remainder:
+        mask[full_bytes] = 0xFF << (8 - remainder)
     return ' '.join(f'{b:02x}' for b in mask)
 
-# Args
-parser = argparse.ArgumentParser()
-parser.add_argument("--local-ip", required=True)
-parser.add_argument("--ipv6", required=True)
-parser.add_argument("--prefix", required=True)
-parser.add_argument("--gateway", required=True)
-parser.add_argument("--iter", type=int, required=True)
+
+# ==================== ARGUMENTS ====================
+parser = argparse.ArgumentParser(description="Senao IPv6 Static Test via SNMP")
+parser.add_argument("--local-ip", required=True, help="Device IPv4 (e.g. 192.168.1.10)")
+parser.add_argument("--ipv6", required=True, help="IPv6 Address (e.g. 2001:db8:1::1015/64)")
+parser.add_argument("--prefix", required=True, help="Prefix length or full (64 or 2001:db8:1::/48)")
+parser.add_argument("--gateway", required=True, help="IPv6 Gateway (e.g. 2001:db8:1::1)")
+parser.add_argument("--iter", type=int, required=True, help="Iteration number")
 args = parser.parse_args()
 
 ipv6_clean = args.ipv6.split('/')[0]
-prefix_len = args.prefix.split('/')[-1] if '/' in args.prefix else args.prefix
-prefix_len = int(prefix_len) if prefix_len.isdigit() else 64
+gateway_clean = args.gateway.split('/')[0] if '/' in args.gateway else args.gateway
 
-print("\n" + "="*100)
-print(f"SENAO IPv6 TEST | ITER {args.iter} | SUCCESS COMING...")
-print(f"Address : {ipv6_clean}")
-print(f"Prefix  : /{prefix_len} → {prefix_to_hex_mask(prefix_len)}")
-print(f"Gateway : {args.gateway}")
-print("="*100)
+print("\n" + "=" * 100)
+print(f"SENAO IPv6 STATIC TEST | ITERATION {args.iter} | STAND: {os.getenv('TARGET_STAND', 'N/A')}")
+print(f"IPv4 → {args.local_ip} | IPv6 → {ipv6_clean}")
+print(f"Prefix → {args.prefix} | Gateway → {gateway_clean}")
+print("=" * 100 + "\n")
 
-if not ping(args.local_ip):
-    exit(1)
+# Step 1: Check IPv4 reachable
+if not ping(args.local_ip, v6=False):
+    print("IPv4 PING FAILED → ABORTING")
+    status = "FAIL"
+else:
+    print("\nSetting IPv6 via SNMP...")
+    run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_ADDR_TYPE} s static")
+    run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_ADDRESS} x {ip_to_hex(ipv6_clean)}")
+    run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_PREFIX} x {prefix_to_hex_mask(args.prefix)}")
+    run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_GATEWAY} x {ip_to_hex(gateway_clean)}")
 
-# REAL WORKING OIDs
-run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_ADDR_TYPE} s static")
-run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_ADDRESS} x {ipv6_to_hex(ipv6_clean)}")
-run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_PREFIX} x {prefix_to_hex_mask(prefix_len)}")
-run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_GATEWAY} x {ipv6_to_hex(args.gateway)}")
+    time.sleep(10)
+    run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_APPLY} i 1")
 
-time.sleep(20)
-run(f"snmpset -v2c -c {COMMUNITY} {args.local_ip} {OID_APPLY} i 1")
+    print("\nWaiting 75 seconds for IPv6 interface to come up...")
+    time.sleep(75)
 
-print("\nWAITING 65 SECONDS...")
-time.sleep(65)
+    status = "PASS" if ping(ipv6_clean, v6=True) else "FAIL"
 
-ipv6_ok = ping(ipv6_clean, v6=True)
-status = "PASS" if ipv6_ok else "FAIL"
 print(f"\nFINAL RESULT → {status}")
+print("=" * 100)
 
-result = {"iteration": args.iter, "status": status, "ipv6_ping": ipv6_ok}
+# Save result for Jenkins
+result = {"iteration": args.iter, "status": status}
 try:
-    with open(RESULT_FILE) as f: data = json.load(f)
-except: data = {"iterations": []}
+    with open(RESULT_FILE) as f:
+        data = json.load(f)
+except:
+    data = {"iterations": []}
 data["iterations"].append(result)
-with open(RESULT_FILE, "w") as f: json.dump(data, f, indent=4)
+with open(RESULT_FILE, "w") as f:
+    json.dump(data, f, indent=4)
 
 exit(0 if status == "PASS" else 1)
