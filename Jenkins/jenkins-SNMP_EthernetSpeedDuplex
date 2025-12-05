@@ -1,6 +1,5 @@
 import jenkins.model.Jenkins
 
-// Helper function (kept for compatibility)
 def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
@@ -83,8 +82,13 @@ pipeline {
                     def localIP = params.'Local IP Address'
                     def fw = "N/A"
                     try {
-                        fw = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version 2>/dev/null || echo Unknown'", returnStdout Tibet: true).trim()
-                    } catch (e) { echo "Could not fetch FW" }
+                        fw = sh(
+                            script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version 2>/dev/null || echo Unknown'",
+                            returnStdout: true
+                        ).trim()
+                    } catch (e) {
+                        echo "Could not fetch FW version"
+                    }
 
                     def jsonReport = readJSON file: 'EthernetSpeedDuplexTest.json'
                     def total = jsonReport.iterations?.size() ?: 0
@@ -223,33 +227,7 @@ pipeline {
                 reportName: 'Ethernet Speed & Duplex Test Report'
             ])
             archiveArtifacts artifacts: 'EthernetSpeedDuplexTest.json,test-*.log,debug_tables/**,Ethernet_Speed_Duplex_Report.html', allowEmptyArchive: true
-
-            echo "Cleaning up..."
             sh 'rm -f test-*.log || true'
-
-            script {
-                def userId = currentBuild.getBuildCauses().find { it._class == 'hudson.model.Cause$UserIdCause' }?.userId ?: "unknown"
-                def userEmail = [
-                    "puneet": "puneet.sharma@senao.com",
-                    "harman": "harmanjot.singh@senao.com",
-                    "mahesh": "mahesh.battala@senao.com"
-                ].get(userId, "puneet.sharma@senao.com")
-
-                emailext(
-                    subject: "Ethernet Test: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
-                    body: """
-                        <h2>Ethernet Speed & Duplex Test Completed</h2>
-                        <p><strong>Result:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'}">${currentBuild.currentResult}</span></p>
-                        <p><strong>SU IP:</strong> ${params.'Local IP Address'}</p>
-                        <p>See attached HTML report.</p>
-                    """,
-                    to: userEmail,
-                    mimeType: 'text/html',
-                    attachmentsPattern: 'Ethernet_Speed_Duplex_Report.html,EthernetSpeedDuplexTest.json'
-                )
-            }
         }
-        success { echo "ETHERNET TEST PASSED" }
-        failure { echo "ETHERNET TEST FAILED" }
     }
 }
