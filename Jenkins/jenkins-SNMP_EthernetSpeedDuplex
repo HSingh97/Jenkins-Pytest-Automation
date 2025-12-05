@@ -1,5 +1,6 @@
 import jenkins.model.Jenkins
 
+// Helper (optional)
 def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
@@ -18,13 +19,9 @@ pipeline {
                     echo "Iterations   : ${params.ITERATION_COUNT}"
                     echo "----------------------------------------"
 
-                    if (!params.'Local IP Address') {
-                        error "Missing required parameter: Local IP Address"
-                    }
-
                     sh '''
                         mkdir -p debug_tables logs
-                        rm -f EthernetSpeedDuplexTest.json test-*.log debug_tables/*.txt Ethernet_Speed_Duplex_Report.html || true
+                        rm -f EthernetSpeedDuplexTest.json test-*.log debug_tables/*.txt report.html || true
                         echo '{"iterations": []}' > EthernetSpeedDuplexTest.json
                     '''
                 }
@@ -33,44 +30,27 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                script {
-                    echo "----------------------------------------"
-                    echo "Installing SNMP Tools & Dependencies"
-                    echo "----------------------------------------"
-                    sh '''
-                        which snmpget >/dev/null 2>&1 || {
-                            echo "Installing net-snmp..."
-                            sudo apt-get update -qq
-                            sudo apt-get install -y snmp snmp-mibs-downloader sshpass
-                        }
-                    '''
-                }
+                sh '''
+                    which snmpget >/dev/null 2>&1 || {
+                        sudo apt-get update -qq
+                        sudo apt-get install -y snmp snmp-mibs-downloader sshpass
+                    }
+                '''
             }
         }
 
-        stage('Run Ethernet Test') {
+        stage('Run Test') {
             steps {
                 script {
-                    def localIP = params.'Local IP Address'.trim()
+                    def ip = params.'Local IP Address'.trim()
                     def count = params.ITERATION_COUNT.trim().toInteger()
-
-                    echo "----------------------------------------"
-                    echo "Starting Ethernet Speed & Duplex Test"
-                    echo "----------------------------------------"
 
                     for (int i = 1; i <= count; i++) {
                         echo "=== ITERATION ${i}/${count} ==="
-                        try {
-                            sh """
-                                python3 testCases/test_SNMPEthernetDuplex.py \
-                                    --su-ip '${localIP}' \
-                                    --iter ${i} \
-                                2>&1 | tee test-${i}.log
-                            """
-                            sh "mv debug_ethernet_table_iter${i}.txt debug_tables/ || true"
-                        } catch (err) {
-                            echo "Iteration ${i} failed: ${err}"
-                        }
+                        sh """
+                            python3 testCases/test_SNMPEthernetDuplex.py --su-ip '${ip}' --iter ${i}
+                        """
+                        sh "mv debug_ethernet_table_iter${i}.txt debug_tables/ || true"
                     }
                 }
             }
@@ -82,24 +62,19 @@ pipeline {
                     def localIP = params.'Local IP Address'
                     def fw = "N/A"
                     try {
-                        fw = sh(
-                            script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version 2>/dev/null || echo Unknown'",
-                            returnStdout: true
-                        ).trim()
-                    } catch (e) {
-                        echo "Could not fetch FW version"
-                    }
+                        fw = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version 2>/dev/null || echo Unknown'", returnStdout: true).trim()
+                    } catch (e) {}
 
                     def jsonReport = readJSON file: 'EthernetSpeedDuplexTest.json'
-                    def total = jsonReport.iterations?.size() ?: 0
-                    def pass = jsonReport.iterations?.count { it.overall_status == 'PASS' } ?: 0
-                    def fail = total - pass
-                    def rate = total > 0 ? String.format("%.1f", (pass * 100.0 / total)) : "0.0"
+                    def totalTests = jsonReport.iterations?.size() ?: 0
+                    def passCount = jsonReport.iterations?.count { it.overall_status == 'PASS' } ?: 0
+                    def failCount = totalTests - passCount
+                    def successPercentageStr = totalTests > 0 ? String.format("%.1f", (passCount * 100.0 / totalTests)) : "0.0"
 
                     def buildParams = [
                         "Local IP Address": localIP,
-                        "FW Version (SU)" : fw,
-                        "Iteration Count" : params.ITERATION_COUNT
+                        "FW Version (SU)": fw,
+                        "Iteration Count": params.ITERATION_COUNT
                     ]
 
                     def istDate = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
@@ -133,13 +108,12 @@ pipeline {
                             tr:hover{background:#f9fafb;}
                             .status-pass{color:#059669;background:#d1fae5;padding:5px 10px;border-radius:99px;font-weight:600;display:inline-block;}
                             .status-fail{color:#dc2626;background:#fee2e2;padding:5px 10px;border-radius:99px;font-weight:600;display:inline-block;}
-                            .log-button{background:#3b82f6;color:white;padding:8px 16px;border:none;border-radius:8px;font-weight:600;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.05);}
-                            .log-button:hover{background:#2563eb;box-shadow:0 2px 4px rgba(0,0,0,0.1);}
-                            .modal{display:none;position:fixed;z-index:100;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.6);overflow:auto;}
+                            .log-button{background:#3b82f6;color:white;padding:8px 16px;border:none;border-radius:8px;font-weight:600;cursor:pointer;}
+                            .log-button:hover{background:#2563eb;}
+                            .modal{display:none;position:fixed;z-index:100;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.6);}
                             .modal-content{background:#fff;margin:5% auto;border:1px solid #e5e7eb;border-radius:12px;width:80%;max-width:900px;box-shadow:0 10px 25px rgba(0,0,0,0.1);}
                             .modal-header{padding:20px 32px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;}
                             .modal-close{color:#9ca3af;font-size:28px;font-weight:bold;cursor:pointer;}
-                            .modal-close:hover{color:#1f2937;}
                             #log-content-pre{background:#1f2937;color:#e5e7eb;padding:24px 32px;max-height:60vh;overflow:auto;white-space:pre-wrap;font-family:Consolas,monospace;font-size:14px;}
                         </style>
                         <script>
@@ -160,16 +134,17 @@ pipeline {
                             </div>
 
                             <h2>Build Parameters</h2>
-                            <table><tr><th>Parameter</th><th>Value</th></tr>
-                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join()}
+                            <table>
+                                <tr><th>Parameter</th><th>Value</th></tr>
+                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('')}
                             </table>
 
                             <h2>Test Summary</h2>
                             <div class="summary-container">
-                                <div class="summary-card card-percent"><div class="card-icon">Target</div><div class="card-info"><p class="card-info-title">Success Rate</p><p class="card-info-value">${rate}<span class="percent-sign">%</span></p></div></div>
-                                <div class="summary-card card-total"><div class="card-icon">Test</div><div class="card-info"><p class="card-info-title">Total Iterations</p><p class="card-info-value">${total}</p></div></div>
-                                <div class="summary-card card-pass"><div class="card-icon">Checkmark</div><div class="card-info"><p class="card-info-title">Passed</p><p class="card-info-value">${pass}</p></div></div>
-                                <div class="summary-card card-fail"><div class="card-icon">Cross</div><div class="card-info"><p class="card-info-title">Failed</p><p class="card-info-value">${fail}</p></div></div>
+                                <div class="summary-card card-percent"><div class="card-icon">Target</div><div class="card-info"><p class="card-info-title">Success Rate</p><p class="card-info-value">${successPercentageStr}<span class="percent-sign">%</span></p></div></div>
+                                <div class="summary-card card-total"><div class="card-icon">Test</div><div class="card-info"><p class="card-info-title">Total Iterations</p><p class="card-info-value">${totalTests}</p></div></div>
+                                <div class="summary-card card-pass"><div class="card-icon">Checkmark</div><div class="card-info"><p class="card-info-title">Passed</p><p class="card-info-value">${passCount}</p></div></div>
+                                <div class="summary-card card-fail"><div class="card-icon">Cross</div><div class="card-info"><p class="card-info-title">Failed</p><p class="card-info-value">${failCount}</p></div></div>
                             </div>
 
                             <h2>Detailed Results</h2>
@@ -192,7 +167,7 @@ pipeline {
                             logContent = readFile("test-${i}.log").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
                         } catch (e) {}
 
-                        tableRows += "<tr><td><strong>${i}</strong></td><td>${a}</td><td>${g}</td><td>${f}</td><td>${o}</td><td><button class='log-button' onclick=\"showLog('log${i}')\">View Log</button></td></tr>"
+                        tableRows += "<tr><td><strong>${i}</strong></td><td>${a}</td><td>${g}</td><td>${f}</td><td>${o}</td><td><button class='log-button' onclick=\"showLog('log${i}')\">See Logs</button></td></tr>"
                         logBlocks += "<div id='log${i}' style='display:none;'>${logContent}</div>"
                     }
 
@@ -210,7 +185,7 @@ pipeline {
                     </html>
                     """
 
-                    writeFile file: 'Ethernet_Speed_Duplex_Report.html', text: htmlContent
+                    writeFile file: 'report.html', text: htmlContent
                 }
             }
         }
@@ -223,11 +198,29 @@ pipeline {
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
                 reportDir: '.',
-                reportFiles: 'Ethernet_Speed_Duplex_Report.html',
-                reportName: 'Ethernet Speed & Duplex Test Report'
+                reportFiles: 'report.html',
+                reportName: 'Test Report'
             ])
-            archiveArtifacts artifacts: 'EthernetSpeedDuplexTest.json,test-*.log,debug_tables/**,Ethernet_Speed_Duplex_Report.html', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'EthernetSpeedDuplexTest.json,test-*.log,debug_tables/**,report.html', allowEmptyArchive: true
             sh 'rm -f test-*.log || true'
+
+            script {
+                def userId = currentBuild.getBuildCauses().find { it._class == 'hudson.model.Cause$UserIdCause' }?.userId ?: "unknown"
+                def userEmail = ["puneet": "puneet.sharma@senao.com", "harman": "harmanjot.singh@senao.com"].get(userId, "puneet.sharma@senao.com")
+
+                emailext(
+                    subject: "Ethernet Test: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    body: """
+                        <h2>Ethernet Speed & Duplex Test Completed</h2>
+                        <p><strong>Result:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'}">${currentBuild.currentResult}</span></p>
+                        <p><strong>SU IP:</strong> ${params.'Local IP Address'}</p>
+                        <p>See attached report.</p>
+                    """,
+                    to: userEmail,
+                    mimeType: 'text/html',
+                    attachmentsPattern: 'report.html,EthernetSpeedDuplexTest.json'
+                )
+            }
         }
     }
 }
