@@ -71,6 +71,7 @@ def snmp_set_value(ip, oid, value_type, value):
     """Performs an snmpset to set a value."""
     cmd = f"snmpset -v2c -c {COMMUNITY} {ip} {oid} {value_type} {value}"
     result = run(cmd)
+    # Check for successful SNMP SET command return code and absence of "Error" in stderr
     return result.returncode == 0 and "Error" not in result.stderr
 
 
@@ -78,7 +79,6 @@ def snmp_walk(ip, oid):
     """Performs an snmpwalk and returns the raw output."""
     cmd = f"snmpwalk -v2c -c {COMMUNITY} {ip} {oid}"
     result = run(cmd)
-    print(result.stdout.strip(), flush=True)
     return result.stdout.strip()
 
 
@@ -100,19 +100,18 @@ def run_ethernet_test(ip, mode_value, iteration):
     print(f"--- Step 1: Setting Ethernet Mode to {mode_name} ({mode_value}) ---", flush=True)
     if not snmp_set_value(ip, OID_ETHERNET_MODE, 'i', mode_value):
         print("!!! FAIL: Mode Set Error !!!", flush=True)
-        return "FAIL (Mode Set Error)"
+        return "FAIL (Mode Set Error)", {}
 
     # --- Step 2: Management apply (i=INTEGER: 1) ---
     print("\n--- Step 2: Applying Configuration ---", flush=True)
     if not snmp_set_value(ip, OID_APPLY, 'i', 1):
         print("!!! FAIL: Apply Error !!!", flush=True)
-        return "FAIL (Apply Error)"
+        return "FAIL (Apply Error)", {}
 
-    # --- Step 3: Wait for 2 minutes ---
+    # --- Step 3: Wait for 2 minutes and Walk the table ---
     print(f"\n--- Step 3: Waiting {WAIT_TIME_SECONDS} seconds for link to establish... ---", flush=True)
     time.sleep(WAIT_TIME_SECONDS)
 
-    # Perform walk to get all stats (for debugging/context)
     print(f"\n--- Step 3b: Walking Ethernet Stats Table ({OID_ETHERNET_STATS_ENTRY}) ---", flush=True)
     snmp_walk(ip, OID_ETHERNET_STATS_ENTRY)
 
@@ -188,11 +187,19 @@ def main():
 
     args = parser.parse_args()
 
+    # Check if the SNMP tool is available before running. This prevents misleading errors.
+    try:
+        subprocess.check_call(['snmpget', '-V'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except FileNotFoundError:
+        print("FATAL ERROR: SNMP tools (snmpget, snmpset, snmpwalk) are not installed or in PATH.", file=sys.stderr)
+        sys.exit(1)
+
     status, result_data = run_ethernet_test(args.local_ip, args.mode, args.iter)
 
     # --- Save result to JSON file (Improved Loading Logic) ---
     data = {"iterations": []}
     try:
+        # Check if file exists and has content before trying to load
         if os.path.exists(RESULT_FILE) and os.path.getsize(RESULT_FILE) > 0:
             with open(RESULT_FILE, 'r') as f:
                 content = f.read()
@@ -200,7 +207,8 @@ def main():
                     data = json.loads(content)
     except json.JSONDecodeError:
         print(f"WARNING: Corrupted JSON found in {RESULT_FILE}. Starting fresh data structure.", flush=True)
-    except Exception:
+    except Exception as e:
+        print(f"Error loading JSON result file: {e}", flush=True)
         pass
 
     # Append the new result
@@ -216,8 +224,6 @@ def main():
 
     with open(RESULT_FILE, "w") as f:
         json.dump(data, f, indent=4)
-
-    print(f"\nUpdated JSON Report (Case #{args.iter}): {json.dumps(result_entry, indent=4)}", flush=True)
 
     # Exit with a non-zero code if the test failed
     if status != "PASS":
