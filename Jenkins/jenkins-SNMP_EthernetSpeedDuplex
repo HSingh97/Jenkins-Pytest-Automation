@@ -1,6 +1,10 @@
 import jenkins.model.Jenkins
 
-def archiveArtifacts(pattern, allowEmpty = true) {
+def archiveArtifacts(Map args) {
+    // Set default values if not provided in the map
+    def pattern = args.pattern
+    def allowEmpty = args.allowEmpty ?: false
+
     step([$class: 'ArtifactArchiver',
           artifacts: pattern,
           fingerprint: true,
@@ -481,7 +485,8 @@ pipeline {
                 reportName: 'Test Report'
             ])
 
-            archiveArtifacts('EthernetSpeedDuplexTest.json,test-*.log,debug_tables/**,report.html', true)
+            // CORRECTED CALL: Using named arguments (pattern: ..., allowEmpty: ...)
+            archiveArtifacts(pattern: 'EthernetSpeedDuplexTest.json,test-*.log,debug_tables/**,report.html', allowEmpty: true)
 
             echo "Cleaning up test log files..."
             sh 'rm -f test-*.log || true'
