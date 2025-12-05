@@ -1,5 +1,5 @@
 import jenkins.model.Jenkins
-import java.text.DecimalFormat
+// Removed: import java.text.DecimalFormat (Caused RejectedAccessException)
 import java.util.TimeZone
 
 // Helper Functions - RENAMED to archiveBuildArtifacts to prevent conflict with built-in Jenkins step.
@@ -111,19 +111,20 @@ pipeline {
                         jsonReport = [iterations: []]
                     }
 
-                    // --- 2. Calculate Stats & Update Env Variables (Matching IPv6 style) ---
+                    // --- 2. Calculate Stats & Update Env Variables ---
                     def totalTests = jsonReport.iterations?.size() ?: 0
                     def passCount = jsonReport.iterations?.count { it.overall_status == 'PASS' } ?: 0
                     def failCount = totalTests - passCount
 
-                    // Use DecimalFormat for consistent formatting (2 decimal places)
-                    def df = new DecimalFormat("0.00")
                     def successPercentage = (totalTests > 0) ? ((passCount * 100.0) / totalTests) : 0.0
+
+                    // FIX: Using String.format() which is generally whitelisted by default
+                    def successRateFormatted = String.format("%.2f", successPercentage)
 
                     // Update Env variables for post actions
                     env.TOTAL_TESTS = String.valueOf(totalTests)
                     env.PASSED_TESTS = String.valueOf(passCount)
-                    env.SUCCESS_RATE = df.format(successPercentage)
+                    env.SUCCESS_RATE = successRateFormatted
 
 
                     // --- 3. Build Report Parameters ---
