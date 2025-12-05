@@ -14,8 +14,8 @@ pipeline {
         COMMUNITY_STRING = "${params.COMMUNITY_STRING}"
         ITERATIONS = "${params.ITERATIONS}"
 
-        // --- Hardcoded Test Configuration (Modes and internal names) ---
-        TEST_MODES = "0,4,5" // Auto (0), 100Mbps-Full (4), 1000Mbps-Full (5)
+        // --- Hardcoded Test Configuration (Modes in sequence) ---
+        TEST_MODES_SEQUENCE = "0,4,5" // Auto (0), 100Mbps-Full (4), 1000Mbps-Full (5)
 
         // Consistent file names for the Python script and report generator
         REPORT_FILE_NAME = 'EthernetSpeedDuplexTest_Report.html'
@@ -36,8 +36,9 @@ pipeline {
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 echo "TARGET STAND : ${TARGET_STAND}"
                 echo "Device IPv4  : ${LOCAL_IP}"
-                echo "Modes to Test: ${TEST_MODES}"
+                echo "Modes in Seq.: ${TEST_MODES_SEQUENCE}"
                 echo "Total Cycles : ${ITERATIONS}"
+                echo "Total Cases  : ${TEST_MODES_SEQUENCE.split(',').size() * ITERATIONS.toInteger()}"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
                 // Clean up previous results and initialize the JSON file
@@ -63,8 +64,8 @@ pipeline {
             steps {
                 script {
                     def maxCycles = ITERATIONS.toInteger()
-                    def modes = env.TEST_MODES.split(',')
-                    def testCaseCounter = 1
+                    def modes = env.TEST_MODES_SEQUENCE.split(',')
+                    def testCaseCounter = 1 // Sequential counter for log files and JSON entries
 
                     for (int cycle = 1; cycle <= maxCycles; cycle++) {
                         echo "================== STARTING CYCLE ${cycle}/${maxCycles} =================="
@@ -76,9 +77,7 @@ pipeline {
 
                             echo "RUNNING TEST CASE ${testCaseCounter} (Cycle ${cycle}) for Mode: ${current_mode}"
 
-                            // Use sh command to execute the Python script. Python script must be in the workspace.
-                            // NOTE: The previous failure was 'No such file or directory'. Ensure test_SNMPEthernetDuplex.py
-                            // exists in the Jenkins workspace root directory or specify the full path.
+                            // Execute Python script. This command relies on test_SNMPEthernetDuplex.py existing locally.
                             sh """
                                 python3 ${pythonScript} \\
                                     --local-ip '${LOCAL_IP}' \\
@@ -107,11 +106,13 @@ pipeline {
                     }
 
                     // --- 2. Read Results ---
-                    def jsonReport = readJSON file: RESULTS_JSON
+                    def jsonReport = readJSON(file: RESULTS_JSON)
+                    // Ensure 'iterations' key exists and is iterable
+                    def iterations = (jsonReport && jsonReport.iterations) ? jsonReport.iterations : []
 
                     // --- 3. Calculate Stats ---
-                    def totalTests = jsonReport.iterations.size()
-                    def passCount = jsonReport.iterations.count { it.test_status == 'PASS' } // Check 'test_status' field
+                    def totalTests = iterations.size()
+                    def passCount = iterations.count { it.test_status == 'PASS' }
                     def failCount = totalTests - passCount
 
                     def successPercentage = (totalTests > 0) ? ((passCount * 100.0) / totalTests) : 0.0
@@ -125,7 +126,7 @@ pipeline {
                     // --- 4. Build Report Parameters ---
                     def buildParamsList = [
                         "Device IPv4": env.LOCAL_IP,
-                        "Modes Tested": env.TEST_MODES,
+                        "Modes Tested": env.TEST_MODES_SEQUENCE,
                         "Total Cycles": env.ITERATIONS,
                         "Community String": env.COMMUNITY_STRING,
                         "FW Version (Local)": local_fw_version
@@ -135,9 +136,9 @@ pipeline {
                     def rows = ""
                     def logDataBlocks = ""
 
-                    if (jsonReport.iterations) {
-                        jsonReport.iterations.each { result ->
-                            def iteration = result.iteration ?: "-" // Sequential test case number
+                    if (totalTests > 0) {
+                        iterations.each { result ->
+                            def iteration = result.iteration ?: "-"
                             def mode = result.mode ?: "-"
                             def modeName = result.mode_name ?: "Unknown"
                             def status = result.test_status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
@@ -149,15 +150,18 @@ pipeline {
 
                             try {
                                 logContent = readFile(file: logFile)
-                                // Manually escape HTML characters for the log modal
                                 logContent = logContent.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                             } catch (e) {
                                 echo "Could not read log file ${logFile}: ${e.message}"
                                 logContent = "ERROR: Log file not found (${logFile}).\\n${e.message}"
                             }
 
-                            // Combined mode/status for quick view in the table
-                            def quickStatus = "Speed: ${result.current_speed} Mbps, Duplex: ${result.current_duplex}, Status: ${result.current_status}"
+                            // Observed metrics for the table
+                            def obsSpeed = result.current_speed != null ? "${result.current_speed} Mbps" : "N/A"
+                            def obsDuplex = result.current_duplex ?: "N/A"
+                            def obsStatus = result.current_status ?: "N/A"
+
+                            def quickStatus = "Speed: ${obsSpeed}, Duplex: ${obsDuplex}, Status: ${obsStatus}"
                             def logButton = "<button class='log-button' onclick=\"showLog('${logDataId}', ${iteration}, '${modeName}')\">See Logs</button>"
 
                             rows += """
@@ -171,16 +175,17 @@ pipeline {
                             """
                             logDataBlocks += "<div id='${logDataId}' style='display:none;'>${logContent}</div>\\n"
                         }
+                    } else {
+                        rows += "<tr><td colspan='5' style='text-align:center;'>No test results were recorded. Ensure 'test_SNMPEthernetDuplex.py' is in the workspace.</td></tr>"
                     }
 
-                    // --- 6. Prepare Metadata for HTML Header ---
+                    // --- 6. Prepare Metadata and JS ---
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
 
-                    // Modify the showLog JS function for better context
                     def scriptFunctions = """
                         <script>
                             function showLog(logDataId, rowNumber, modeName) {
@@ -202,7 +207,6 @@ pipeline {
                     """
 
                     // --- 7. Construct HTML Content ---
-                    // Note: Inserting CSS styles inline as done in your reference for maximum compatibility.
                     def htmlContent = """
                         <!DOCTYPE html>
                         <html>
@@ -306,7 +310,7 @@ pipeline {
                                     <tr>
                                         <th>Case #</th>
                                         <th>Configured Mode</th>
-                                        <th>Observed Metrics</th>
+                                        <th>Observed Metrics (Speed/Duplex/Status)</th>
                                         <th style="text-align: center;">Result</th>
                                         <th style="text-align: center;">Logs</th>
                                     </tr>
