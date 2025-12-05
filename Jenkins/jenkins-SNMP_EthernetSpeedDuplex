@@ -1,5 +1,10 @@
-// NOTE: Removed the global function 'archiveArtifacts' and 'import jenkins.model.Jenkins'
-// to use the native steps directly, which is more reliable and avoids the Stapler error.
+import jenkins.model.Jenkins
+
+// Keeping the function definition that you confirmed works for archiving
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+// ------------------------------------------------------------------------------------------------------------------
 
 pipeline {
     // Defines the Jenkins node where the pipeline will run.
@@ -107,7 +112,7 @@ pipeline {
                         ).trim()
                     } catch (e) { echo "Could not fetch FW version" }
 
-                    // Read the aggregated results JSON file
+                    // Read the aggregated results JSON file (for HTML report)
                     def jsonReport = readJSON file: reportJsonFile
                     def total = jsonReport.iterations?.size() ?: 0
 
@@ -133,7 +138,7 @@ pipeline {
                     def failCount = fail
                     def reportFilename = "report.html"
 
-                    // Start of HTML Content (This large block remains identical to prevent HTML issues)
+                    // Start of HTML Content (HTML code from your example is below)
                     def htmlContent = """
                     <html>
                     <head>
@@ -317,17 +322,15 @@ pipeline {
                 def reportJsonFile = "test_results.json"
                 def debugArtifacts = "debug_tables/*"
 
-                // Read the report data again to generate the dynamic email summary
-                def jsonReport = readFile(file: reportJsonFile)
-                def data = groovy.json.JsonSlurper.newInstance().parseText(jsonReport)
+                // --- FIX: Read JSON using the whitelisted readJSON step ---
+                def data = readJSON(file: reportJsonFile)
                 def total = data.iterations?.size() ?: 0
                 def pass = data.iterations?.count { it.overall_status == 'PASS' } ?: 0
                 def fail = total - pass
                 def rate = total > 0 ? String.format("%.1f", (pass * 100.0 / total)) : "0.0"
 
-                // 1. Archive artifacts: Using the built-in step directly with map notation
-                // This replaces your custom function call and avoids the Stapler error.
-                archiveArtifacts artifacts: "${resultFile}, ${debugArtifacts}, test-*.log, report.html", fingerprint: true, onlyIfSuccessful: false
+                // 1. Archive artifacts: Using the global function which you confirmed works for archiving.
+                archiveArtifacts(pattern: "${resultFile}, ${debugArtifacts}, test-*.log, report.html")
 
                 // 2. Publish the HTML report
                 publishHTML(target: [
