@@ -4,7 +4,10 @@ import subprocess
 import time
 import json
 import re
-import os  # Import the os module
+import os
+
+# Note: Unused imports from your PTMP script (paramiko, csv, openpyxl, etc.)
+# are intentionally omitted here, keeping the script focused only on the SNMP Ethernet test.
 
 # --- SNMP OID Definitions ---
 OID_ETHERNET_MODE = ".1.3.6.1.4.1.52619.1.1.5.1.0"
@@ -15,13 +18,11 @@ OID_ETHERNET_SPEED_1 = ".1.3.6.1.4.1.52619.1.3.2.1.4.1"
 OID_ETHERNET_DUPLEX_1 = ".1.3.6.1.4.1.52619.1.3.2.1.5.1"
 
 # --- Configuration Mapping ---
-# Maps the integer mode value to a descriptive name and expected speed/duplex
 ETH_MODES = {
     0: {"name": "Auto_Negotation", "expected_speed": 1000, "expected_duplex": 2},  # Duplex: 2=Full
     4: {"name": "100Mbps_Full", "expected_speed": 100, "expected_duplex": 2},  # Duplex: 2=Full
     5: {"name": "1000Mbps_Full", "expected_speed": 1000, "expected_duplex": 2},  # Duplex: 2=Full
 }
-# Map Duplex OID result (integer) to string
 DUPLEX_MAP = {1: "Half", 2: "Full"}
 STATUS_MAP = {1: "Up", 2: "Down"}
 
@@ -36,6 +37,7 @@ WAIT_TIME_SECONDS = 120  # Wait for 2 minutes as requested
 def run(cmd):
     """Executes a shell command and captures output."""
     print(f">>> {cmd}")
+    # Use subprocess.run for better error handling and output control
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     print(result.stdout.strip())
     if result.stderr.strip():
@@ -45,7 +47,7 @@ def run(cmd):
 
 def snmp_get_value(ip, oid):
     """Performs an snmpget and extracts the integer or string value."""
-    # Use -Oqv to get just the value without OID or type, simplifying parsing for generic types.
+    # Use -Oqv to get just the value without OID or type
     cmd = f"snmpget -v2c -c {COMMUNITY} -Oqv {ip} {oid}"
     result = run(cmd)
 
@@ -55,18 +57,16 @@ def snmp_get_value(ip, oid):
 
     value_str = result.stdout.strip()
 
-    # Try to convert to int/float if it looks like a number
     try:
+        # Try to convert to int if possible
         return int(float(value_str))
     except ValueError:
         # Return as string otherwise
-        # snmpget -Oqv usually returns raw value, but we strip surrounding quotes just in case
         return value_str.strip('"')
 
 
 def snmp_set_value(ip, oid, value_type, value):
     """Performs an snmpset to set a value."""
-    # i=INTEGER, s=STRING, x=HEX STRING
     cmd = f"snmpset -v2c -c {COMMUNITY} {ip} {oid} {value_type} {value}"
     result = run(cmd)
     return result.returncode == 0 and "Error" not in result.stderr
@@ -91,7 +91,7 @@ def run_ethernet_test(ip, mode_value, iteration):
     expected_duplex = mode_config['expected_duplex']
 
     print("\n" + "=" * 100)
-    print(f"ETHERNET TEST | ITERATION {iteration} | MODE: {mode_value} ({mode_name})")
+    print(f"ETHERNET TEST | TEST CASE #{iteration} | MODE: {mode_value} ({mode_name})")
     print(f"Expected Speed: {expected_speed} Mbps | Expected Duplex: {DUPLEX_MAP.get(expected_duplex, 'Unknown')}")
     print("=" * 100 + "\n")
 
@@ -102,6 +102,8 @@ def run_ethernet_test(ip, mode_value, iteration):
 
     # --- Step 2: Management apply (i=INTEGER: 1) ---
     print("\n--- Step 2: Applying Configuration ---")
+    # This OID is specific to the "apply" action from your previous context.
+    OID_APPLY = ".1.3.6.1.4.1.52619.1.2.1.1.0"
     if not snmp_set_value(ip, OID_APPLY, 'i', 1):
         return "FAIL (Apply Error)"
 
@@ -132,14 +134,14 @@ def run_ethernet_test(ip, mode_value, iteration):
     print("---------------------------------\n")
 
     # --- Validation Logic ---
-    status_check = (status == 1)  # Must be Up
+    status_check = (status == 1)  # Must be Up (1)
     is_speed_correct = False
     is_duplex_correct = (duplex == expected_duplex)
 
     # Validation: Speed
     if speed is not None and isinstance(speed, int):
         if mode_value == 0:  # Auto Negotiation check
-            # Expected: 1000 Mbps
+            # Expected: 1000 Mbps (based on your request/mapping)
             if speed == 1000:
                 is_speed_correct = True
                 print("✅ Speed Check (Auto Neg): Passed (1000 Mbps).")
@@ -168,38 +170,33 @@ def run_ethernet_test(ip, mode_value, iteration):
         print("❌ Status Check: Failed (Link is Down).")
 
     final_status = "PASS" if status_check and is_speed_correct and is_duplex_correct else "FAIL"
-    print(f"\nTEST CASE RESULT → {final_status}")
+    print(f"\nTEST CASE RESULT (Case #{iteration}) → {final_status}")
     return final_status
 
 
 def main():
     parser = argparse.ArgumentParser(description="SNMP Ethernet Speed/Duplex Test Script.")
     parser.add_argument("--local-ip", dest="local_ip", required=True, help="IP address of the device to test.")
-    parser.add_argument("--iter", type=int, required=True, help="Current iteration number for reporting.")
+    parser.add_argument("--iter", type=int, required=True, help="Current sequential test case number for reporting.")
     parser.add_argument("--mode", type=int, required=True, choices=ETH_MODES.keys(),
                         help="Ethernet mode to set (0, 4, or 5).")
 
     args = parser.parse_args()
 
-    # Run the test for the specific mode
     status = run_ethernet_test(args.local_ip, args.mode, args.iter)
 
-    print(f"\nFINAL RESULT (Mode {args.mode}) → {status}\n" + "=" * 100)
-
-    # --- Save result to JSON file (FIXED JSON loading logic) ---
+    # --- Save result to JSON file ---
     data = {"iterations": []}
     try:
-        # Check if file exists and load it
         if os.path.exists(RESULT_FILE):
             with open(RESULT_FILE, 'r') as f:
-                # Handle empty file or invalid JSON gracefully
                 content = f.read()
                 if content.strip():
                     data = json.loads(content)
     except json.JSONDecodeError:
         print(f"WARNING: Corrupted JSON found in {RESULT_FILE}. Starting fresh data structure.")
     except FileNotFoundError:
-        pass  # Will be handled by os.path.exists check
+        pass
 
     # Append the new result
     result_entry = {
@@ -207,7 +204,7 @@ def main():
         "mode": args.mode,
         "mode_name": ETH_MODES.get(args.mode, {}).get("name", "Unknown"),
         "status": status,
-        "test_id": f"mode_{args.mode}"  # Unique ID for log mapping
+        "test_id": f"case_{args.iter}_mode_{args.mode}"
     }
 
     data["iterations"].append(result_entry)
