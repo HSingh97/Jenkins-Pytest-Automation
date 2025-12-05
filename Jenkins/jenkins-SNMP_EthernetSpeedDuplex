@@ -1,6 +1,7 @@
 import jenkins.model.Jenkins
 
 // Helper Functions - RENAMED to archiveBuildArtifacts to prevent conflict with built-in Jenkins step.
+// This function takes the pattern string and an optional boolean for allowing empty archives.
 def archiveBuildArtifacts(pattern, allowEmpty = true) {
     step([$class: 'ArtifactArchiver',
           artifacts: pattern,
@@ -26,6 +27,7 @@ pipeline {
 
                     sh '''
                         mkdir -p debug_tables logs
+                        # CHANGED: Cleanup now targets the descriptive filename
                         rm -f EthernetSpeedDuplexTest.json test-*.log debug_tables/*.txt EthernetDuplexTestReport.html || true
                         echo '{"iterations": []}' > EthernetSpeedDuplexTest.json
                     '''
@@ -512,6 +514,7 @@ pipeline {
 
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
                 echo "Sending email to: ${userEmail}"
+
                 emailext(
                     subject: "Ethernet Test: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
                     body: """
