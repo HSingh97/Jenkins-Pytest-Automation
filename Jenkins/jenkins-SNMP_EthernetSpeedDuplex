@@ -1,51 +1,77 @@
+import jenkins.model.Jenkins
+
+// Helper function (kept for compatibility)
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
 pipeline {
-    agent any
+    agent { node { label "${params.TARGET_STAND}" } }
 
     stages {
         stage('Prepare') {
             steps {
-                echo "=========================================="
-                echo "ETHERNET SPEED & DUPLEX TEST"
-                echo "Stand      : ${params.TARGET_STAND}"
-                echo "Local IP   : ${params.'Local IP Address'}"
-                echo "Iterations : ${params.ITERATION_COUNT}"
-                echo "=========================================="
+                script {
+                    echo "----------------------------------------"
+                    echo "ETHERNET SPEED & DUPLEX VALIDATION TEST"
+                    echo "TARGET STAND : ${params.TARGET_STAND}"
+                    echo "Local IP     : ${params.'Local IP Address'}"
+                    echo "Iterations   : ${params.ITERATION_COUNT}"
+                    echo "----------------------------------------"
 
-                sh '''
-                    mkdir -p debug_tables logs
-                    rm -f EthernetSpeedDuplexTest.json test-*.log debug_tables/*.txt Ethernet_Speed_Duplex_Report.html || true
-                    echo '{"iterations": []}' > EthernetSpeedDuplexTest.json
-                '''
-            }
-        }
-
-        stage('Install Tools') {
-            steps {
-                sh '''
-                    which snmpget >/dev/null 2>&1 || {
-                        echo "Installing SNMP tools..."
-                        sudo apt-get update -qq
-                        sudo apt-get install -y snmp snmp-mibs-downloader sshpass python3-pip
+                    if (!params.'Local IP Address') {
+                        error "Missing required parameter: Local IP Address"
                     }
-                    pip3 install --quiet --user pysnmp || true
-                '''
+
+                    sh '''
+                        mkdir -p debug_tables logs
+                        rm -f EthernetSpeedDuplexTest.json test-*.log debug_tables/*.txt Ethernet_Speed_Duplex_Report.html || true
+                        echo '{"iterations": []}' > EthernetSpeedDuplexTest.json
+                    '''
+                }
             }
         }
 
-        stage('Run Test') {
+        stage('Install Dependencies') {
             steps {
                 script {
-                    def ip = params.'Local IP Address'.trim()
+                    echo "----------------------------------------"
+                    echo "Installing SNMP Tools & Dependencies"
+                    echo "----------------------------------------"
+                    sh '''
+                        which snmpget >/dev/null 2>&1 || {
+                            echo "Installing net-snmp..."
+                            sudo apt-get update -qq
+                            sudo apt-get install -y snmp snmp-mibs-downloader sshpass
+                        }
+                    '''
+                }
+            }
+        }
+
+        stage('Run Ethernet Test') {
+            steps {
+                script {
+                    def localIP = params.'Local IP Address'.trim()
                     def count = params.ITERATION_COUNT.trim().toInteger()
+
+                    echo "----------------------------------------"
+                    echo "Starting Ethernet Speed & Duplex Test"
+                    echo "----------------------------------------"
 
                     for (int i = 1; i <= count; i++) {
                         echo "=== ITERATION ${i}/${count} ==="
-                        sh """
-                            python3 testCases/test_SNMPEthernetDuplex.py \
-                                --su-ip '${ip}' \
-                                --iter ${i}
-                        """
-                        sh "mv debug_ethernet_table_iter${i}.txt debug_tables/ || true"
+                        try {
+                            sh """
+                                python3 testCases/test_SNMPEthernetDuplex.py \
+                                    --su-ip '${localIP}' \
+                                    --iter ${i} \
+                                2>&1 | tee test-${i}.log
+                            """
+                            sh "mv debug_ethernet_table_iter${i}.txt debug_tables/ || true"
+                        } catch (err) {
+                            echo "Iteration ${i} failed: ${err}"
+                        }
                     }
                 }
             }
@@ -54,59 +80,133 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def ip = params.'Local IP Address'
-                    def fw = "Unknown"
+                    def localIP = params.'Local IP Address'
+                    def fw = "N/A"
                     try {
-                        fw = sh(script: "sshpass -p admin ssh -o StrictHostKeyChecking=no root@${ip} 'cat /etc/version 2>/dev/null || echo Unknown'", returnStdout: true).trim()
-                    } catch (e) {}
+                        fw = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version 2>/dev/null || echo Unknown'", returnStdout Tibet: true).trim()
+                    } catch (e) { echo "Could not fetch FW" }
 
+                    def jsonReport = readJSON file: 'EthernetSpeedDuplexTest.json'
+                    def total = jsonReport.iterations?.size() ?: 0
+                    def pass = jsonReport.iterations?.count { it.overall_status == 'PASS' } ?: 0
+                    def fail = total - pass
+                    def rate = total > 0 ? String.format("%.1f", (pass * 100.0 / total)) : "0.0"
 
-                    def json = readJSON file: 'EthernetSpeedDuplexTest.json'
-                    def total = json.iterations.size()
-                    def pass = json.iterations.count { it.overall_status == 'PASS' }
-                    def rate = total > 0 ? String.format("%.1f", pass * 100.0 / total) : "0.0"
-                    def time = new Date().format("dd MMM yyyy, HH:mm:ss", TimeZone.getTimeZone('Asia/Kolkata'))
+                    def buildParams = [
+                        "Local IP Address": localIP,
+                        "FW Version (SU)" : fw,
+                        "Iteration Count" : params.ITERATION_COUNT
+                    ]
 
-                    def html = """<!DOCTYPE html><html><head><meta charset="utf-8"><title>Ethernet Test Report</title>
-                    <style>body{font-family:system-ui,sans-serif;background:#f4f6f9;margin:0;padding:20px;color:#333;}
-                    .c{max-width:1100px;margin:auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px #0000001a;padding:30px;}
-                    .h{background:linear-gradient(135deg,#1e40af,#3b82f6);color:white;padding:30px;text-align:center;border-radius:12px;}
-                    .h h1{font-size:40px;margin:0;}
-                    .i{background:#f0f7ff;padding:20px;border-radius:10px;border-left:6px solid #3b82f6;margin:20px 0;}
-                    .s{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin:30px 0;}
-                    .cd{background:white;padding:25px;border-radius:12px;text-align:center;box-shadow:0 4px 12px #0000000d;border-top:5px solid #3b82f6;}
-                    .cd.pass{border-top-color:#16a34a;}.cd.fail{border-top-color:#dc2626;}
-                    .cd .v{font-size:38px;font-weight:bold;color:#1e40af;}
-                    .cd.pass .v{color:#16a34a;}.cd.fail .v{color:#dc2626;}
-                    table{width:100%;border-collapse:collapse;margin:30px 0;background:white;border-radius:12px;overflow:hidden;box-shadow:0 4px 15px #0000000d;}
-                    th{background:#3b82f6;color:white;padding:15px;}
-                    td{padding:15px;text-align:center;border-bottom:1px solid #ddd;}
-                    .pass{background:#dcfce7;color:#166534;padding:8px 16px;border-radius:50px;font-weight:bold;}
-                    .fail{background:#fee2e2;color:#991b1b;padding:8px 16px;border-radius:50px;font-weight:bold;}
-                    .btn{background:#3b82f6;color:white;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:bold;}
-                    </style></head><body>
-                    <div class="c">
-                        <div class="h"><h1>Ethernet Speed & Duplex Test</h1><p>Senao Networks | Cycle Testing</p></div>
-                        <div class="i"><strong>Local IP:</strong> ${ip} | <strong>FW:</strong> ${fw} | <strong>Time:</strong> ${time}<br><strong>Iterations:</strong> ${total} | <strong>Pass Rate:</strong> ${rate}%</div>
-                        <div class="s">
-                            <div class="cd"><h3>Total</h3><div class="v">${total}</div></div>
-                            <div class="cd pass"><h3>Passed</h3><div class="v">${pass}</div></div>
-                            <div class="cd fail"><h3>Failed</h3><div class="v">${total - pass}</div></div>
-                            <div class="cd"><h3>Success</h3><div class="v">${rate}%</div></div>
-                        </div>
-                        <table><tr><th>Iteration</th><th>Auto-Neg</th><th>1000M Full</th><th>100M Full</th><th>Overall</th></tr>"""
+                    def istDate = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
+                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+                    def pipelineName = env.JOB_NAME
 
-                    json.iterations.each { r ->
+                    def htmlContent = """
+                    <html>
+                    <head>
+                        <title>Ethernet Speed & Duplex Test Report</title>
+                        <style>
+                            body {font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;margin:0;padding:0;background:#f9fafb;color:#1f2937;}
+                            .container {max-width:1200px;margin:24px auto;padding:24px;}
+                            .header {display:flex;justify-content:space-between;align-items:center;background:linear-gradient(to right,#ffffff 10%,#f9fafb 100%);padding:28px 36px;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.04);}
+                            .header img {height:65px;transition:transform .2s;}.header img:hover{transform:scale(1.03);}
+                            .header-info h1{margin:0;font-size:30px;font-weight:700;color:#0a2540;}
+                            .header-info p{margin:5px 0;font-size:15px;color:#4a5568;}
+                            h2{margin-top:32px;font-size:24px;font-weight:600;color:#111827;border-bottom:2px solid #e5e7eb;padding-bottom:12px;}
+                            .summary-container{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:24px;margin-top:24px;}
+                            .summary-card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 2px 4px rgba(0,0,0,0.04);padding:24px;display:flex;align-items:center;border-top:4px solid;}
+                            .card-icon{font-size:32px;margin-right:20px;padding:12px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
+                            .card-info-title{font-size:16px;color:#6b7280;margin:0 0 4px;}
+                            .card-info-value{font-size:32px;font-weight:700;color:#111827;margin:0;}
+                            .card-percent{border-color:#6b7280;}.card-percent .card-icon{background:#f3f4f6;color:#6b7280;}
+                            .card-total{border-color:#3b82f6;}.card-total .card-icon{background:#dbeafe;color:#3b82f6;}
+                            .card-pass{border-color:#10b981;}.card-pass .card-icon{background:#d1fae5;color:#10b981;}
+                            .card-fail{border-color:#ef4444;}.card-fail .card-icon{background:#fee2e2;color:#ef4444;}
+                            table{width:100%;border-collapse:collapse;margin-top:24px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,0.04);}
+                            th,td{padding:16px 20px;border-bottom:1px solid #e5e7eb;text-align:left;}
+                            th{background:#f9fafb;font-weight:600;color:#6b7280;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;}
+                            tr:hover{background:#f9fafb;}
+                            .status-pass{color:#059669;background:#d1fae5;padding:5px 10px;border-radius:99px;font-weight:600;display:inline-block;}
+                            .status-fail{color:#dc2626;background:#fee2e2;padding:5px 10px;border-radius:99px;font-weight:600;display:inline-block;}
+                            .log-button{background:#3b82f6;color:white;padding:8px 16px;border:none;border-radius:8px;font-weight:600;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.05);}
+                            .log-button:hover{background:#2563eb;box-shadow:0 2px 4px rgba(0,0,0,0.1);}
+                            .modal{display:none;position:fixed;z-index:100;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.6);overflow:auto;}
+                            .modal-content{background:#fff;margin:5% auto;border:1px solid #e5e7eb;border-radius:12px;width:80%;max-width:900px;box-shadow:0 10px 25px rgba(0,0,0,0.1);}
+                            .modal-header{padding:20px 32px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;}
+                            .modal-close{color:#9ca3af;font-size:28px;font-weight:bold;cursor:pointer;}
+                            .modal-close:hover{color:#1f2937;}
+                            #log-content-pre{background:#1f2937;color:#e5e7eb;padding:24px 32px;max-height:60vh;overflow:auto;white-space:pre-wrap;font-family:Consolas,monospace;font-size:14px;}
+                        </style>
+                        <script>
+                            function showLog(id){document.getElementById('log-content-pre').innerHTML=document.getElementById(id).innerHTML;document.getElementById('logModal').style.display='block';}
+                            function closeModal(){document.getElementById('logModal').style.display='none';}
+                            window.onclick=e=>{if(e.target==document.getElementById('logModal'))closeModal();}
+                        </script>
+                    </head>
+                    <body>
+                        <div class="container">
+                            <div class="header">
+                                <img src="${companyLogoUrl}" alt="Senao Networks"/>
+                                <div class="header-info">
+                                    <h1>Ethernet Speed & Duplex Test</h1>
+                                    <p><strong>Pipeline:</strong> ${pipelineName}</p>
+                                    <p><strong>Date & Time:</strong> ${istDate}</p>
+                                </div>
+                            </div>
+
+                            <h2>Build Parameters</h2>
+                            <table><tr><th>Parameter</th><th>Value</th></tr>
+                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join()}
+                            </table>
+
+                            <h2>Test Summary</h2>
+                            <div class="summary-container">
+                                <div class="summary-card card-percent"><div class="card-icon">Target</div><div class="card-info"><p class="card-info-title">Success Rate</p><p class="card-info-value">${rate}<span class="percent-sign">%</span></p></div></div>
+                                <div class="summary-card card-total"><div class="card-icon">Test</div><div class="card-info"><p class="card-info-title">Total Iterations</p><p class="card-info-value">${total}</p></div></div>
+                                <div class="summary-card card-pass"><div class="card-icon">Checkmark</div><div class="card-info"><p class="card-info-title">Passed</p><p class="card-info-value">${pass}</p></div></div>
+                                <div class="summary-card card-fail"><div class="card-icon">Cross</div><div class="card-info"><p class="card-info-title">Failed</p><p class="card-info-value">${fail}</p></div></div>
+                            </div>
+
+                            <h2>Detailed Results</h2>
+                            <table>
+                                <tr><th>Iteration</th><th>Auto-Neg</th><th>1000M Full</th><th>100M Full</th><th>Overall</th><th>Logs</th></tr>
+                    """
+
+                    def tableRows = ""
+                    def logBlocks = ""
+
+                    jsonReport.iterations.each { r ->
                         def i = r.iteration
-                        def a = r.tests.AutoNegotiation.status == "PASS" ? "<span class='pass'>PASS</span>" : "<span class='fail'>FAIL</span>"
-                        def g = r.tests."1000MbpsFull".status == "PASS" ? "<span class='pass'>PASS</span>" : "<span class='fail'>FAIL</span>"
-                        def f = r.tests."100MbpsFull".status == "PASS" ? "<span class='pass'>PASS</span>" : "<span class='fail'>FAIL</span>"
-                        def o = r.overall_status == "PASS" ? "<span class='pass'>PASS</span>" : "<span class='fail'>FAIL</span>"
-                        html += "<tr><td><strong>${i}</strong></td><td>${a}</td><td>${g}</td><td>${f}</td><td>${o}</td></tr>"
+                        def a = r.tests.AutoNegotiation.status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
+                        def g = r.tests."1000MbpsFull".status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
+                        def f = r.tests."100MbpsFull".status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
+                        def o = r.overall_status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
+
+                        def logContent = "Log not found"
+                        try {
+                            logContent = readFile("test-${i}.log").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+                        } catch (e) {}
+
+                        tableRows += "<tr><td><strong>${i}</strong></td><td>${a}</td><td>${g}</td><td>${f}</td><td>${o}</td><td><button class='log-button' onclick=\"showLog('log${i}')\">View Log</button></td></tr>"
+                        logBlocks += "<div id='log${i}' style='display:none;'>${logContent}</div>"
                     }
 
-                    html += "</table></div></body></html>"
-                    writeFile file: 'Ethernet_Speed_Duplex_Report.html', text: html
+                    htmlContent += tableRows + """
+                            </table>
+                            <div id="logModal" class="modal">
+                                <div class="modal-content">
+                                    <div class="modal-header"><h2>Iteration Log</h2><span class="modal-close" onclick="closeModal()">&times;</span></div>
+                                    <div class="modal-body"><pre id="log-content-pre"></pre></div>
+                                </div>
+                            </div>
+                            ${logBlocks}
+                        </div>
+                    </body>
+                    </html>
+                    """
+
+                    writeFile file: 'Ethernet_Speed_Duplex_Report.html', text: htmlContent
                 }
             }
         }
@@ -120,9 +220,36 @@ pipeline {
                 keepAll: true,
                 reportDir: '.',
                 reportFiles: 'Ethernet_Speed_Duplex_Report.html',
-                reportName: 'Ethernet Speed & Duplex Report'
+                reportName: 'Ethernet Speed & Duplex Test Report'
             ])
             archiveArtifacts artifacts: 'EthernetSpeedDuplexTest.json,test-*.log,debug_tables/**,Ethernet_Speed_Duplex_Report.html', allowEmptyArchive: true
+
+            echo "Cleaning up..."
+            sh 'rm -f test-*.log || true'
+
+            script {
+                def userId = currentBuild.getBuildCauses().find { it._class == 'hudson.model.Cause$UserIdCause' }?.userId ?: "unknown"
+                def userEmail = [
+                    "puneet": "puneet.sharma@senao.com",
+                    "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@senao.com"
+                ].get(userId, "puneet.sharma@senao.com")
+
+                emailext(
+                    subject: "Ethernet Test: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    body: """
+                        <h2>Ethernet Speed & Duplex Test Completed</h2>
+                        <p><strong>Result:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'}">${currentBuild.currentResult}</span></p>
+                        <p><strong>SU IP:</strong> ${params.'Local IP Address'}</p>
+                        <p>See attached HTML report.</p>
+                    """,
+                    to: userEmail,
+                    mimeType: 'text/html',
+                    attachmentsPattern: 'Ethernet_Speed_Duplex_Report.html,EthernetSpeedDuplexTest.json'
+                )
+            }
         }
+        success { echo "ETHERNET TEST PASSED" }
+        failure { echo "ETHERNET TEST FAILED" }
     }
 }
