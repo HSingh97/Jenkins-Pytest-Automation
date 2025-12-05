@@ -60,6 +60,7 @@ pipeline {
                         fw = sh(script: "sshpass -p admin ssh -o StrictHostKeyChecking=no root@${ip} 'cat /etc/version 2>/dev/null || echo Unknown'", returnStdout: true).trim()
                     } catch (e) {}
 
+
                     def json = readJSON file: 'EthernetSpeedDuplexTest.json'
                     def total = json.iterations.size()
                     def pass = json.iterations.count { it.overall_status == 'PASS' }
