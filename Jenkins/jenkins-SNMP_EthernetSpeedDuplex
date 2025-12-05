@@ -1,0 +1,127 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Prepare') {
+            steps {
+                echo "=========================================="
+                echo "ETHERNET SPEED & DUPLEX TEST"
+                echo "Stand      : ${params.TARGET_STAND}"
+                echo "Local IP   : ${params.'Local IP Address'}"
+                echo "Iterations : ${params.ITERATION_COUNT}"
+                echo "=========================================="
+
+                sh '''
+                    mkdir -p debug_tables logs
+                    rm -f EthernetSpeedDuplexTest.json test-*.log debug_tables/*.txt Ethernet_Speed_Duplex_Report.html || true
+                    echo '{"iterations": []}' > EthernetSpeedDuplexTest.json
+                '''
+            }
+        }
+
+        stage('Install Tools') {
+            steps {
+                sh '''
+                    which snmpget >/dev/null 2>&1 || {
+                        echo "Installing SNMP tools..."
+                        sudo apt-get update -qq
+                        sudo apt-get install -y snmp snmp-mibs-downloader sshpass python3-pip
+                    }
+                    pip3 install --quiet --user pysnmp || true
+                '''
+            }
+        }
+
+        stage('Run Test') {
+            steps {
+                script {
+                    def ip = params.'Local IP Address'.trim()
+                    def count = params.ITERATION_COUNT.trim().toInteger()
+
+                    for (int i = 1; i <= count; i++) {
+                        echo "=== ITERATION ${i}/${count} ==="
+                        sh """
+                            python3 testCases/test_SNMPEthernetDuplex.py \
+                                --su-ip '${ip}' \
+                                --iter ${i}
+                        """
+                        sh "mv debug_ethernet_table_iter${i}.txt debug_tables/ || true"
+                    }
+                }
+            }
+        }
+
+        stage('Generate Report') {
+            steps {
+                script {
+                    def ip = params.'Local IP Address'
+                    def fw = "Unknown"
+                    try {
+                        fw = sh(script: "sshpass -p admin ssh -o StrictHostKeyChecking=no root@${ip} 'cat /etc/version 2>/dev/null || echo Unknown'", returnStdout: true).trim()
+                    } catch (e) {}
+
+                    def json = readJSON file: 'EthernetSpeedDuplexTest.json'
+                    def total = json.iterations.size()
+                    def pass = json.iterations.count { it.overall_status == 'PASS' }
+                    def rate = total > 0 ? String.format("%.1f", pass * 100.0 / total) : "0.0"
+                    def time = new Date().format("dd MMM yyyy, HH:mm:ss", TimeZone.getTimeZone('Asia/Kolkata'))
+
+                    def html = """<!DOCTYPE html><html><head><meta charset="utf-8"><title>Ethernet Test Report</title>
+                    <style>body{font-family:system-ui,sans-serif;background:#f4f6f9;margin:0;padding:20px;color:#333;}
+                    .c{max-width:1100px;margin:auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px #0000001a;padding:30px;}
+                    .h{background:linear-gradient(135deg,#1e40af,#3b82f6);color:white;padding:30px;text-align:center;border-radius:12px;}
+                    .h h1{font-size:40px;margin:0;}
+                    .i{background:#f0f7ff;padding:20px;border-radius:10px;border-left:6px solid #3b82f6;margin:20px 0;}
+                    .s{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin:30px 0;}
+                    .cd{background:white;padding:25px;border-radius:12px;text-align:center;box-shadow:0 4px 12px #0000000d;border-top:5px solid #3b82f6;}
+                    .cd.pass{border-top-color:#16a34a;}.cd.fail{border-top-color:#dc2626;}
+                    .cd .v{font-size:38px;font-weight:bold;color:#1e40af;}
+                    .cd.pass .v{color:#16a34a;}.cd.fail .v{color:#dc2626;}
+                    table{width:100%;border-collapse:collapse;margin:30px 0;background:white;border-radius:12px;overflow:hidden;box-shadow:0 4px 15px #0000000d;}
+                    th{background:#3b82f6;color:white;padding:15px;}
+                    td{padding:15px;text-align:center;border-bottom:1px solid #ddd;}
+                    .pass{background:#dcfce7;color:#166534;padding:8px 16px;border-radius:50px;font-weight:bold;}
+                    .fail{background:#fee2e2;color:#991b1b;padding:8px 16px;border-radius:50px;font-weight:bold;}
+                    .btn{background:#3b82f6;color:white;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:bold;}
+                    </style></head><body>
+                    <div class="c">
+                        <div class="h"><h1>Ethernet Speed & Duplex Test</h1><p>Senao Networks | Cycle Testing</p></div>
+                        <div class="i"><strong>Local IP:</strong> ${ip} | <strong>FW:</strong> ${fw} | <strong>Time:</strong> ${time}<br><strong>Iterations:</strong> ${total} | <strong>Pass Rate:</strong> ${rate}%</div>
+                        <div class="s">
+                            <div class="cd"><h3>Total</h3><div class="v">${total}</div></div>
+                            <div class="cd pass"><h3>Passed</h3><div class="v">${pass}</div></div>
+                            <div class="cd fail"><h3>Failed</h3><div class="v">${total - pass}</div></div>
+                            <div class="cd"><h3>Success</h3><div class="v">${rate}%</div></div>
+                        </div>
+                        <table><tr><th>Iteration</th><th>Auto-Neg</th><th>1000M Full</th><th>100M Full</th><th>Overall</th></tr>"""
+
+                    json.iterations.each { r ->
+                        def i = r.iteration
+                        def a = r.tests.AutoNegotiation.status == "PASS" ? "<span class='pass'>PASS</span>" : "<span class='fail'>FAIL</span>"
+                        def g = r.tests."1000MbpsFull".status == "PASS" ? "<span class='pass'>PASS</span>" : "<span class='fail'>FAIL</span>"
+                        def f = r.tests."100MbpsFull".status == "PASS" ? "<span class='pass'>PASS</span>" : "<span class='fail'>FAIL</span>"
+                        def o = r.overall_status == "PASS" ? "<span class='pass'>PASS</span>" : "<span class='fail'>FAIL</span>"
+                        html += "<tr><td><strong>${i}</strong></td><td>${a}</td><td>${g}</td><td>${f}</td><td>${o}</td></tr>"
+                    }
+
+                    html += "</table></div></body></html>"
+                    writeFile file: 'Ethernet_Speed_Duplex_Report.html', text: html
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            publishHTML(target: [
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: '.',
+                reportFiles: 'Ethernet_Speed_Duplex_Report.html',
+                reportName: 'Ethernet Speed & Duplex Report'
+            ])
+            archiveArtifacts artifacts: 'EthernetSpeedDuplexTest.json,test-*.log,debug_tables/**,Ethernet_Speed_Duplex_Report.html', allowEmptyArchive: true
+        }
+    }
+}
