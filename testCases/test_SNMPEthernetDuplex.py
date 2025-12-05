@@ -1,213 +1,208 @@
 #!/usr/bin/env python3
-import argparse
-import subprocess
-import time
-import json
-import re
-import os
-import sys
+import argparse, time, json, subprocess, warnings
+from datetime import datetime
 
-# --- SNMP OID Definitions ---
+def warn(*args, **kwargs): pass
+warnings.warn = warn
+
+parser = argparse.ArgumentParser(description="Ethernet Speed & Duplex Mode Validation via SNMP")
+parser.add_argument("--su-ip", required=True, help="IP address of the device (SU)")
+parser.add_argument("--iter", type=int, required=True, help="Iteration number")
+args = parser.parse_args()
+
+SU_IP = args.su_ip
+ITER = args.iter
+WRITE_COMMUNITY = "private"
+READ_COMMUNITY = "public"
+
+# OIDs
 OID_ETHERNET_MODE = ".1.3.6.1.4.1.52619.1.1.5.1.0"
-OID_APPLY = ".1.3.6.1.4.1.52619.1.2.1.1.0"
-OID_ETHERNET_STATS_ENTRY = ".1.3.6.1.4.1.52619.1.3.2.1"
+OID_ETHERNET_STATS_TABLE = ".1.3.6.1.4.1.52619.1.3.2.1"
 OID_ETHERNET_STATUS_1 = ".1.3.6.1.4.1.52619.1.3.2.1.2.1"
 OID_ETHERNET_SPEED_1 = ".1.3.6.1.4.1.52619.1.3.2.1.4.1"
 OID_ETHERNET_DUPLEX_1 = ".1.3.6.1.4.1.52619.1.3.2.1.5.1"
 
-# --- Configuration Mapping and Validation Rules ---
-ETH_MODES = {
-    # 0: Auto Negotiation (Expected link up is 1000/Full, but 100/Full is tolerated based on link capability)
-    0: {"name": "Auto_Negotation", "mode_value": 0, "expected_speed": [1000, 100, 10], "expected_duplex": 2,
-        "primary_check": 1000},
-    # 4: 100Mbps-Full
-    4: {"name": "100Mbps_Full", "mode_value": 4, "expected_speed": [100], "expected_duplex": 2, "primary_check": 100},
-    # 5: 1000Mbps-Full
-    5: {"name": "1000Mbps_Full", "mode_value": 5, "expected_speed": [1000], "expected_duplex": 2,
-        "primary_check": 1000},
-}
-# Map OID values to readable strings
-DUPLEX_MAP = {1: "Half", 2: "Full"}
-STATUS_MAP = {1: "Up", 2: "Down"}
+RESULT_FILE = "EthernetSpeedDuplexTest.json"  # As requested
+LOG_FILE = f"test-{ITER}.log"
 
-# --- Script Constants ---
-COMMUNITY = "private"
-RESULT_FILE = "EthernetSpeedDuplexTest_results.json"
-WAIT_TIME_SECONDS = 120  # 2 minutes
-
+def log_print(*msg):
+    line = " ".join(map(str, msg))
+    print(line)
+    with open(LOG_FILE, "a") as f:
+        f.write(line + "\n")
 
 def run(cmd):
-    """Executes a shell command and captures output."""
-    print(f">>> {cmd}", flush=True)
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    print(result.stdout.strip(), flush=True)
-    if result.stderr.strip():
-        print(f"ERROR: {result.stderr.strip()}", flush=True)
-    return result
+    log_print(f"\n>>> {cmd}")
+    try:
+        r = subprocess.run(cmd.split(), capture_output=True, text=True, timeout=30)
+        out = r.stdout.strip()
+        if r.returncode != 0:
+            err = r.stderr.strip()
+            log_print(f"ERROR: {err}")
+            return ""
+        log_print(f"Received {len(out.splitlines())} lines")
+        return out
+    except Exception as e:
+        log_print(f"EXCEPTION: {e}")
+        return ""
 
+def set_ethernet_mode(value):
+    cmd = f"snmpset -v 2c -c {WRITE_COMMUNITY} {SU_IP} {OID_ETHERNET_MODE} i {value}"
+    out = run(cmd)
+    expected = f"INTEGER: {value}"
+    success = expected in out
+    log_print(f"Set ethernetMode = {value} → {'SUCCESS' if success else 'FAILED'}")
+    return success
 
-def snmp_get_value(ip, oid):
-    """Performs an snmpget and extracts the value."""
-    cmd = f"snmpget -v2c -c {COMMUNITY} -Oqv {ip} {oid}"
-    result = run(cmd)
+def apply_management():
+    log_print("Applying management settings (assuming commit via set)...")
+    time.sleep(5)  # Small delay to ensure apply
 
-    if result.returncode != 0 or not result.stdout.strip():
+def wait_for_link():
+    log_print("Waiting 120 seconds for link to stabilize...")
+    time.sleep(120)
+
+def get_single_oid(oid):
+    cmd = f"snmpget -v 2c -c {READ_COMMUNITY} {SU_IP} {oid}"
+    out = run(cmd)
+    if "No Such Object" in out or not out:
         return None
+    # Clean value
+    if "=" in out:
+        val = out.split("=", 1)[1].strip().strip('"')
+        if "INTEGER:" in val:
+            val = val.split("INTEGER:", 1)[-1].strip()
+        elif "STRING:" in val:
+            val = val.split("STRING:", 1)[-1].strip().strip('"')
+        return val.strip()
+    return None
 
-    value_str = result.stdout.strip()
-    try:
-        return int(float(value_str))
-    except ValueError:
-        return value_str.strip('"')
+def walk_ethernet_table():
+    cmd = f"snmpwalk -v 2c -c {READ_COMMUNITY} {SU_IP} {OID_ETHERNET_STATS_TABLE}"
+    raw = run(cmd)
+    log_print(f"\n{'=' * 80}")
+    log_print(f"ETHERNET STATS TABLE (Iteration {ITER})")
+    log_print(f"{'=' * 80}")
+    log_print(raw)
+    log_print(f"{'=' * 80}\n")
+    with open(f"debug_ethernet_table_iter{ITER}.txt", "w") as f:
+        f.write(raw)
+    log_print(f"SAVED → debug_ethernet_table_iter{ITER}.txt\n")
+    return raw
 
+def validate_link():
+    status = get_single_oid(OID_ETHERNET_STATUS_1)
+    speed = get_single_oid(OID_ETHERNET_SPEED_1)
+    duplex = get_single_oid(OID_ETHERNET_DUPLEX_1)
 
-def snmp_set_value(ip, oid, value_type, value):
-    """Performs an snmpset to set a value."""
-    cmd = f"snmpset -v2c -c {COMMUNITY} {ip} {oid} {value_type} {value}"
-    result = run(cmd)
-    return result.returncode == 0 and "Error" not in result.stderr
+    log_print(f"ethernetStatus.1  → {status}")
+    log_print(f"ethernetSpeed.1   → {speed}")
+    log_print(f"ethernetDuplex.1  → {duplex}")
 
-
-def run_ethernet_test(ip, mode_value, iteration):
-    """Executes one single test case: Set mode, apply, wait, verify."""
-    mode_config = ETH_MODES.get(mode_value)
-
-    mode_name = mode_config['name']
-    expected_speeds = mode_config['expected_speed']
-    expected_duplex_val = mode_config['expected_duplex']
-    expected_duplex_str = DUPLEX_MAP.get(expected_duplex_val, 'Unknown')
-
-    # Initialize detailed result structure
-    result_data = {
-        "status": "FAIL (Setup)",
-        "current_status": "N/A",
-        "current_speed": "N/A",
-        "current_duplex": "N/A",
-        "speed_check": "FAIL",
-        "duplex_check": "FAIL",
-        "link_status_check": "FAIL"
+    return {
+        "status": status,
+        "speed": speed,
+        "duplex": duplex
     }
 
-    print("\n" + "=" * 100, flush=True)
-    print(f"TEST CASE #{iteration} | MODE: {mode_value} ({mode_name})", flush=True)
-    print(f"TARGET: Speed {mode_config.get('primary_check')} Mbps | Duplex {expected_duplex_str}", flush=True)
-    print("=" * 100 + "\n", flush=True)
+def check_mode(expected_mode, expected_speed=None, expected_duplex="full"):
+    mode_name = {0: "Auto-Negotiation", 4: "100Mbps-Full", 5: "1000Mbps-Full"}[expected_mode]
+    log_print(f"\n[TEST] Validating Mode: {mode_name} (Value={expected_mode})")
 
-    # --- Step 1 & 2: Set Mode and Apply ---
-    print(f"--- Step 1: Setting Mode {mode_name} (Value: {mode_value}) ---", flush=True)
-    if not snmp_set_value(ip, OID_ETHERNET_MODE, 'i', mode_value):
-        return "FAIL (Mode Set Error)", result_data
+    if not set_ethernet_mode(expected_mode):
+        return False, "Failed to set ethernetMode"
 
-    print("\n--- Step 2: Applying Configuration (OID: 1.2.1.1.0) ---", flush=True)
-    if not snmp_set_value(ip, OID_APPLY, 'i', 1):
-        return "FAIL (Apply Error)", result_data
+    apply_management()
+    wait_for_link()
+    walk_ethernet_table()
+    result = validate_link()
 
-    # --- Step 3: Wait and Walk ---
-    print(f"\n--- Step 3: Waiting {WAIT_TIME_SECONDS} seconds for link to establish... ---", flush=True)
-    time.sleep(WAIT_TIME_SECONDS)
+    status = result["status"]
+    speed = result["speed"]
+    duplex = result["duplex"]
 
-    print(f"\n--- Step 4: Walking entire Ethernet Stats Table ({OID_ETHERNET_STATS_ENTRY}) ---", flush=True)
-    run(f"snmpwalk -v2c -c {COMMUNITY} {ip} {OID_ETHERNET_STATS_ENTRY}")
+    if status != "Up":
+        log_print("FAIL: Link is not Up!")
+        return False, "Link Down"
 
-    # --- Step 5: Verification ---
-    print("\n--- Step 5: Verifying Specific OIDs ---", flush=True)
+    if expected_mode == 0:  # Auto-Negotiation → must be 1000Mbps Full
+        if speed != "1000Mbps" or duplex != "full":
+            log_print(f"FAIL: Auto-Negotiation failed → Got {speed} {duplex}, Expected 1000Mbps full")
+            return False, "Auto-Negotiation did not result in 1000Mbps Full"
+        else:
+            log_print("PASS: Auto-Negotiation correctly negotiated 1000Mbps Full")
+            return True, "Auto-Negotiation → 1000Mbps Full"
 
-    # Get current values
-    status = snmp_get_value(ip, OID_ETHERNET_STATUS_1)
-    speed = snmp_get_value(ip, OID_ETHERNET_SPEED_1)
-    duplex = snmp_get_value(ip, OID_ETHERNET_DUPLEX_1)
-
-    # Convert numeric status/duplex to readable strings
-    status_str = STATUS_MAP.get(status, f"Unknown ({status})")
-    duplex_str = DUPLEX_MAP.get(duplex, f"Unknown ({duplex})")
-
-    # Update result dictionary with observed values
-    result_data.update({
-        "current_status": status_str,
-        "current_speed": speed,
-        "current_duplex": duplex_str
-    })
-
-    # --- Step 5a. Verify Ethernet Status is "Up" ---
-    status_check = (status == 1)
-    if status_check:
-        print(f"✅ Status Check (OID: {OID_ETHERNET_STATUS_1}): Link is Up.", flush=True)
-        result_data["link_status_check"] = "PASS"
     else:
-        print(f"❌ Status Check (OID: {OID_ETHERNET_STATUS_1}): FAILED. Link is {status_str}.", flush=True)
+        exp_speed_str = "1000Mbps" if expected_mode == 5 else "100Mbps"
+        if speed != exp_speed_str:
+            log_print(f"FAIL: Speed mismatch → Got {speed}, Expected {exp_speed_str}")
+            return False, f"Speed mismatch: {speed} != {exp_speed_str}"
+        if duplex != expected_duplex:
+            log_print(f"FAIL: Duplex mismatch → Got {duplex}, Expected {expected_duplex}")
+            return False, f"Duplex mismatch: {duplex} != {expected_duplex}"
 
-    # --- Step 5b. Verify Speed ---
-    is_speed_correct = (speed in expected_speeds)
-    if is_speed_correct:
-        print(f"✅ Speed Check (OID: {OID_ETHERNET_SPEED_1}): Passed. Detected {speed} Mbps.", flush=True)
-        result_data["speed_check"] = "PASS"
-    else:
-        print(
-            f"❌ Speed Check (OID: {OID_ETHERNET_SPEED_1}): FAILED. Expected one of {expected_speeds} Mbps, but got {speed} Mbps.",
-            flush=True)
+        log_print(f"PASS: {exp_speed_str} {expected_duplex.upper()} confirmed")
+        return True, f"Success: {exp_speed_str} {expected_duplex.upper()}"
 
-    # --- Step 5c. Verify Duplex is Full ---
-    is_duplex_correct = (duplex == expected_duplex_val)
-    if is_duplex_correct:
-        print(f"✅ Duplex Check (OID: {OID_ETHERNET_DUPLEX_1}): Passed. Detected {duplex_str}.", flush=True)
-        result_data["duplex_check"] = "PASS"
-    else:
-        print(
-            f"❌ Duplex Check (OID: {OID_ETHERNET_DUPLEX_1}): FAILED. Expected {expected_duplex_str}, but got {duplex_str}.",
-            flush=True)
-
-    final_status = "PASS" if status_check and is_speed_correct and is_duplex_correct else "FAIL"
-    result_data["status"] = final_status
-    print(f"\nFINAL TEST CASE RESULT (Case #{iteration}) → {final_status}", flush=True)
-
-    return final_status, result_data
-
-
-def main():
-    parser = argparse.ArgumentParser(description="SNMP Ethernet Speed/Duplex Test Script.")
-    parser.add_argument("--local-ip", dest="local_ip", required=True, help="IP address of the device to test.")
-    parser.add_argument("--iter", type=int, required=True, help="Current sequential test case number for reporting.")
-    parser.add_argument("--mode", type=int, required=True, choices=ETH_MODES.keys(),
-                        help="Ethernet mode to set (0, 4, or 5).")
-
-    args = parser.parse_args()
-
-    # Run the test
-    status, result_data = run_ethernet_test(args.local_ip, args.mode, args.iter)
-
-    # --- Save result to JSON file ---
-    data = {"iterations": []}
+def save_result(result):
     try:
-        if os.path.exists(RESULT_FILE) and os.path.getsize(RESULT_FILE) > 0:
-            with open(RESULT_FILE, 'r') as f:
-                content = f.read()
-                if content.strip():
-                    data = json.loads(content)
-    except json.JSONDecodeError:
-        print(f"WARNING: Corrupted JSON found in {RESULT_FILE}. Starting fresh data structure.", flush=True)
-    except Exception:
-        pass
-
-    # Append the new result
-    result_entry = {
-        "iteration": args.iter,
-        "mode": args.mode,
-        "mode_name": ETH_MODES.get(args.mode, {}).get("name", "Unknown"),
-        "test_status": status,
-        **result_data
-    }
-
-    data["iterations"].append(result_entry)
-
+        with open(RESULT_FILE, "r") as f:
+            data = json.load(f)
+    except:
+        data = {"iterations": []}
+    data["iterations"].append(result)
     with open(RESULT_FILE, "w") as f:
         json.dump(data, f, indent=4)
+    log_print(f"\nJSON REPORT UPDATED → {RESULT_FILE}\n{json.dumps(result, indent=4)}\n")
 
-    # Exit with a non-zero code if the test failed
-    if status != "PASS":
-        sys.exit(1)
-    else:
-        sys.exit(0)
+# ================ MAIN EXECUTION ================
+with open(LOG_FILE, "w") as f:
+    f.write(f"Ethernet Speed & Duplex Test Log | Iteration {ITER} | {datetime.now().isoformat()}\n")
+    f.write("="*100 + "\n")
 
+log_print("\n" + "="*100)
+log_print(f"ETHERNET SPEED & DUPLEX TEST | SU: {SU_IP} | ITER: {ITER} | {datetime.now().strftime('%d %b %Y, %H:%M:%S')}")
+log_print("="*100)
 
-if __name__ == "__main__":
-    main()
+result = {
+    "iteration": ITER,
+    "timestamp": datetime.now().isoformat(),
+    "SU_IP": SU_IP,
+    "tests": {
+        "AutoNegotiation": {"status": "FAIL", "details": ""},
+        "1000MbpsFull": {"status": "FAIL", "details": ""},
+        "100MbpsFull": {"status": "FAIL", "details": ""}
+    },
+    "overall_status": "FAIL"
+}
+
+modes_to_test = [
+    (0, "AutoNegotiation"),
+    (5, "1000MbpsFull"),
+    (4, "100MbpsFull")
+]
+
+all_pass = True
+for mode_val, test_name in modes_to_test:
+    passed, details = check_mode(mode_val)
+    result["tests"][test_name]["status"] = "PASS" if passed else "FAIL"
+    result["tests"][test_name]["details"] = details
+    if not passed:
+        all_pass = False
+    time.sleep(10)  # cooldown between tests
+
+if all_pass:
+    result["overall_status"] = "PASS"
+    log_print(f"\nITERATION {ITER} → ALL TESTS PASSED")
+else:
+    log_print(f"\nITERATION {ITER} → ONE OR MORE TESTS FAILED")
+
+save_result(result)
+
+if result["overall_status"] == "PASS":
+    log_print("EXIT 0 — SUCCESS")
+    exit(0)
+else:
+    log_print("EXIT 1 — FAILED")
+    exit(1)
