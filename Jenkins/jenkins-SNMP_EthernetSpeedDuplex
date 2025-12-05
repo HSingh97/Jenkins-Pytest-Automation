@@ -26,13 +26,13 @@ pipeline {
                     echo "----------------------------------------"
 
                     sh '''
-                        mkdir -p debug_tables logs
-                        # CHANGED: Cleanup now targets the descriptive filename
-                        rm -f EthernetSpeedDuplexTest.json test-*.log debug_tables/*.txt EthernetDuplexTestReport.html || true
-                        echo '{"iterations": []}' > EthernetSpeedDuplexTest.json
+                    mkdir -p debug_tables logs
+                    # CHANGED: Cleanup now targets the descriptive filename
+                    rm -f EthernetSpeedDuplexTest.json test-*.log debug_tables/*.txt EthernetDuplexTestReport.html || true
+                    echo '{"iterations": []}' > EthernetSpeedDuplexTest.json
                     '''
                     if (!params.'Local IP Address' || !params.ITERATION_COUNT) {
-                         error "Missing required parameters: Local IP Address or Iteration Count"
+                        error "Missing required parameters: Local IP Address or Iteration Count"
                     }
                 }
             }
@@ -66,8 +66,10 @@ pipeline {
 
                     for (int i = 1; i <= count; i++) {
                         echo "=== Running ITERATION ${i}/${count} ==="
+                        // Using 'tee' here ensures the log is written AND printed to console,
+                        // similar to the reference script's best practice.
                         sh """
-                            python3 testCases/test_SNMPEthernetDuplex.py --su-ip '${ip}' --iter ${i}
+                            python3 testCases/test_SNMPEthernetDuplex.py --su-ip '${ip}' --iter ${i} | tee test-${i}.log
                         """
                         sh "mv debug_ethernet_table_iter${i}.txt debug_tables/ || true"
                     }
@@ -425,7 +427,7 @@ pipeline {
                             try {
                                 logContent = readFile("test-${i}.log").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
                             } catch (e) {
-                                logContent = "ERROR: Log file not found (test-${i}.log).\n${e.message}"
+                                logContent = "ERROR: Log file not found (test-${i}.log).\\n${e.message}"
                             }
 
                             def logButton = "<button class='log-button' onclick=\"showLog('${logDataId}')\">See Logs</button>"
@@ -495,6 +497,7 @@ pipeline {
             sh 'rm -f test-*.log || true'
 
             script {
+                // --- Email Logic (Moved inside script block for variable scoping) ---
                 def buildCauses = currentBuild.getBuildCauses()
                 def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
                 def buildUserId = userCause?.userId ?: "unknown"
@@ -515,25 +518,36 @@ pipeline {
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
                 echo "Sending email to: ${userEmail}"
 
-                emailext(
-                    subject: "Ethernet Test: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
-                    body: """
-                        <html>
-                        <body>
-                            <h2 style="color:blue;">Ethernet Speed & Duplex Test Completed</h2>
-                            <p><strong>Result:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">${currentBuild.currentResult}</span></p>
-                            <p><strong>SU IP:</strong> ${params.'Local IP Address'}</p>
-                            <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
-                            <p>See attached report (EthernetDuplexTestReport.html).</p>
-                        </body>
-                        </html>
-                    """,
-                    to: userEmail,
-                    mimeType: 'text/html',
-                    // CHANGED: attachmentsPattern to use the new file name
-                    attachmentsPattern: 'EthernetDuplexTestReport.html,EthernetSpeedDuplexTest.json'
-                )
-            }
+                def subjectContent = "Ethernet Test: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}"
+                def bodyContent = """
+                    <html>
+                    <body>
+                        <h2 style="color:blue;">Ethernet Speed & Duplex Test Completed</h2>
+                        <p><strong>Result:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">${currentBuild.currentResult}</span></p>
+                        <p><strong>SU IP:</strong> ${params.'Local IP Address'}</p>
+                        <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                        <p>See attached report (EthernetDuplexTestReport.html).</p>
+                    </body>
+                    </html>
+                """
+                def attachmentFiles = 'EthernetDuplexTestReport.html,EthernetSpeedDuplexTest.json'
+
+                try {
+                    emailext(
+                        subject: subjectContent,
+                        body: bodyContent,
+                        to: userEmail,
+                        mimeType: 'text/html',
+                        attachmentsPattern: attachmentFiles
+                    )
+                    echo "✅ Email sent successfully to ${userEmail}"
+                } catch (Exception e) {
+                    // This will log the specific error if the emailext step fails,
+                    // which is likely a configuration issue in Jenkins itself (SMTP server, security, etc.)
+                    echo "❌ Failed to send email via emailext: ${e.message}"
+                    currentBuild.result = 'UNSTABLE' // Optional: Mark the build as unstable if email fails but tests passed
+                }
+            } // End of script block
         }
         success {
             echo "-----------------------------------------"
