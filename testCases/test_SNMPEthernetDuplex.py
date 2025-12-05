@@ -20,7 +20,7 @@ READ_COMMUNITY = "public"
 
 # OIDs
 OID_ETHERNET_MODE = ".1.3.6.1.4.1.52619.1.1.5.1.0"
-OID_SYSMGMT_APPLY = ".1.3.6.1.4.1.52619.1.2.1.1.0"  # THIS WAS MISSING!
+OID_SYSMGMT_APPLY = ".1.3.6.1.4.1.52619.1.2.1.1.0"
 OID_ETHERNET_STATS_TABLE = ".1.3.6.1.4.1.52619.1.3.2.1"
 OID_ETHERNET_STATUS_1 = ".1.3.6.1.4.1.52619.1.3.2.1.2.1"
 OID_ETHERNET_SPEED_1 = ".1.3.6.1.4.1.52619.1.3.2.1.4.1"
@@ -55,7 +55,6 @@ def set_ethernet_mode(value):
         return False
     log_print(f"Set ethernetMode = {value} → SUCCESS")
 
-    # THIS IS THE KEY: APPLY THE CONFIGURATION!
     apply_cmd = f"snmpset -v 2c -c {WRITE_COMMUNITY} {SU_IP} {OID_SYSMGMT_APPLY} i 1"
     apply_out = run(apply_cmd)
     if "INTEGER: 1" in apply_out:
@@ -66,8 +65,8 @@ def set_ethernet_mode(value):
 
 
 def wait_for_link():
-    log_print("Waiting 150 seconds for link to stabilize after apply...")
-    time.sleep(150)  # Increased because apply takes time
+    log_print("Waiting 80 seconds for link to stabilize after apply...")
+    time.sleep(80)
 
 
 def get_single_oid(oid):
@@ -117,19 +116,18 @@ def check_mode(mode_val, mode_name):
         log_print("FAIL: Link is Down!")
         return False, "Link Down"
 
-    # Normalize speed string
     speed = result["speed"].replace("(Mbps)", "Mbps").replace("1000Mbps", "1000Mbps").replace("100Mbps", "100Mbps")
     duplex = result["duplex"]
 
     if mode_val == 0:  # Auto-Negotiation
         if speed == "1000Mbps" and duplex == "full":
-            log_print("PASS: Auto-Negotiation → 1000Mbps Full")
+            log_print("PASS: Auto-Negotiation → 1000 Mbps Full")
             return True, "Auto → 1000Mbps Full"
         else:
             log_print(f"FAIL: Auto-Negotiation got {speed} {duplex}, expected 1000Mbps full")
             return False, f"Auto got {speed} {duplex}"
 
-    expected_speed = "1000Mbps" if mode_val == 5 else "100Mbps"
+    expected_speed = "1000 Mbps" if mode_val == 5 else "100 Mbps"
     if speed != expected_speed:
         log_print(f"FAIL: Speed mismatch → Got {speed}, Expected {expected_speed}")
         return False, f"Speed: {speed} ≠ {expected_speed}"
