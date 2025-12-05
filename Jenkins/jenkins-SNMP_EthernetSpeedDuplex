@@ -1,3 +1,10 @@
+import jenkins.model.Jenkins
+
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+// ------------------------------------------------------------------------------------------------------------------
+
 pipeline {
     // Defines the Jenkins node where the pipeline will run.
     agent {
@@ -295,27 +302,28 @@ pipeline {
 
     post {
         always {
-            def resultFile = "EthernetSpeedDuplexTest.json"
-            def reportJsonFile = "test_results.json"
-
-            // Archive log and JSON files for the build
-            archiveArtifacts(pattern: "${resultFile}, test-*.log, debug_ethernet_table_iter*.txt, report.html")
-
-            // Publish the HTML report
-            publishHTML(target: [
-                allowMissing: false,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: '.',
-                reportFiles: 'report.html',
-                reportName: 'Test Report'
-            ])
-
-            echo "Cleaning up ephemeral files..."
-            sh 'rm -f test-*.log debug_ethernet_table_iter*.txt || true'
-
-            // Email Notification Logic
+            // ALL Groovy code/logic must be inside this script block in the post-actions
             script {
+                def resultFile = "EthernetSpeedDuplexTest.json"
+                def reportJsonFile = "test_results.json"
+
+                // 1. Archive artifacts (uses the globally defined archiveArtifacts function)
+                archiveArtifacts(pattern: "${resultFile}, test-*.log, debug_ethernet_table_iter*.txt, report.html")
+
+                // 2. Publish the HTML report
+                publishHTML(target: [
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: '.',
+                    reportFiles: 'report.html',
+                    reportName: 'Test Report'
+                ])
+
+                echo "Cleaning up ephemeral files..."
+                sh 'rm -f test-*.log debug_ethernet_table_iter*.txt || true'
+
+                // 3. Email Notification Logic
                 def buildCauses = currentBuild.getBuildCauses()
                 def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
                 def buildUserName = userCause?.userName ?: "Unknown User"
