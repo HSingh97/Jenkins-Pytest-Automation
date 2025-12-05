@@ -1,6 +1,5 @@
-// import jenkins.model.Jenkins (Removed, as it's only needed for the global function)
-// def archiveArtifacts(pattern) { ... } (REMOVED: Using inline step syntax below)
-// ------------------------------------------------------------------------------------------------------------------
+// NOTE: Removed the global function 'archiveArtifacts' and 'import jenkins.model.Jenkins'
+// to use the native steps directly, which is more reliable and avoids the Stapler error.
 
 pipeline {
     // Defines the Jenkins node where the pipeline will run.
@@ -318,9 +317,17 @@ pipeline {
                 def reportJsonFile = "test_results.json"
                 def debugArtifacts = "debug_tables/*"
 
+                // Read the report data again to generate the dynamic email summary
+                def jsonReport = readFile(file: reportJsonFile)
+                def data = groovy.json.JsonSlurper.newInstance().parseText(jsonReport)
+                def total = data.iterations?.size() ?: 0
+                def pass = data.iterations?.count { it.overall_status == 'PASS' } ?: 0
+                def fail = total - pass
+                def rate = total > 0 ? String.format("%.1f", (pass * 100.0 / total)) : "0.0"
+
                 // 1. Archive artifacts: Using the built-in step directly with map notation
-                // This is the functional equivalent of your custom function without the definition error.
-                step([$class: 'ArtifactArchiver', artifacts: "${resultFile}, ${debugArtifacts}, test-*.log, report.html", fingerprint: true, onlyIfSuccessful: false])
+                // This replaces your custom function call and avoids the Stapler error.
+                archiveArtifacts artifacts: "${resultFile}, ${debugArtifacts}, test-*.log, report.html", fingerprint: true, onlyIfSuccessful: false
 
                 // 2. Publish the HTML report
                 publishHTML(target: [
@@ -358,20 +365,39 @@ pipeline {
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
                 echo "Sending email to: ${userEmail}"
 
+                // --- ENHANCED EMAIL BODY FOR BETTER DELIVERABILITY AND CLARITY ---
+                def emailBody = """
+                    <html><body>
+                        <h2 style="color:blue;">Jenkins Build Notification: Ethernet Speed/Duplex Test</h2>
+
+                        <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
+                        <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'}; font-weight: bold;">${currentBuild.currentResult}</span></p>
+                        <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
+                        <p><strong>Total Iterations Run:</strong> ${total}</p>
+
+                        <h3 style="margin-top: 20px; border-bottom: 1px solid #ccc; padding-bottom: 5px;">Test Summary:</h3>
+                        <table border="1" style="border-collapse: collapse; width: 400px; text-align: center;">
+                            <tr><th>Metric</th><th>Count</th><th>Rate</th></tr>
+                            <tr><td>Total Runs</td><td>${total}</td><td>100%</td></tr>
+                            <tr style="background-color: #d1fae5;"><td>Passed</td><td>${pass}</td><td>${rate}%</td></tr>
+                            <tr style="background-color: #fee2e2;"><td>Failed</td><td>${fail}</td><td>${(100.0 - rate).format(1)}%</td></tr>
+                        </table>
+
+                        <h3 style="margin-top: 20px;">Links:</h3>
+                        <ul>
+                            <li><strong>Report (HTML):</strong> <a href="${env.BUILD_URL}Test_20Report">${env.BUILD_URL}Test_20Report</a></li>
+                            <li><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></li>
+                            <li><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></li>
+                        </ul>
+
+                        <p style="color:gray; margin-top: 30px;">--<br/>Jenkins Automated Notification</p>
+                    </body></html>
+                """
+
                 // Send email with attachments (report.html and test_results.json)
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
-                    body: """
-                        <html><body>
-                            <h2 style="color:blue;">Jenkins Build Notification</h2>
-                            <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
-                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">${currentBuild.currentResult}</span></p>
-                            <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
-                            <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
-                            <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
-                            <br/><p style="color:gray;">--<br/>Jenkins Automated Notification</p>
-                        </body></html>
-                    """,
+                    body: emailBody,
                     to: userEmail,
                     mimeType: 'text/html',
                     attachmentsPattern: "report.html,${reportJsonFile}"
