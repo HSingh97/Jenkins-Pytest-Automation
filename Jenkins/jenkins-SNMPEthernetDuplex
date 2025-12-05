@@ -1,3 +1,10 @@
+import jenkins.model.Jenkins
+
+// Functions
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
 pipeline {
     agent any
 
@@ -21,15 +28,13 @@ pipeline {
             }
         }
 
-        stage('Install SNMP Tools') {
+        stage('Install Dependencies') {
             steps {
-                sh '''
-                    which snmpget > /dev/null 2>&1 || {
-                        echo "Installing net-snmp tools..."
-                        sudo apt-get update -qq
-                        sudo apt-get install -y snmp snmp-mibs-downloader
-                    }
-                '''
+                script {
+                    echo "----------------------------------------"
+                    echo "Installing Dependencies"
+                    echo "----------------------------------------"
+                }
             }
         }
 
