@@ -1,10 +1,7 @@
 import jenkins.model.Jenkins
 
-def archiveArtifacts(Map args) {
-    // Set default values if not provided in the map
-    def pattern = args.pattern
-    def allowEmpty = args.allowEmpty ?: false
-
+// Helper Functions - RENAMED to archiveBuildArtifacts to prevent conflict with built-in Jenkins step.
+def archiveBuildArtifacts(pattern, allowEmpty = true) {
     step([$class: 'ArtifactArchiver',
           artifacts: pattern,
           fingerprint: true,
@@ -29,7 +26,7 @@ pipeline {
 
                     sh '''
                         mkdir -p debug_tables logs
-                        rm -f EthernetSpeedDuplexTest.json test-*.log debug_tables/*.txt report.html || true
+                        rm -f EthernetSpeedDuplexTest.json test-*.log debug_tables/*.txt EthernetDuplexTestReport.html || true
                         echo '{"iterations": []}' > EthernetSpeedDuplexTest.json
                     '''
                     if (!params.'Local IP Address' || !params.ITERATION_COUNT) {
@@ -111,6 +108,7 @@ pipeline {
                     def istDate = new Date().format("dd MMM yyyy, HH:mm:ss z", istZone)
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
+                    def currentDateTime = istDate
 
                     def htmlContent = """
                     <html>
@@ -355,7 +353,7 @@ pipeline {
                                 <div class="header-info">
                                     <h1>Ethernet Speed & Duplex Test Report</h1>
                                     <p><strong>Pipeline:</strong> ${pipelineName}</p>
-                                    <p><strong>Date & Time:</strong> ${istDate}</p>
+                                    <p><strong>Date & Time:</strong> ${currentDateTime}</p>
                                 </div>
                             </div>
 
@@ -443,7 +441,7 @@ pipeline {
                             logBlocks += "<div id='${logDataId}' style='display:none;'>${logContent}</div>\n"
                         }
                     } else {
-                         tableRows += "<tr><td colspan='6' style='text-align:center;'>No iteration results found in EthernetSpeedDuplexTest.json.</td></tr>"
+                        tableRows += "<tr><td colspan='6' style='text-align:center;'>No iteration results found in EthernetSpeedDuplexTest.json.</td></tr>"
                     }
 
                     htmlContent += tableRows + """
@@ -468,7 +466,8 @@ pipeline {
                     </html>
                     """
 
-                    writeFile file: 'report.html', text: htmlContent
+                    // CHANGED: File name from report.html to the descriptive name
+                    writeFile file: 'EthernetDuplexTestReport.html', text: htmlContent
                 }
             }
         }
@@ -481,12 +480,14 @@ pipeline {
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
                 reportDir: '.',
-                reportFiles: 'report.html',
-                reportName: 'Test Report'
+                // CHANGED: reportFiles to use the new name
+                reportFiles: 'EthernetDuplexTestReport.html',
+                // CHANGED: reportName to the descriptive name
+                reportName: 'Ethernet Duplex Test Report'
             ])
 
-            // CORRECTED CALL: Using named arguments (pattern: ..., allowEmpty: ...)
-            archiveArtifacts(pattern: 'EthernetSpeedDuplexTest.json,test-*.log,debug_tables/**,report.html', allowEmpty: true)
+            // CORRECTED CALL: Using the renamed helper function with new artifact file name
+            archiveBuildArtifacts('EthernetSpeedDuplexTest.json,test-*.log,debug_tables/**,EthernetDuplexTestReport.html', true)
 
             echo "Cleaning up test log files..."
             sh 'rm -f test-*.log || true'
@@ -511,7 +512,6 @@ pipeline {
 
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
                 echo "Sending email to: ${userEmail}"
-
                 emailext(
                     subject: "Ethernet Test: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
                     body: """
@@ -521,13 +521,14 @@ pipeline {
                             <p><strong>Result:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">${currentBuild.currentResult}</span></p>
                             <p><strong>SU IP:</strong> ${params.'Local IP Address'}</p>
                             <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
-                            <p>See attached report (report.html).</p>
+                            <p>See attached report (EthernetDuplexTestReport.html).</p>
                         </body>
                         </html>
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html,EthernetSpeedDuplexTest.json'
+                    // CHANGED: attachmentsPattern to use the new file name
+                    attachmentsPattern: 'EthernetDuplexTestReport.html,EthernetSpeedDuplexTest.json'
                 )
             }
         }
