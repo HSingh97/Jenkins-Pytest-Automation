@@ -6,10 +6,8 @@ def archiveArtifacts(pattern) {
 }
 
 pipeline {
-    // Note: Assuming TARGET_STAND is a standard parameter defining the node label
     agent { node { label "${TARGET_STAND}" } }
 
-    // Define environment variables from build parameters for easier access
     environment {
         // These variables are set by the pipeline job parameters
         LOCAL_IP = "${params.LOCAL_IP}"
