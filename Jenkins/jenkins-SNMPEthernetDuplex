@@ -11,13 +11,15 @@ pipeline {
     environment {
         // These variables are set by the pipeline job parameters
         LOCAL_IP = "${params.LOCAL_IP}"
-        TEST_MODES = "${params.TEST_MODES}"
         COMMUNITY_STRING = "${params.COMMUNITY_STRING}"
         ITERATIONS = "${params.ITERATIONS}"
 
+        // --- Hardcoded Test Configuration (Modes and internal names) ---
+        TEST_MODES = "0,4,5" // Auto (0), 100Mbps-Full (4), 1000Mbps-Full (5)
+
         // Consistent file names for the Python script and report generator
-        REPORT_FILE_NAME = 'EthernetSpeedDuplexTest_Report.html' // Report file name as requested
-        RESULTS_JSON = 'EthernetSpeedDuplexTest_results.json'      // Python script's output file name
+        REPORT_FILE_NAME = 'EthernetSpeedDuplexTest_Report.html'
+        RESULTS_JSON = 'EthernetSpeedDuplexTest_results.json'
 
         // Initialize for email/post-action use
         TOTAL_TESTS = "0"
@@ -35,7 +37,7 @@ pipeline {
                 echo "TARGET STAND : ${TARGET_STAND}"
                 echo "Device IPv4  : ${LOCAL_IP}"
                 echo "Modes to Test: ${TEST_MODES}"
-                echo "Iterations   : ${ITERATIONS}"
+                echo "Total Cycles : ${ITERATIONS}"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
                 // Clean up previous results and initialize the JSON file
@@ -43,8 +45,8 @@ pipeline {
                 sh "echo '{\"iterations\": []}' > ${RESULTS_JSON}"
 
                 script {
-                    if (!env.LOCAL_IP || !env.TEST_MODES || !env.ITERATIONS) {
-                        error "Missing required parameters (LOCAL_IP, TEST_MODES, or ITERATIONS)."
+                    if (!env.LOCAL_IP || !env.ITERATIONS) {
+                        error "Missing required parameters (LOCAL_IP or ITERATIONS)."
                     }
                 }
             }
@@ -60,22 +62,31 @@ pipeline {
         stage('Run Ethernet Duplex Test') {
             steps {
                 script {
-                    def maxIter = ITERATIONS.toInteger()
-                    def modes = TEST_MODES.split(',')*.trim() // Split and trim modes
+                    def maxCycles = ITERATIONS.toInteger()
+                    def modes = env.TEST_MODES.split(',')
+                    def testCaseCounter = 1
 
-                    for (int i = 1; i <= maxIter; i++) {
+                    for (int cycle = 1; cycle <= maxCycles; cycle++) {
+                        echo "================== STARTING CYCLE ${cycle}/${maxCycles} =================="
                         for (def mode : modes) {
-                            echo "RUNNING ITERATION ${i}/${maxIter} for Mode: ${mode}"
-                            // Pipe output to the log file using tee for real-time output and logging.
-                            // Log file name is constructed to be unique per iteration and mode.
+                            def current_mode = mode.trim()
+
+                            // Log filename includes both the mode and the sequential test case number
+                            def logFileName = "test-case${testCaseCounter}-mode${current_mode}.log"
+
+                            echo "RUNNING TEST CASE ${testCaseCounter} (Cycle ${cycle}) for Mode: ${current_mode}"
+
+                            // Call the Python script with the sequential counter as --iter
                             sh """
                                 python3 test_SNMPEthernetDuplex.py \\
                                     --local-ip '${LOCAL_IP}' \\
-                                    --mode ${mode} \\
-                                    --iter ${i} | tee test-mode${mode}-iter${i}.log
+                                    --mode ${current_mode} \\
+                                    --iter ${testCaseCounter} | tee ${logFileName}
                             """
+                            testCaseCounter++
                         }
                     }
+                    echo "================== ALL CYCLES COMPLETE =================="
                 }
             }
         }
@@ -101,7 +112,6 @@ pipeline {
                     def passCount = jsonReport.iterations.count { it.status == 'PASS' }
                     def failCount = totalTests - passCount
 
-                    // FIX: Use safe floating-point division
                     def successPercentage = (totalTests > 0) ? ((passCount * 100.0) / totalTests) : 0.0
                     def successPercentageStr = String.format("%.2f", successPercentage)
 
@@ -114,7 +124,7 @@ pipeline {
                     def buildParamsList = [
                         "Device IPv4": env.LOCAL_IP,
                         "Modes Tested": env.TEST_MODES,
-                        "Iterations": env.ITERATIONS,
+                        "Total Cycles": env.ITERATIONS,
                         "Community String": env.COMMUNITY_STRING,
                         "FW Version (Local)": local_fw_version
                     ]
@@ -124,13 +134,14 @@ pipeline {
                     def logDataBlocks = ""
 
                     jsonReport.iterations.each { result ->
-                        def iteration = result.iteration ?: "-"
+                        def iteration = result.iteration ?: "-" // This is the sequential test case number
                         def mode = result.mode ?: "-"
                         def modeName = result.mode_name ?: "Unknown"
                         def status = result.status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
-                        // Log file name pattern: test-mode[X]-iter[Y].log
-                        def logFile = "test-mode${mode}-iter${iteration}.log"
-                        def logDataId = "log-data-m${mode}-i${iteration}"
+
+                        // Log file name pattern: test-case[N]-mode[X].log
+                        def logFile = "test-case${iteration}-mode${mode}.log"
+                        def logDataId = "log-data-case${iteration}"
                         def logContent = ""
 
                         try {
@@ -165,9 +176,9 @@ pipeline {
                     // Modify the showLog JS function for better context
                     def scriptFunctions = """
                         <script>
-                            function showLog(logDataId, iteration, modeName) {
+                            function showLog(logDataId, rowNumber, modeName) {
                                 var logContent = document.getElementById(logDataId).innerHTML;
-                                document.getElementById('modal-title').innerText = 'Iteration Log (#' + iteration + ' - ' + modeName + ')';
+                                document.getElementById('modal-title').innerText = 'Test Case Log (Case #' + rowNumber + ' - ' + modeName + ')';
                                 document.getElementById('log-content-pre').innerHTML = logContent;
                                 document.getElementById('logModal').style.display = 'block';
                             }
@@ -285,7 +296,7 @@ pipeline {
                                 <h2>Test Results</h2>
                                 <table>
                                     <tr>
-                                        <th>Iteration</th>
+                                        <th>Case #</th>
                                         <th>Mode Configured</th>
                                         <th style="text-align: center;">Status</th>
                                         <th style="text-align: center;">Logs</th>
@@ -297,7 +308,7 @@ pipeline {
                             <div id="logModal" class="modal">
                                 <div class="modal-content">
                                     <div class="modal-header">
-                                        <h2 id="modal-title">Iteration Log</h2>
+                                        <h2 id="modal-title">Test Case Log</h2>
                                         <span class="modal-close" onclick="closeModal()">&times;</span>
                                     </div>
                                     <div class="modal-body">
@@ -368,7 +379,6 @@ pipeline {
 
                 // Send email notification using calculated success rate and original file names
                 emailext(
-                    // Subject now includes the result summary (Passed/Total)
                     subject: "Ethernet Speed/Duplex Test #${BUILD_NUMBER} - ${currentBuild.currentResult} (${env.PASSED_TESTS}/${env.TOTAL_TESTS})",
                     body: """
                         <html>
@@ -377,6 +387,7 @@ pipeline {
                             <p><strong>Result:</strong> ${env.PASSED_TESTS}/${env.TOTAL_TESTS} Passed (${env.SUCCESS_RATE}%)</p>
                             <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">${currentBuild.currentResult}</span></p>
                             <p><strong>Device:</strong> ${LOCAL_IP} | <strong>Stand:</strong> ${TARGET_STAND}</p>
+                            <p><strong>Total Cycles:</strong> ${ITERATIONS}</p>
                             <p><strong>Started By:</strong> ${buildUserName}</p>
                             <p>Detailed report attached below.</p>
                             <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
