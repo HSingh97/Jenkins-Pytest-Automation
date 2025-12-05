@@ -68,7 +68,6 @@ def wait_for_link():
     log_print("Waiting 80 seconds for link to stabilize after apply...")
     time.sleep(80)
 
-
 def get_single_oid(oid):
     cmd = f"snmpget -v 2c -c {READ_COMMUNITY} {SU_IP} {oid}"
     out = run(cmd)
@@ -121,13 +120,13 @@ def check_mode(mode_val, mode_name):
 
     if mode_val == 0:  # Auto-Negotiation
         if speed == "1000Mbps" and duplex == "full":
-            log_print("PASS: Auto-Negotiation → 1000 Mbps Full")
+            log_print("PASS: Auto-Negotiation → 1000Mbps Full")
             return True, "Auto → 1000Mbps Full"
         else:
             log_print(f"FAIL: Auto-Negotiation got {speed} {duplex}, expected 1000Mbps full")
             return False, f"Auto got {speed} {duplex}"
 
-    expected_speed = "1000 Mbps" if mode_val == 5 else "100 Mbps"
+    expected_speed = "1000Mbps" if mode_val == 5 else "100Mbps"
     if speed != expected_speed:
         log_print(f"FAIL: Speed mismatch → Got {speed}, Expected {expected_speed}")
         return False, f"Speed: {speed} ≠ {expected_speed}"
@@ -139,7 +138,6 @@ def check_mode(mode_val, mode_name):
     return True, f"{expected_speed} Full OK"
 
 
-# MAIN
 with open(LOG_FILE, "w") as f:
     f.write(f"Ethernet Speed & Duplex Test | IP: {SU_IP} | Iter: {ITER} | {datetime.now().isoformat()}\n")
     f.write("=" * 100 + "\n")
