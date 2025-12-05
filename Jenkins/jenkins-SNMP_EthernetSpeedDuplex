@@ -1,9 +1,8 @@
 import jenkins.model.Jenkins
 
-// Renamed the function to avoid conflict with the built-in step call syntax.
-def archiveTestArtifacts(pattern) {
-    // Corrected to use the standard built-in step notation
-    archiveArtifacts artifacts: pattern, fingerprint: true, onlyIfSuccessful: false
+// Keeping the function definition exactly as per your original example
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 // ------------------------------------------------------------------------------------------------------------------
 
@@ -11,7 +10,6 @@ pipeline {
     // Defines the Jenkins node where the pipeline will run.
     agent {
         node {
-            // The parameter is defined in the Jenkins UI, accessed via params.TARGET_STAND
             label "${params.TARGET_STAND}"
         }
     }
@@ -20,20 +18,24 @@ pipeline {
         stage('Preparation') {
             steps {
                 script {
-                    // FIX 1: Access parameter safely using .toString() to prevent NullPointerException on .trim()
-                    def localIP = params.LOCAL_IP_ADDRESS.toString().trim()
+                    // Using the more robust parameter access with quotes and .toString() for safety
+                    def localIP = params.'Local IP Address'.toString().trim()
+                    // Assuming ITERATION_COUNT is an Integer parameter defined in the UI
+                    def count = params.ITERATION_COUNT.toInteger()
 
                     echo "----------------------------------------"
                     echo "LOCAL IP: ${localIP}"
-                    echo "ITERATION COUNT: ${params.ITERATION_COUNT}"
+                    echo "ITERATION COUNT: ${count}"
                     echo "TARGET STAND: ${params.TARGET_STAND}"
                     echo "----------------------------------------"
 
                     def resultFile = "EthernetSpeedDuplexTest.json"
 
                     // Clean up the workspace before the test run.
-                    sh "rm -f ${resultFile} test-*.log debug_ethernet_table_iter*.txt || true"
-                    // Initialize the JSON file as the Python script reads it initially.
+                    sh "rm -rf debug_tables || true"
+                    sh "mkdir debug_tables || true"
+                    sh "rm -f ${resultFile} test-*.log || true"
+
                     sh "echo '{\"iterations\": []}' > ${resultFile}"
                     echo "Cleared old workspace and initialized ${resultFile}"
                 }
@@ -44,36 +46,46 @@ pipeline {
             steps {
                 script {
                     echo "----------------------------------------"
-                    echo "Installing Dependencies"
+                    echo "Installing Dependencies (snmp, sshpass)"
                     echo "----------------------------------------"
                 }
+                // Using your exact dependency installation logic
+                sh '''
+                    which snmpget >/dev/null 2>&1 || {
+                        echo "--- Installing required tools via apt-get ---"
+                        sudo apt-get update -qq
+                        sudo apt-get install -y snmp snmp-mibs-downloader sshpass
+                    }
+                '''
             }
         }
 
-        stage('Run SNMP Duplex Test') {
+        stage('Run Ethernet Test') {
             steps {
                 script {
-                    // FIX 1 APPLIED HERE
-                    def localIP = params.LOCAL_IP_ADDRESS.toString().trim()
+                    // Using variable names and access from your provided working example
+                    def ip = params.'Local IP Address'.toString().trim()
                     def count = params.ITERATION_COUNT.toInteger()
-                    def scriptName = "EthernetSpeedDuplexTest.py"
+                    def scriptPath = "testCases/test_SNMPEthernetDuplex.py" // Using your script path
 
                     echo "----------------------------------------"
-                    echo "Starting Ethernet Speed/Duplex Test (Total Iterations: ${count})"
+                    echo "Running Ethernet Speed & Duplex Test for ${count} iterations"
                     echo "----------------------------------------"
 
                     for (int i = 1; i <= count; i++) {
-                        echo "=== DUPLEX TEST ITERATION ${i} of ${count} ==="
+                        echo "=== Running ITERATION ${i}/${count} ==="
+
+                        // Using your exact script execution command
                         try {
-                            // Pass the localIP value to the script's --su-ip argument
-                            sh """
+                             sh """
                                 set -x
-                                python3 ${scriptName} \\
-                                --su-ip '${localIP}' \\
-                                --iter ${i}
+                                python3 ${scriptPath} --su-ip '${ip}' --iter ${i} | tee test-${i}.log
+                                # Move debug file to the debug_tables directory
+                                mv debug_ethernet_table_iter${i}.txt debug_tables/ || true
                             """
                         } catch (err) {
                             echo "Iteration ${i} FAILED: ${err}"
+                            sh "mv debug_ethernet_table_iter${i}.txt debug_tables/ || true" // Move even on failure
                         }
                     }
                 }
@@ -89,9 +101,8 @@ pipeline {
                     // Rename the test script's result file for generic reporting
                     sh "mv ${resultFile} ${reportJsonFile} || true"
 
-                    // FIX 1 APPLIED HERE
-                    def localIP = params.LOCAL_IP_ADDRESS.toString().trim()
-                    // Variable name corrected to local_fw
+                    // Get IP safely
+                    def localIP = params.'Local IP Address'.toString().trim()
                     def local_fw = "N/A"
 
                     // Safely attempt to fetch firmware version using localIP
@@ -128,13 +139,54 @@ pipeline {
                     def failCount = fail
                     def reportFilename = "report.html"
 
-                    // Start of HTML Content
+                    // Start of HTML Content (HTML code from your example is below)
                     def htmlContent = """
                     <html>
                     <head>
                         <title>Ethernet Speed/Duplex Test Report</title>
                         <style>
-                            /* ... (CSS and JS content skipped for brevity) ... */
+                            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f9fafb; color: #1f2937; }
+                            .container { max-width: 1200px; margin: 24px auto; padding: 24px; }
+                            .header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%); padding: 28px 36px; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04); }
+                            .header img { height: 65px; transition: transform 0.2s ease-in-out; }
+                            .header img:hover { transform: scale(1.03); }
+                            .header-info { text-align: right; }
+                            .header-info h1 { margin: 0; font-size: 30px; font-weight: 700; color: #0a2540; }
+                            .header-info p { margin: 5px 0; font-size: 15px; color: #4a5568; }
+                            h2 { margin-top: 32px; font-size: 24px; font-weight: 600; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; }
+                            .summary-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-top: 24px; }
+                            .summary-card { background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.04); display: flex; padding: 24px; align-items: center; border-top-width: 4px; border-top-style: solid; }
+                            .card-icon { font-size: 32px; margin-right: 20px; padding: 12px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+                            .card-info { text-align: left; }
+                            .card-info-title { font-size: 16px; color: #6b7280; margin: 0 0 4px 0; }
+                            .card-info-value { font-size: 32px; font-weight: 700; color: #111827; margin: 0; }
+                            .percent .percent-sign { font-size: 20px; font-weight: 600; }
+                            .card-percent { border-color: #6b7280; }
+                            .card-percent .card-icon { background-color: #f3f4f6; color: #6b7280; }
+                            .card-total { border-color: #3b82f6; }
+                            .card-total .card-icon { background-color: #dbeafe; color: #3b82f6; }
+                            .card-pass { border-color: #10b981; }
+                            .card-pass .card-icon { background-color: #d1fae5; color: #10b981; }
+                            .card-fail { border-color: #ef4444; }
+                            .card-fail .card-icon { background-color: #fee2e2; color: #ef4444; }
+                            table { width: 100%; border-collapse: collapse; margin-top: 24px; background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
+                            th, td { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle; }
+                            th { background-color: #f9fafb; font-weight: 600; color: #6b7280; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+                            tr:last-child td { border-bottom: none; }
+                            tr:hover { background-color: #f9fafb; }
+                            .status-pass { color: #059669; font-weight: 600; background-color: #d1fae5; padding: 5px 10px; border-radius: 99px; display: inline-block; }
+                            .status-fail { color: #dc2626; font-weight: 600; background-color: #fee2e2; padding: 5px 10px; border-radius: 99px; display: inline-block; }
+                            .log-button { background-color: #3b82f6; color: white; padding: 8px 16px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; transition: background-color 0.2s ease, box-shadow 0.2s ease; display: inline-block; border: none; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+                            .log-button:hover { background-color: #2563eb; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                            .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); }
+                            .modal-content { background-color: #ffffff; margin: 5% auto; border: 1px solid #e5e7eb; border-radius: 12px; width: 80%; max-width: 900px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); animation-name: animatetop; animation-duration: 0.4s; overflow: hidden; }
+                            .modal-header { padding: 20px 32px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+                            .modal-header h2 { margin: 0; padding: 0; border: none; font-size: 20px; }
+                            .modal-close { color: #9ca3af; font-size: 28px; font-weight: bold; cursor: pointer; transition: color 0.2s ease; }
+                            .modal-close:hover, .modal-close:focusprese { color: #1f2937; text-decoration: none; }
+                            .modal-body { padding: 0; }
+                            #log-content-pre { background-color: #1f2937; color: #e5e7eb; padding: 24px 32px; max-height: 60vh; overflow: auto; white-space: pre-wrap; word-wrap: break-word; margin: 0; border-radius: 0 0 12px 12px; font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace; font-size: 14px; }
+                            @keyframes animatetop { from {transform: translateY(-50px); opacity: 0} to {transform: translateY(0); opacity: 1} }
                         </style>
                         <script>
                             function showLog(logDataId) {
@@ -269,9 +321,11 @@ pipeline {
             script {
                 def resultFile = "EthernetSpeedDuplexTest.json"
                 def reportJsonFile = "test_results.json"
+                def debugArtifacts = "debug_tables/*"
 
-                // 1. Archive artifacts (using the globally defined function archiveTestArtifacts)
-                archiveTestArtifacts(pattern: "${resultFile}, test-*.log, debug_ethernet_table_iter*.txt, report.html")
+                // 1. Archive artifacts: Using the globally defined archiveArtifacts function
+                // which uses the step([...]) notation that works for you.
+                archiveArtifacts(pattern: "${resultFile}, ${debugArtifacts}, test-*.log, report.html")
 
                 // 2. Publish the HTML report
                 publishHTML(target: [
@@ -284,7 +338,8 @@ pipeline {
                 ])
 
                 echo "Cleaning up ephemeral files..."
-                sh 'rm -f test-*.log debug_ethernet_table_iter*.txt || true'
+                sh 'rm -rf debug_tables || true' // Clean up the debug directory
+                sh 'rm -f test-*.log || true'
 
                 // 3. Email Notification Logic
                 def buildCauses = currentBuild.getBuildCauses()
