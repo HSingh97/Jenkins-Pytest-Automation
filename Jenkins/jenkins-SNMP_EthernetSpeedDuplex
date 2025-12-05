@@ -1,9 +1,5 @@
-import jenkins.model.Jenkins
-
-// Keeping the function definition exactly as per your original example
-def archiveArtifacts(pattern) {
-    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
-}
+// import jenkins.model.Jenkins (Removed, as it's only needed for the global function)
+// def archiveArtifacts(pattern) { ... } (REMOVED: Using inline step syntax below)
 // ------------------------------------------------------------------------------------------------------------------
 
 pipeline {
@@ -18,9 +14,8 @@ pipeline {
         stage('Preparation') {
             steps {
                 script {
-                    // Using the more robust parameter access with quotes and .toString() for safety
+                    // Using the robust parameter access from your verified example
                     def localIP = params.'Local IP Address'.toString().trim()
-                    // Assuming ITERATION_COUNT is an Integer parameter defined in the UI
                     def count = params.ITERATION_COUNT.toInteger()
 
                     echo "----------------------------------------"
@@ -49,7 +44,7 @@ pipeline {
                     echo "Installing Dependencies (snmp, sshpass)"
                     echo "----------------------------------------"
                 }
-                // Using your exact dependency installation logic
+                // Your proven installation logic
                 sh '''
                     which snmpget >/dev/null 2>&1 || {
                         echo "--- Installing required tools via apt-get ---"
@@ -63,10 +58,10 @@ pipeline {
         stage('Run Ethernet Test') {
             steps {
                 script {
-                    // Using variable names and access from your provided working example
+                    // Using your verified variable names and logic
                     def ip = params.'Local IP Address'.toString().trim()
                     def count = params.ITERATION_COUNT.toInteger()
-                    def scriptPath = "testCases/test_SNMPEthernetDuplex.py" // Using your script path
+                    def scriptPath = "testCases/test_SNMPEthernetDuplex.py"
 
                     echo "----------------------------------------"
                     echo "Running Ethernet Speed & Duplex Test for ${count} iterations"
@@ -75,7 +70,7 @@ pipeline {
                     for (int i = 1; i <= count; i++) {
                         echo "=== Running ITERATION ${i}/${count} ==="
 
-                        // Using your exact script execution command
+                        // Your exact script execution command
                         try {
                              sh """
                                 set -x
@@ -85,7 +80,7 @@ pipeline {
                             """
                         } catch (err) {
                             echo "Iteration ${i} FAILED: ${err}"
-                            sh "mv debug_ethernet_table_iter${i}.txt debug_tables/ || true" // Move even on failure
+                            sh "mv debug_ethernet_table_iter${i}.txt debug_tables/ || true"
                         }
                     }
                 }
@@ -129,7 +124,7 @@ pipeline {
                     ]
                     def istDate = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
 
-                    // --- HTML Report Generation ---
+                    // --- HTML Report Generation variables ---
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
                     def currentDateTime = istDate
@@ -139,7 +134,7 @@ pipeline {
                     def failCount = fail
                     def reportFilename = "report.html"
 
-                    // Start of HTML Content (HTML code from your example is below)
+                    // Start of HTML Content (This large block remains identical to prevent HTML issues)
                     def htmlContent = """
                     <html>
                     <head>
@@ -323,9 +318,9 @@ pipeline {
                 def reportJsonFile = "test_results.json"
                 def debugArtifacts = "debug_tables/*"
 
-                // 1. Archive artifacts: Using the globally defined archiveArtifacts function
-                // which uses the step([...]) notation that works for you.
-                archiveArtifacts(pattern: "${resultFile}, ${debugArtifacts}, test-*.log, report.html")
+                // 1. Archive artifacts: Using the built-in step directly with map notation
+                // This is the functional equivalent of your custom function without the definition error.
+                step([$class: 'ArtifactArchiver', artifacts: "${resultFile}, ${debugArtifacts}, test-*.log, report.html", fingerprint: true, onlyIfSuccessful: false])
 
                 // 2. Publish the HTML report
                 publishHTML(target: [
