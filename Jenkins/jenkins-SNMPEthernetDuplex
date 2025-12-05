@@ -1,6 +1,6 @@
 import jenkins.model.Jenkins
 
-// Function to handle artifact archiving
+// Functions
 def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
@@ -9,7 +9,7 @@ pipeline {
     agent { node { label "${TARGET_STAND}" } }
 
     environment {
-        // These variables are set by the pipeline job parameters
+        // Parameters provided by the user
         LOCAL_IP = "${params.LOCAL_IP}"
         COMMUNITY_STRING = "${params.COMMUNITY_STRING}"
         ITERATIONS = "${params.ITERATIONS}"
@@ -71,14 +71,16 @@ pipeline {
                         for (def mode : modes) {
                             def current_mode = mode.trim()
 
-                            // Log filename includes both the mode and the sequential test case number
                             def logFileName = "test-case${testCaseCounter}-mode${current_mode}.log"
+                            def pythonScript = "test_SNMPEthernetDuplex.py"
 
                             echo "RUNNING TEST CASE ${testCaseCounter} (Cycle ${cycle}) for Mode: ${current_mode}"
 
-                            // Call the Python script with the sequential counter as --iter
+                            // Use sh command to execute the Python script. Python script must be in the workspace.
+                            // NOTE: The previous failure was 'No such file or directory'. Ensure test_SNMPEthernetDuplex.py
+                            // exists in the Jenkins workspace root directory or specify the full path.
                             sh """
-                                python3 test_SNMPEthernetDuplex.py \\
+                                python3 ${pythonScript} \\
                                     --local-ip '${LOCAL_IP}' \\
                                     --mode ${current_mode} \\
                                     --iter ${testCaseCounter} | tee ${logFileName}
@@ -109,7 +111,7 @@ pipeline {
 
                     // --- 3. Calculate Stats ---
                     def totalTests = jsonReport.iterations.size()
-                    def passCount = jsonReport.iterations.count { it.status == 'PASS' }
+                    def passCount = jsonReport.iterations.count { it.test_status == 'PASS' } // Check 'test_status' field
                     def failCount = totalTests - passCount
 
                     def successPercentage = (totalTests > 0) ? ((passCount * 100.0) / totalTests) : 0.0
@@ -133,37 +135,42 @@ pipeline {
                     def rows = ""
                     def logDataBlocks = ""
 
-                    jsonReport.iterations.each { result ->
-                        def iteration = result.iteration ?: "-" // This is the sequential test case number
-                        def mode = result.mode ?: "-"
-                        def modeName = result.mode_name ?: "Unknown"
-                        def status = result.status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
+                    if (jsonReport.iterations) {
+                        jsonReport.iterations.each { result ->
+                            def iteration = result.iteration ?: "-" // Sequential test case number
+                            def mode = result.mode ?: "-"
+                            def modeName = result.mode_name ?: "Unknown"
+                            def status = result.test_status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
 
-                        // Log file name pattern: test-case[N]-mode[X].log
-                        def logFile = "test-case${iteration}-mode${mode}.log"
-                        def logDataId = "log-data-case${iteration}"
-                        def logContent = ""
+                            // Log file name pattern: test-case[N]-mode[X].log
+                            def logFile = "test-case${iteration}-mode${mode}.log"
+                            def logDataId = "log-data-case${iteration}"
+                            def logContent = ""
 
-                        try {
-                            logContent = readFile(file: logFile)
-                            // Manually escape HTML characters for the log modal
-                            logContent = logContent.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                        } catch (e) {
-                            echo "Could not read log file ${logFile}: ${e.message}"
-                            logContent = "ERROR: Log file not found (${logFile}).\\n${e.message}"
+                            try {
+                                logContent = readFile(file: logFile)
+                                // Manually escape HTML characters for the log modal
+                                logContent = logContent.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                            } catch (e) {
+                                echo "Could not read log file ${logFile}: ${e.message}"
+                                logContent = "ERROR: Log file not found (${logFile}).\\n${e.message}"
+                            }
+
+                            // Combined mode/status for quick view in the table
+                            def quickStatus = "Speed: ${result.current_speed} Mbps, Duplex: ${result.current_duplex}, Status: ${result.current_status}"
+                            def logButton = "<button class='log-button' onclick=\"showLog('${logDataId}', ${iteration}, '${modeName}')\">See Logs</button>"
+
+                            rows += """
+                                <tr>
+                                    <td>${iteration}</td>
+                                    <td>${modeName}</td>
+                                    <td>${quickStatus}</td>
+                                    <td style="text-align: center;">${status}</td>
+                                    <td style="text-align: center;">${logButton}</td>
+                                </tr>
+                            """
+                            logDataBlocks += "<div id='${logDataId}' style='display:none;'>${logContent}</div>\\n"
                         }
-
-                        def logButton = "<button class='log-button' onclick=\"showLog('${logDataId}', ${iteration}, '${modeName}')\">See Logs</button>"
-
-                        rows += """
-                            <tr>
-                                <td>${iteration}</td>
-                                <td>${mode} (${modeName})</td>
-                                <td style="text-align: center;">${status}</td>
-                                <td style="text-align: center;">${logButton}</td>
-                            </tr>
-                        """
-                        logDataBlocks += "<div id='${logDataId}' style='display:none;'>${logContent}</div>\\n"
                     }
 
                     // --- 6. Prepare Metadata for HTML Header ---
@@ -195,6 +202,7 @@ pipeline {
                     """
 
                     // --- 7. Construct HTML Content ---
+                    // Note: Inserting CSS styles inline as done in your reference for maximum compatibility.
                     def htmlContent = """
                         <!DOCTYPE html>
                         <html>
@@ -297,8 +305,9 @@ pipeline {
                                 <table>
                                     <tr>
                                         <th>Case #</th>
-                                        <th>Mode Configured</th>
-                                        <th style="text-align: center;">Status</th>
+                                        <th>Configured Mode</th>
+                                        <th>Observed Metrics</th>
+                                        <th style="text-align: center;">Result</th>
                                         <th style="text-align: center;">Logs</th>
                                     </tr>
                                     ${rows}
