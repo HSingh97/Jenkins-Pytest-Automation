@@ -1,0 +1,405 @@
+import jenkins.model.Jenkins
+
+// Function to handle artifact archiving
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
+pipeline {
+    agent { node { label "${TARGET_STAND}" } }
+
+    environment {
+        // These variables are set by the pipeline job parameters
+        LOCAL_IP = "${params.LOCAL_IP}"
+        TEST_MODES = "${params.TEST_MODES}"
+        COMMUNITY_STRING = "${params.COMMUNITY_STRING}"
+        ITERATIONS = "${params.ITERATIONS}"
+
+        // Consistent file names for the Python script and report generator
+        REPORT_FILE_NAME = 'EthernetSpeedDuplexTest_Report.html' // Report file name as requested
+        RESULTS_JSON = 'EthernetSpeedDuplexTest_results.json'      // Python script's output file name
+
+        // Initialize for email/post-action use
+        TOTAL_TESTS = "0"
+        PASSED_TESTS = "0"
+        SUCCESS_RATE = "0.00"
+
+        // Defining variables used for dynamic FW version retrieval
+        LOCAL_IP_FOR_SSH = "${params.LOCAL_IP}"
+    }
+
+    stages {
+        stage('Prepare') {
+            steps {
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "TARGET STAND : ${TARGET_STAND}"
+                echo "Device IPv4  : ${LOCAL_IP}"
+                echo "Modes to Test: ${TEST_MODES}"
+                echo "Iterations   : ${ITERATIONS}"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+                // Clean up previous results and initialize the JSON file
+                sh "rm -f ${RESULTS_JSON} test-*.log || true"
+                sh "echo '{\"iterations\": []}' > ${RESULTS_JSON}"
+
+                script {
+                    if (!env.LOCAL_IP || !env.TEST_MODES || !env.ITERATIONS) {
+                        error "Missing required parameters (LOCAL_IP, TEST_MODES, or ITERATIONS)."
+                    }
+                }
+            }
+        }
+
+        stage('Install Tools') {
+            steps {
+                // Installs snmp, ping utilities, and python3.
+                sh 'sudo apt-get update && sudo apt-get install -y snmp iputils-ping python3'
+            }
+        }
+
+        stage('Run Ethernet Duplex Test') {
+            steps {
+                script {
+                    def maxIter = ITERATIONS.toInteger()
+                    def modes = TEST_MODES.split(',')*.trim() // Split and trim modes
+
+                    for (int i = 1; i <= maxIter; i++) {
+                        for (def mode : modes) {
+                            echo "RUNNING ITERATION ${i}/${maxIter} for Mode: ${mode}"
+                            // Pipe output to the log file using tee for real-time output and logging.
+                            // Log file name is constructed to be unique per iteration and mode.
+                            sh """
+                                python3 test_SNMPEthernetDuplex.py \\
+                                    --local-ip '${LOCAL_IP}' \\
+                                    --mode ${mode} \\
+                                    --iter ${i} | tee test-mode${mode}-iter${i}.log
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Generate Report') {
+            steps {
+                script {
+                    // --- 1. Fetch Firmware Version (using LOCAL_IP_FOR_SSH) ---
+                    def local_fw_version = "N/A"
+                    sh "ssh-keygen -R ${LOCAL_IP_FOR_SSH} || true"
+
+                    try {
+                        local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${LOCAL_IP_FOR_SSH} 'cat /etc/version'", returnStdout: true).trim()
+                    } catch (Exception e) {
+                        echo "⚠️ Failed to get local FW version from ${LOCAL_IP_FOR_SSH}: ${e.message}"
+                    }
+
+                    // --- 2. Read Results ---
+                    def jsonReport = readJSON file: RESULTS_JSON
+
+                    // --- 3. Calculate Stats ---
+                    def totalTests = jsonReport.iterations.size()
+                    def passCount = jsonReport.iterations.count { it.status == 'PASS' }
+                    def failCount = totalTests - passCount
+
+                    // FIX: Use safe floating-point division
+                    def successPercentage = (totalTests > 0) ? ((passCount * 100.0) / totalTests) : 0.0
+                    def successPercentageStr = String.format("%.2f", successPercentage)
+
+                    // Update Env variables for post actions
+                    env.TOTAL_TESTS = String.valueOf(totalTests)
+                    env.PASSED_TESTS = String.valueOf(passCount)
+                    env.SUCCESS_RATE = successPercentageStr
+
+                    // --- 4. Build Report Parameters ---
+                    def buildParamsList = [
+                        "Device IPv4": env.LOCAL_IP,
+                        "Modes Tested": env.TEST_MODES,
+                        "Iterations": env.ITERATIONS,
+                        "Community String": env.COMMUNITY_STRING,
+                        "FW Version (Local)": local_fw_version
+                    ]
+
+                    // --- 5. Generate Table Rows and Log Blocks ---
+                    def rows = ""
+                    def logDataBlocks = ""
+
+                    jsonReport.iterations.each { result ->
+                        def iteration = result.iteration ?: "-"
+                        def mode = result.mode ?: "-"
+                        def modeName = result.mode_name ?: "Unknown"
+                        def status = result.status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
+                        // Log file name pattern: test-mode[X]-iter[Y].log
+                        def logFile = "test-mode${mode}-iter${iteration}.log"
+                        def logDataId = "log-data-m${mode}-i${iteration}"
+                        def logContent = ""
+
+                        try {
+                            logContent = readFile(file: logFile)
+                            // Manually escape HTML characters for the log modal
+                            logContent = logContent.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                        } catch (e) {
+                            echo "Could not read log file ${logFile}: ${e.message}"
+                            logContent = "ERROR: Log file not found (${logFile}).\\n${e.message}"
+                        }
+
+                        def logButton = "<button class='log-button' onclick=\"showLog('${logDataId}', ${iteration}, '${modeName}')\">See Logs</button>"
+
+                        rows += """
+                            <tr>
+                                <td>${iteration}</td>
+                                <td>${mode} (${modeName})</td>
+                                <td style="text-align: center;">${status}</td>
+                                <td style="text-align: center;">${logButton}</td>
+                            </tr>
+                        """
+                        logDataBlocks += "<div id='${logDataId}' style='display:none;'>${logContent}</div>\\n"
+                    }
+
+                    // --- 6. Prepare Metadata for HTML Header ---
+                    def istZone = TimeZone.getTimeZone("Asia/Kolkata")
+                    def istDate = Calendar.getInstance(istZone).getTime()
+                    def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
+                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+                    def pipelineName = env.JOB_NAME
+
+                    // Modify the showLog JS function for better context
+                    def scriptFunctions = """
+                        <script>
+                            function showLog(logDataId, iteration, modeName) {
+                                var logContent = document.getElementById(logDataId).innerHTML;
+                                document.getElementById('modal-title').innerText = 'Iteration Log (#' + iteration + ' - ' + modeName + ')';
+                                document.getElementById('log-content-pre').innerHTML = logContent;
+                                document.getElementById('logModal').style.display = 'block';
+                            }
+                            function closeModal() {
+                                document.getElementById('logModal').style.display = 'none';
+                            }
+                            window.onclick = function(event) {
+                                var modal = document.getElementById('logModal');
+                                if (event.target == modal) {
+                                    modal.style.display = 'none';
+                                }
+                            }
+                        </script>
+                    """
+
+                    // --- 7. Construct HTML Content ---
+                    def htmlContent = """
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <title>Senao Ethernet Speed/Duplex Test Report</title>
+                            <style>
+                                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f9fafb; color: #1f2937; }
+                                .container { max-width: 1200px; margin: 24px auto; padding: 24px; }
+                                .header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%); padding: 28px 36px; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04); }
+                                .header img { height: 65px; }
+                                .header-info { text-align: right; }
+                                .header-info h1 { margin: 0; font-size: 30px; font-weight: 700; color: #0a2540; }
+                                .header-info p { margin: 5px 0; font-size: 15px; color: #4a5568; }
+                                h2 { margin-top: 32px; font-size: 24px; font-weight: 600; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; }
+                                .summary-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-top: 24px; }
+                                .summary-card { background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.04); display: flex; padding: 24px; align-items: center; border-top-width: 4px; border-top-style: solid; }
+                                .card-icon { font-size: 32px; margin-right: 20px; padding: 12px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+                                .card-info-title { font-size: 16px; color: #6b7280; margin: 0 0 4px 0; }
+                                .card-info-value { font-size: 32px; font-weight: 700; color: #111827; margin: 0; }
+                                .percent .percent-sign { font-size: 20px; font-weight: 600; }
+                                .card-percent { border-color: #6b7280; } .card-percent .card-icon { background-color: #f3f4f6; color: #6b7280; }
+                                .card-total { border-color: #3b82f6; } .card-total .card-icon { background-color: #dbeafe; color: #3b82f6; }
+                                .card-pass { border-color: #10b981; } .card-pass .card-icon { background-color: #d1fae5; color: #10b981; }
+                                .card-fail { border-color: #ef4444; } .card-fail .card-icon { background-color: #fee2e2; color: #ef4444; }
+                                table { width: 100%; border-collapse: collapse; margin-top: 24px; background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
+                                th, td { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle; }
+                                th { background-color: #f9fafb; font-weight: 600; color: #6b7280; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+                                tr:last-child td { border-bottom: none; }
+                                tr:hover { background-color: #f9fafb; }
+                                .status-pass { color: #059669; font-weight: 600; background-color: #d1fae5; padding: 5px 10px; border-radius: 99px; display: inline-block; }
+                                .status-fail { color: #dc2626; font-weight: 600; background-color: #fee2e2; padding: 5px 10px; border-radius: 99px; display: inline-block; }
+                                .log-button { background-color: #3b82f6; color: white; padding: 8px 16px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; transition: background-color 0.2s ease; display: inline-block; border: none; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+                                .log-button:hover { background-color: #2563eb; }
+                                .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); }
+                                .modal-content { background-color: #ffffff; margin: 5% auto; border: 1px solid #e5e7eb; border-radius: 12px; width: 80%; max-width: 900px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); animation-name: animatetop; animation-duration: 0.4s; overflow: hidden; }
+                                .modal-header { padding: 20px 32px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+                                .modal-header h2 { margin: 0; padding: 0; border: none; font-size: 20px; }
+                                .modal-close { color: #9ca3af; font-size: 28px; font-weight: bold; cursor: pointer; }
+                                .modal-body { padding: 0; }
+                                #log-content-pre { background-color: #1f2937; color: #e5e7eb; padding: 24px 32px; max-height: 60vh; overflow: auto; white-space: pre-wrap; word-wrap: break-word; margin: 0; border-radius: 0 0 12px 12px; font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace; font-size: 14px; }
+                                @keyframes animatetop { from {transform: translateY(-50px); opacity: 0} to {transform: translateY(0); opacity: 1} }
+                            </style>
+
+                            ${scriptFunctions}
+                        </head>
+                        <body>
+                            <div class="container">
+                                <div class="header">
+                                    <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
+                                    <div class="header-info">
+                                        <h1>Ethernet Speed/Duplex Test Report</h1>
+                                        <p><strong>Pipeline:</strong> ${pipelineName}</p>
+                                        <p><strong>Build:</strong> #${BUILD_NUMBER}</p>
+                                        <p><strong>Date & Time:</strong> ${currentDateTime}</p>
+                                    </div>
+                                </div>
+
+                                <h2>Build Parameters</h2>
+                                <table>
+                                    <tr>
+                                        <th>Parameter</th>
+                                        <th>Value</th>
+                                    </tr>
+                                    ${buildParamsList.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\\n')}
+                                </table>
+
+                                <h2>Test Summary</h2>
+                                <div class="summary-container">
+                                    <div class="summary-card card-percent">
+                                        <div class="card-icon">🎯</div>
+                                        <div class="card-info">
+                                            <p class="card-info-title">Success Rate</p>
+                                            <p class="card-info-value percent">${SUCCESS_RATE}<span class="percent-sign">%</span></p>
+                                        </div>
+                                    </div>
+                                    <div class="summary-card card-total">
+                                        <div class="card-icon">📦</div>
+                                        <div class="card-info">
+                                            <p class="card-info-title">Total Test Cases</p>
+                                            <p class="card-info-value">${TOTAL_TESTS}</p>
+                                        </div>
+                                    </div>
+                                    <div class="summary-card card-pass">
+                                        <div class="card-icon">✅</div>
+                                        <div class="card-info">
+                                            <p class="card-info-title">Passed</p>
+                                            <p class="card-info-value">${PASSED_TESTS}</p>
+                                        </div>
+                                    </div>
+                                    <div class="summary-card card-fail">
+                                        <div class="card-icon">❌</div>
+                                        <div class="card-info">
+                                            <p class="card-info-title">Failed</p>
+                                            <p class="card-info-value">${failCount}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <h2>Test Results</h2>
+                                <table>
+                                    <tr>
+                                        <th>Iteration</th>
+                                        <th>Mode Configured</th>
+                                        <th style="text-align: center;">Status</th>
+                                        <th style="text-align: center;">Logs</th>
+                                    </tr>
+                                    ${rows}
+                                </table>
+                            </div>
+
+                            <div id="logModal" class="modal">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h2 id="modal-title">Iteration Log</h2>
+                                        <span class="modal-close" onclick="closeModal()">&times;</span>
+                                    </div>
+                                    <div class="modal-body">
+                                        <pre id="log-content-pre"></pre>
+                                    </div>
+                                </div>
+                            </div>
+
+                            ${logDataBlocks}
+                        </body>
+                        </html>
+                    """
+
+                    // --- 8. Write Report ---
+                    writeFile file: REPORT_FILE_NAME, text: htmlContent
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Publish HTML report using the correct file name
+            publishHTML(target: [
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: '.',
+                reportFiles: env.REPORT_FILE_NAME,
+                reportName: 'Ethernet Speed/Duplex Test Report'
+            ])
+
+            // Archive the report, results JSON, and all logs
+            archiveArtifacts "${env.REPORT_FILE_NAME},${env.RESULTS_JSON},test-*.log"
+
+            // Clean up the temporary log files
+            echo "Cleaning up test log files..."
+            sh 'rm -f test-*.log || true'
+
+            echo "-----------------------------------------"
+            echo 'Script Done!'
+            echo "-----------------------------------------"
+
+            script {
+                // Get build information for email
+                def buildCauses = currentBuild.getBuildCauses()
+                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+                def buildUserId = userCause?.userId ?: "unknown"
+                def buildUserName = userCause?.userName ?: "Unknown User"
+
+                // Define a mapping of user IDs to emails
+                def userEmails = [
+                    "puneet": "puneet.sharma@senao.com",
+                    "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@senao.com",
+                    "sandeep": "sandeep.manchikanti@senao.com",
+                    "sampath": "sampath.marella@senao.com",
+                    "jayanth": "jayanth.munnaluru@senao.com",
+                    "srilatha": "srilatha.tadiboina@senao.com",
+                    "phani": "phani.darla@senao.com",
+                    "dinesh": "dinesh.redddy@senao.com",
+                    "unknown": "puneet.sharma@senao.com" // Default email if user is unknown
+                ]
+
+                def userEmail = userEmails.get(buildUserId)
+
+                echo "Sending email to: ${userEmail}"
+
+                // Send email notification using calculated success rate and original file names
+                emailext(
+                    // Subject now includes the result summary (Passed/Total)
+                    subject: "Ethernet Speed/Duplex Test #${BUILD_NUMBER} - ${currentBuild.currentResult} (${env.PASSED_TESTS}/${env.TOTAL_TESTS})",
+                    body: """
+                        <html>
+                        <body>
+                            <h2 style="color:#1e40af;">Senao Ethernet Speed/Duplex Test Report</h2>
+                            <p><strong>Result:</strong> ${env.PASSED_TESTS}/${env.TOTAL_TESTS} Passed (${env.SUCCESS_RATE}%)</p>
+                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">${currentBuild.currentResult}</span></p>
+                            <p><strong>Device:</strong> ${LOCAL_IP} | <strong>Stand:</strong> ${TARGET_STAND}</p>
+                            <p><strong>Started By:</strong> ${buildUserName}</p>
+                            <p>Detailed report attached below.</p>
+                            <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                            <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
+                        </body>
+                        </html>
+                    """,
+                    to: userEmail,
+                    mimeType: 'text/html',
+                    attachmentsPattern: "${env.REPORT_FILE_NAME},${env.RESULTS_JSON}"
+                )
+            }
+        }
+
+        success {
+            echo "-----------------------------------------"
+            echo 'Script Success'
+            echo "-----------------------------------------"
+        }
+        failure {
+            echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
+        }
+    }
+}
