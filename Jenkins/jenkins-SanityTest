@@ -1,6 +1,6 @@
 import jenkins.model.Jenkins
 
-// --- Helper Functions ---
+// --- Helper Function ---
 def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
@@ -19,7 +19,7 @@ pipeline {
             steps {
                 script {
                     echo "========================================"
-                    echo "    SANITY AUTOMATION TEST SUITE        "
+                    echo "   MASTER SANITY AUTOMATION SUITE      "
                     echo "========================================"
                     echo "TARGET STAND   : ${params.TARGET_STAND}"
                     echo "REMOTE NODE    : ${params['Remote PC']}"
@@ -52,7 +52,7 @@ pipeline {
                             sh utilities/requirements.txt || true
                         fi
 
-                        # Check for SNMP tools (Required for Ethernet Speed Duplex)
+                        # Check for SNMP tools
                         which snmpget >/dev/null 2>&1 || {
                             echo "--- Installing SNMP tools ---"
                             sudo apt-get update -qq
@@ -64,7 +64,6 @@ pipeline {
         }
 
         stage('Firmware Prep') {
-            // Only run if Firmware Upgrade is in the selected tests
             when { expression { return params.TEST_TYPES.contains('Firmware Upgrade') } }
             steps {
                 script {
@@ -95,6 +94,7 @@ pipeline {
         stage('Execute Tests') {
             steps {
                 script {
+                    // Active Choices returns a comma-separated string
                     def allSelectedTests = params.TEST_TYPES.split(',').collect { it.trim() }
 
                     def factoryResetTest = allSelectedTests.find { it == 'Factory Reset' }
@@ -137,7 +137,6 @@ pipeline {
                     } catch(e) {}
 
                     def jsonReport = readJSON file: 'iteration_results.json'
-                    // Ensure we handle HTML entities from params if passed
                     def testTypes = params.TEST_TYPES.split(',').collect { it.trim().replaceAll('&amp;', '&') }
                     def istDate = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
                     def reportFilename = "Sanity_Report_${env.BUILD_NUMBER}.html"
@@ -246,7 +245,7 @@ pipeline {
                         allowMissing: false, alwaysLinkToLastBuild: true, keepAll: true,
                         reportDir: '.', reportFiles: reportFilename, reportName: 'Sanity Report'
                     ])
-                    archiveArtifacts artifacts: '*.html, *.json, *.log'
+                    archiveArtifacts('*.html, *.json, *.log')
 
                     // Email
                     def emails = ["harman": "harmanjot.singh@senao.com", "puneet": "puneet.sharma@senao.com"]
@@ -329,9 +328,8 @@ def runTestList(tests, iteration, localIP, remoteIP) {
         }
 
         def safeTestName = testType.replaceAll(' ', '_').toLowerCase()
-
-        // --- FIX: Indentation is critical for Python via sh ---
-        def pythonScript = """
+        // --- Indentation-safe Python script ---
+        def pyCmd = """
 import json
 try:
     with open('iteration_results.json', 'r+') as f:
@@ -341,8 +339,8 @@ try:
         json.dump(data, f, indent=4)
 except Exception as e: print(e)
 """
-        // Strip common indentation so it's clean for python execution
-        sh "python3 -c \"${pythonScript.stripIndent()}\""
-        sleep 5
+        // Using stripIndent() to prevent indentation errors
+        sh "python3 -c \"${pyCmd.stripIndent()}\""
+        sleep 20
     }
 }
