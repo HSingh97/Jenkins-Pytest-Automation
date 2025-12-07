@@ -1,0 +1,347 @@
+import jenkins.model.Jenkins
+
+// --- Helper Functions ---
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
+pipeline {
+    agent { node { label "${params.TARGET_STAND}" } }
+
+    options {
+        timestamps()
+        timeout(time: 6, unit: 'HOURS')
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+
+    stages {
+        stage('Preparation') {
+            steps {
+                script {
+                    echo "========================================"
+                    echo "    SANITY AUTOMATION TEST SUITE        "
+                    echo "========================================"
+                    echo "TARGET STAND   : ${params.TARGET_STAND}"
+                    echo "REMOTE NODE    : ${params['Remote PC']}"
+                    echo "TESTS SELECTED : ${params.TEST_TYPES}"
+                    echo "ITERATIONS     : ${params.ITERATION_COUNT}"
+                    echo "========================================"
+
+                    if (!params['Local IP Address']) {
+                        error "❌ Missing required parameter: Local IP Address"
+                    }
+
+                    // Clean Workspace
+                    sh 'rm -f *.json *.html *.log *.zip'
+                    sh 'rm -rf artifacts debug_tables'
+                    sh 'mkdir -p artifacts debug_tables'
+
+                    // Initialize Master JSON Result file
+                    sh 'echo "{\\"iterations\\": []}" > iteration_results.json'
+                }
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                script {
+                    echo "--- Installing Dependencies ---"
+                    sh '''
+                        pip3 install pytest || true
+                        if [ -f "utilities/requirements.txt" ]; then
+                            sh utilities/requirements.txt || true
+                        fi
+
+                        # Check for SNMP tools (Required for Ethernet Speed Duplex)
+                        which snmpget >/dev/null 2>&1 || {
+                            echo "--- Installing SNMP tools ---"
+                            sudo apt-get update -qq
+                            sudo apt-get install -y snmp snmp-mibs-downloader sshpass
+                        }
+                    '''
+                }
+            }
+        }
+
+        stage('Firmware Prep') {
+            // Only run if Firmware Upgrade is in the selected tests
+            when { expression { return params.TEST_TYPES.contains('Firmware Upgrade') } }
+            steps {
+                script {
+                    echo "--- Pre-downloading Firmware ---"
+                    def url = params['Build']
+                    if (url && url.contains('/bonsai/')) {
+                        def buildPath = url.substring(url.indexOf('/bonsai/') + 8)
+                        def WGET_URL = "https://jenkins.senao.com/bonsai/${buildPath}"
+                        if (!WGET_URL.endsWith('/')) WGET_URL += '/'
+
+                        sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc,*-apps.tgz' --no-directories ${WGET_URL} 2>&1"
+
+                        sh """
+                           imgfile=\$(ls -t *-apps.img.enc 2>/dev/null | head -n 1)
+                           if [ -n "\$imgfile" ]; then mv -f "\$imgfile" "fw.img.enc"; fi
+                           tgzfile=\$(ls -t *-apps.tgz 2>/dev/null | head -n 1)
+                           if [ -n "\$tgzfile" ]; then mv -f "\$tgzfile" "fw.tgz"; fi
+                        """
+                        env.FIRMWARE_FILE = "fw.tgz"
+                        archiveArtifacts('fw.img.enc, fw.tgz')
+                    } else {
+                        echo "⚠️ No valid Bonsai URL provided. Assuming local file availability."
+                    }
+                }
+            }
+        }
+
+        stage('Execute Tests') {
+            steps {
+                script {
+                    // Active Choices returns a comma-separated string (e.g., "VLAN,QOS,Reboot")
+                    def allSelectedTests = params.TEST_TYPES.split(',').collect { it.trim() }
+
+                    // Logic to separate "Factory Reset" from the rest
+                    def factoryResetTest = allSelectedTests.find { it == 'Factory Reset' }
+                    def standardTests = allSelectedTests - 'Factory Reset'
+
+                    def globalIterations = params.ITERATION_COUNT.isInteger() ? params.ITERATION_COUNT.toInteger() : 2
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
+
+                    // 1. Run Standard Tests (Loop based on global iterations)
+                    if (standardTests) {
+                        for (int i = 1; i <= globalIterations; i++) {
+                            echo "--------------------------------------------------"
+                            echo "   STANDARD TESTS - ITERATION ${i} / ${globalIterations}"
+                            echo "--------------------------------------------------"
+                            runTestList(standardTests, i, localIP, remoteIP)
+                        }
+                    }
+
+                    // 2. Run Factory Reset (ALWAYS Last, ALWAYS 1 Iteration)
+                    if (factoryResetTest) {
+                        echo "--------------------------------------------------"
+                        echo "   FACTORY RESET (Running 1 Iteration Only)"
+                        echo "--------------------------------------------------"
+                        runTestList([factoryResetTest], 1, localIP, remoteIP)
+                    }
+                }
+            }
+        }
+
+        stage('Generate Report') {
+            steps {
+                script {
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
+                    def local_fw = "N/A"
+                    try {
+                         sh "ssh-keygen -R ${localIP} || true"
+                         local_fw = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version' || echo 'N/A'", returnStdout: true).trim()
+                    } catch(e) {}
+
+                    def jsonReport = readJSON file: 'iteration_results.json'
+                    // Ensure we handle HTML entities from params if passed
+                    def testTypes = params.TEST_TYPES.split(',').collect { it.trim().replaceAll('&amp;', '&') }
+                    def istDate = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
+                    def reportFilename = "Sanity_Report_${env.BUILD_NUMBER}.html"
+
+                    def htmlContent = """
+                    <html><head><title>Sanity Report</title>
+                    <style>
+                        body { font-family: 'Segoe UI', sans-serif; background: #f9fafb; padding: 20px; }
+                        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                        .header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 20px; }
+                        .header img { height: 50px; }
+                        .summary-card { border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 20px; overflow: hidden; }
+                        .card-header { background: #f3f4f6; padding: 15px; display: flex; justify-content: space-between; align-items: center; }
+                        .stats { display: flex; padding: 15px; justify-content: space-around; }
+                        .stat-item { text-align: center; }
+                        .pass { color: green; font-weight: bold; }
+                        .fail { color: red; font-weight: bold; }
+                        .btn { background: #3b82f6; color: white; padding: 8px 16px; border-radius: 4px; border: none; cursor: pointer; }
+                        .details-table { display: none; padding: 15px; width: 100%; }
+                        table { width: 100%; border-collapse: collapse; }
+                        th, td { padding: 12px; border-bottom: 1px solid #eee; text-align: left; }
+
+                        /* Modal */
+                        .modal { display: none; position: fixed; z-index: 999; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+                        .modal-content { background: white; margin: 5% auto; padding: 20px; width: 80%; height: 80%; overflow: auto; border-radius: 8px; }
+                        .close { float: right; font-size: 28px; cursor: pointer; }
+                        pre { background: #333; color: #fff; padding: 15px; white-space: pre-wrap; }
+                    </style>
+                    <script>
+                        function toggle(id, btn) {
+                            var el = document.getElementById(id);
+                            if(el.style.display === 'none') { el.style.display = 'block'; btn.innerText = 'Hide Details'; }
+                            else { el.style.display = 'none'; btn.innerText = 'Show Details'; }
+                        }
+                        function showLog(id) {
+                            document.getElementById('logPre').innerHTML = document.getElementById(id).innerHTML;
+                            document.getElementById('logModal').style.display = 'block';
+                        }
+                        function closeLog() { document.getElementById('logModal').style.display = 'none'; }
+                    </script>
+                    </head><body>
+                    <div class="container">
+                        <div class="header">
+                            <img src="https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png">
+                            <div style="text-align:right">
+                                <h1>Sanity Test Report</h1>
+                                <p>${env.JOB_NAME} #${env.BUILD_NUMBER}</p>
+                                <p>${istDate}</p>
+                            </div>
+                        </div>
+                        <h3>Device Info: ${localIP} | FW: ${local_fw}</h3>
+                    """
+
+                    def hiddenLogs = ""
+
+                    testTypes.each { testName ->
+                        def safeName = testName.replaceAll(' ', '_').toLowerCase()
+                        def results = jsonReport.iterations.findAll { it.test == safeName }
+
+                        if(results) {
+                            def total = results.size()
+                            def pass = results.count { it.status == 'PASS' }
+                            def fail = total - pass
+                            def rate = (total > 0) ? String.format("%.1f", (pass/total)*100) : "0.0"
+                            def tableId = "${safeName}_table"
+
+                            htmlContent += """
+                            <div class="summary-card">
+                                <div class="card-header">
+                                    <h3>${testName}</h3>
+                                    <button class="btn" onclick="toggle('${tableId}', this)">Show Details</button>
+                                </div>
+                                <div class="stats">
+                                    <div class="stat-item"><div>Total</div><strong>${total}</strong></div>
+                                    <div class="stat-item"><div>Pass</div><strong class="pass">${pass}</strong></div>
+                                    <div class="stat-item"><div>Fail</div><strong class="fail">${fail}</strong></div>
+                                    <div class="stat-item"><div>Rate</div><strong>${rate}%</strong></div>
+                                </div>
+                                <div id="${tableId}" class="details-table">
+                                    <table><tr><th>Iter</th><th>Status</th><th>Log</th></tr>
+                            """
+
+                            results.each { res ->
+                                def logId = "log_${safeName}_${res.iteration}"
+                                def logText = ""
+                                try { logText = readFile(file: res.logFile).replace("<","&lt;") } catch(e) { logText = "Log Missing" }
+                                hiddenLogs += "<div id='${logId}' style='display:none'>${logText}</div>"
+
+                                htmlContent += "<tr><td>${res.iteration}</td><td class='${res.status == "PASS" ? "pass" : "fail"}'>${res.status}</td>"
+                                htmlContent += "<td><button class='btn' style='background:#666' onclick=\"showLog('${logId}')\">View Log</button></td></tr>"
+                            }
+                            htmlContent += "</table></div></div>"
+                        }
+                    }
+
+                    htmlContent += """
+                    </div>
+                    <div id="logModal" class="modal"><div class="modal-content"><span class="close" onclick="closeLog()">&times;</span><pre id="logPre"></pre></div></div>
+                    ${hiddenLogs}
+                    </body></html>
+                    """
+
+                    writeFile file: reportFilename, text: htmlContent
+
+                    publishHTML(target: [
+                        allowMissing: false, alwaysLinkToLastBuild: true, keepAll: true,
+                        reportDir: '.', reportFiles: reportFilename, reportName: 'Sanity Report'
+                    ])
+                    archiveArtifacts artifacts: '*.html, *.json, *.log'
+
+                    // Email
+                    def emails = ["harman": "harmanjot.singh@senao.com", "puneet": "puneet.sharma@senao.com"]
+                    def userId = currentBuild.getBuildCauses()[0]?.userId ?: "harman"
+                    emailext (
+                        subject: "Sanity: ${currentBuild.currentResult}",
+                        body: "Check Jenkins for report.",
+                        to: emails.get(userId, emails["harman"]),
+                        attachmentsPattern: reportFilename
+                    )
+                }
+            }
+        }
+    }
+}
+
+def runTestList(tests, iteration, localIP, remoteIP) {
+    tests.each { testTypeRaw ->
+        def testType = testTypeRaw.replaceAll('&amp;', '&')
+        def logFile = "log_${testType.replaceAll(' ', '_')}_iter${iteration}.log"
+        def status = "FAIL"
+        def cmd = ""
+
+        try {
+            switch(testType) {
+                case 'Channel Test':
+                    cmd = "python3.10 -m pytest -v -s testCases/test_channelTest.py --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${params.Radio}' --country '${params.Countries}' --bandwidth '${params.Bandwidth}' 2>&1 | tee ${logFile}"
+                    break
+                case 'Firmware Upgrade':
+                    cmd = "export FW_PATH=\"${env.FIRMWARE_FILE ?: 'fw.tgz'}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade --local-ip '${localIP}' --remote-ip '${remoteIP}' --serialPort '${params['Serial Logging Port'] ?: '/dev/ttyUSB0'}' --iter ${iteration} 2>&1 | tee ${logFile}"
+                    break
+                case 'Ethernet Speed Duplex':
+                    cmd = "python3 testCases/test_SNMPEthernetDuplex.py --su-ip '${localIP}' --iter ${iteration} 2>&1 | tee ${logFile}"
+                    break
+                case 'Soft Reset':
+                    cmd = "pytest -v -s testCases/test_SSHReset.py::test_soft_reset --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${iteration} 2>&1 | tee ${logFile}"
+                    break
+                case 'Disconnect Connect':
+                    cmd = "pytest -v -s testCases/test_SSHDisconnect.py::test_Disconnect_Connect --local-ip '${localIP}' --remote-ip '${remoteIP}' --model '${params.Model}' --radio '${params.Radio}' --iter ${iteration} 2>&1 | tee ${logFile}"
+                    break
+                case 'Reboot':
+                    cmd = "pytest -v -s testCases/test_SSHReboot.py::test_reboot --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${iteration} 2>&1 | tee ${logFile}"
+                    break
+                case 'Throughput':
+                    def rPCIP = ""
+                    node(params['Remote PC']) { rPCIP = sh(script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$4}' | cut -d'/' -f1 | head -n1", returnStdout: true).trim() }
+                    cmd = "python3.10 -m pytest -v -s testCases/test_Throughput.py::test_throughputtest --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${params.Radio}' --mcs-rate '${params.MCS}' --traffic-type '${params['Traffic Type']}' --traffic-dir '${params.Direction}' --remote-pc-ip '${rPCIP}' --bandwidth '${params.Bandwidth}' --sleep '${params['Throughput Test Time'] ?: '10'}' 2>&1 | tee ${logFile}"
+                    break
+                case 'VLAN':
+                    def r_IP, r_If, r_Mgmt, l_IP, l_If, l_Mgmt
+                    node(params['Remote PC']) {
+                        r_IP = sh(script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$4}' | cut -d'/' -f1 | head -n1", returnStdout: true).trim()
+                        r_If = sh(script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$2}' | head -n1", returnStdout: true).trim()
+                        r_Mgmt = sh(script: "ip -4 -o addr show | awk '\$4 ~ /^10\\.0\\.150\\./ {print \$4}' | cut -d'/' -f1 | head -n1", returnStdout: true).trim()
+                    }
+                    node(params.TARGET_STAND) {
+                        l_IP = sh(script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$4}' | cut -d'/' -f1 | head -n1", returnStdout: true).trim()
+                        l_If = sh(script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$2}' | head -n1", returnStdout: true).trim()
+                        l_Mgmt = sh(script: "ip -4 -o addr show | awk '\$4 ~ /^10\\.0\\.150\\./ {print \$4}' | cut -d'/' -f1 | head -n1", returnStdout: true).trim()
+                    }
+                    cmd = "python3.10 -m pytest -v -s testCases/test_vlantesting.py::test_vlan --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${params.Radio}' --vlan '${params.VLAN}' --local-interface '${l_If}' --remote-interface '${r_If}' --local-pc-ip '${l_IP}' --remote-pc-ip '${r_IP}' --local-pc-mgmt-ip '${l_Mgmt}' --remote-pc-mgmt-ip '${r_Mgmt}' 2>&1 | tee ${logFile}"
+                    break
+                case 'QOS':
+                    def q_l_Mgmt, q_r_Mgmt
+                    node(params['Remote PC']) { q_r_Mgmt = sh(script: "ip -4 -o addr show | awk '\$4 ~ /^10\\.0\\.150\\./ {print \$4}' | cut -d'/' -f1 | head -n1", returnStdout: true).trim() }
+                    node(params.TARGET_STAND) { q_l_Mgmt = sh(script: "ip -4 -o addr show | awk '\$4 ~ /^10\\.0\\.150\\./ {print \$4}' | cut -d'/' -f1 | head -n1", returnStdout: true).trim() }
+                    cmd = "python3.10 -m pytest -v -s testCases/test_qos.py::test_qosTest --local-ip '${localIP}' --remote-ip '${remoteIP}' --qosPIR '${params['QOS PIR']}' --local-pc-mgmt-ip '${q_l_Mgmt}' --remote-pc-mgmt-ip '${q_r_Mgmt}' 2>&1 | tee ${logFile}"
+                    break
+                case 'Factory Reset':
+                    cmd = "pytest -v -s testCases/test_SSHFactoryReset.py::test_factory_reset --local-ip '${localIP}' --iter ${iteration} 2>&1 | tee ${logFile}"
+                    break
+            }
+            if(cmd) {
+                def exitCode = sh(script: cmd, returnStatus: true)
+                status = (exitCode == 0) ? "PASS" : "FAIL"
+            }
+        } catch (Exception e) {
+            echo "Exception in ${testType}: ${e.message}"
+            sh "echo 'Error: ${e.message}' >> ${logFile}"
+        }
+
+        def safeTestName = testType.replaceAll(' ', '_').toLowerCase()
+        def jsonUpdate = """
+            import json
+            try:
+                with open('iteration_results.json', 'r+') as f:
+                    data = json.load(f)
+                    data['iterations'].append({'test': '${safeTestName}', 'iteration': ${iteration}, 'status': '${status}', 'logFile': '${logFile}'})
+                    f.seek(0)
+                    json.dump(data, f, indent=4)
+            except Exception as e: print(e)
+        """
+        sh "python3 -c \"${jsonUpdate}\""
+        sleep 5
+    }
+}
