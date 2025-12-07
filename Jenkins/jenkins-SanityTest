@@ -95,10 +95,8 @@ pipeline {
         stage('Execute Tests') {
             steps {
                 script {
-                    // Active Choices returns a comma-separated string (e.g., "VLAN,QOS,Reboot")
                     def allSelectedTests = params.TEST_TYPES.split(',').collect { it.trim() }
 
-                    // Logic to separate "Factory Reset" from the rest
                     def factoryResetTest = allSelectedTests.find { it == 'Factory Reset' }
                     def standardTests = allSelectedTests - 'Factory Reset'
 
@@ -106,7 +104,7 @@ pipeline {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
 
-                    // 1. Run Standard Tests (Loop based on global iterations)
+                    // 1. Run Standard Tests
                     if (standardTests) {
                         for (int i = 1; i <= globalIterations; i++) {
                             echo "--------------------------------------------------"
@@ -116,7 +114,7 @@ pipeline {
                         }
                     }
 
-                    // 2. Run Factory Reset (ALWAYS Last, ALWAYS 1 Iteration)
+                    // 2. Run Factory Reset (Last, 1 Iteration)
                     if (factoryResetTest) {
                         echo "--------------------------------------------------"
                         echo "   FACTORY RESET (Running 1 Iteration Only)"
@@ -331,17 +329,20 @@ def runTestList(tests, iteration, localIP, remoteIP) {
         }
 
         def safeTestName = testType.replaceAll(' ', '_').toLowerCase()
-        def jsonUpdate = """
-            import json
-            try:
-                with open('iteration_results.json', 'r+') as f:
-                    data = json.load(f)
-                    data['iterations'].append({'test': '${safeTestName}', 'iteration': ${iteration}, 'status': '${status}', 'logFile': '${logFile}'})
-                    f.seek(0)
-                    json.dump(data, f, indent=4)
-            except Exception as e: print(e)
-        """
-        sh "python3 -c \"${jsonUpdate}\""
+
+        // --- FIX: Indentation is critical for Python via sh ---
+        def pythonScript = """
+import json
+try:
+    with open('iteration_results.json', 'r+') as f:
+        data = json.load(f)
+        data['iterations'].append({'test': '${safeTestName}', 'iteration': ${iteration}, 'status': '${status}', 'logFile': '${logFile}'})
+        f.seek(0)
+        json.dump(data, f, indent=4)
+except Exception as e: print(e)
+"""
+        // Strip common indentation so it's clean for python execution
+        sh "python3 -c \"${pythonScript.stripIndent()}\""
         sleep 5
     }
 }
