@@ -1,267 +1,12 @@
 import jenkins.model.Jenkins
+import groovy.json.JsonSlurper
 
-// --- Helper Function ---
+// --- Helper Functions ---
 def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
-pipeline {
-    agent { node { label "${params.TARGET_STAND}" } }
-
-    options {
-        timestamps()
-        timeout(time: 6, unit: 'HOURS')
-        buildDiscarder(logRotator(numToKeepStr: '20'))
-    }
-
-    stages {
-        stage('Preparation') {
-            steps {
-                script {
-                    echo "========================================"
-                    echo "   MASTER SANITY AUTOMATION SUITE      "
-                    echo "========================================"
-                    echo "TARGET STAND   : ${params.TARGET_STAND}"
-                    echo "REMOTE NODE    : ${params['Remote PC']}"
-                    echo "TESTS SELECTED : ${params.TEST_TYPES}"
-                    echo "ITERATIONS     : ${params.ITERATION_COUNT}"
-                    echo "========================================"
-
-                    if (!params['Local IP Address']) {
-                        error "❌ Missing required parameter: Local IP Address"
-                    }
-
-                    // Clean Workspace
-                    sh 'rm -f *.json *.html *.log *.zip'
-                    sh 'rm -rf artifacts debug_tables'
-                    sh 'mkdir -p artifacts debug_tables'
-
-                    // Initialize Master JSON Result file
-                    sh 'echo "{\\"iterations\\": []}" > iteration_results.json'
-                }
-            }
-        }
-
-        stage('Install Dependencies') {
-            steps {
-                script {
-                    echo "--- Installing Dependencies ---"
-                    sh '''
-                        pip3 install pytest || true
-                        if [ -f "utilities/requirements.txt" ]; then
-                            sh utilities/requirements.txt || true
-                        fi
-
-                        # Check for SNMP tools
-                        which snmpget >/dev/null 2>&1 || {
-                            echo "--- Installing SNMP tools ---"
-                            sudo apt-get update -qq
-                            sudo apt-get install -y snmp snmp-mibs-downloader sshpass
-                        }
-                    '''
-                }
-            }
-        }
-
-        stage('Firmware Prep') {
-            when { expression { return params.TEST_TYPES.contains('Firmware Upgrade') } }
-            steps {
-                script {
-                    echo "--- Pre-downloading Firmware ---"
-                    def url = params['Build']
-                    if (url && url.contains('/bonsai/')) {
-                        def buildPath = url.substring(url.indexOf('/bonsai/') + 8)
-                        def WGET_URL = "https://jenkins.senao.com/bonsai/${buildPath}"
-                        if (!WGET_URL.endsWith('/')) WGET_URL += '/'
-
-                        sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc,*-apps.tgz' --no-directories ${WGET_URL} 2>&1"
-
-                        sh """
-                           imgfile=\$(ls -t *-apps.img.enc 2>/dev/null | head -n 1)
-                           if [ -n "\$imgfile" ]; then mv -f "\$imgfile" "fw.img.enc"; fi
-                           tgzfile=\$(ls -t *-apps.tgz 2>/dev/null | head -n 1)
-                           if [ -n "\$tgzfile" ]; then mv -f "\$tgzfile" "fw.tgz"; fi
-                        """
-                        env.FIRMWARE_FILE = "fw.tgz"
-                        archiveArtifacts('fw.img.enc, fw.tgz')
-                    } else {
-                        echo "⚠️ No valid Bonsai URL provided. Assuming local file availability."
-                    }
-                }
-            }
-        }
-
-        stage('Execute Tests') {
-            steps {
-                script {
-                    // Active Choices returns a comma-separated string
-                    def allSelectedTests = params.TEST_TYPES.split(',').collect { it.trim() }
-
-                    def factoryResetTest = allSelectedTests.find { it == 'Factory Reset' }
-                    def standardTests = allSelectedTests - 'Factory Reset'
-
-                    def globalIterations = params.ITERATION_COUNT.isInteger() ? params.ITERATION_COUNT.toInteger() : 2
-                    def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
-
-                    // 1. Run Standard Tests
-                    if (standardTests) {
-                        for (int i = 1; i <= globalIterations; i++) {
-                            echo "--------------------------------------------------"
-                            echo "   STANDARD TESTS - ITERATION ${i} / ${globalIterations}"
-                            echo "--------------------------------------------------"
-                            runTestList(standardTests, i, localIP, remoteIP)
-                        }
-                    }
-
-                    // 2. Run Factory Reset (Last, 1 Iteration)
-                    if (factoryResetTest) {
-                        echo "--------------------------------------------------"
-                        echo "   FACTORY RESET (Running 1 Iteration Only)"
-                        echo "--------------------------------------------------"
-                        runTestList([factoryResetTest], 1, localIP, remoteIP)
-                    }
-                }
-            }
-        }
-
-        stage('Generate Report') {
-            steps {
-                script {
-                    def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
-                    def local_fw = "N/A"
-                    try {
-                         sh "ssh-keygen -R ${localIP} || true"
-                         local_fw = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version' || echo 'N/A'", returnStdout: true).trim()
-                    } catch(e) {}
-
-                    def jsonReport = readJSON file: 'iteration_results.json'
-                    def testTypes = params.TEST_TYPES.split(',').collect { it.trim().replaceAll('&amp;', '&') }
-                    def istDate = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
-                    def reportFilename = "Sanity_Report_${env.BUILD_NUMBER}.html"
-
-                    def htmlContent = """
-                    <html><head><title>Sanity Report</title>
-                    <style>
-                        body { font-family: 'Segoe UI', sans-serif; background: #f9fafb; padding: 20px; }
-                        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-                        .header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 20px; }
-                        .header img { height: 50px; }
-                        .summary-card { border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 20px; overflow: hidden; }
-                        .card-header { background: #f3f4f6; padding: 15px; display: flex; justify-content: space-between; align-items: center; }
-                        .stats { display: flex; padding: 15px; justify-content: space-around; }
-                        .stat-item { text-align: center; }
-                        .pass { color: green; font-weight: bold; }
-                        .fail { color: red; font-weight: bold; }
-                        .btn { background: #3b82f6; color: white; padding: 8px 16px; border-radius: 4px; border: none; cursor: pointer; }
-                        .details-table { display: none; padding: 15px; width: 100%; }
-                        table { width: 100%; border-collapse: collapse; }
-                        th, td { padding: 12px; border-bottom: 1px solid #eee; text-align: left; }
-
-                        /* Modal */
-                        .modal { display: none; position: fixed; z-index: 999; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
-                        .modal-content { background: white; margin: 5% auto; padding: 20px; width: 80%; height: 80%; overflow: auto; border-radius: 8px; }
-                        .close { float: right; font-size: 28px; cursor: pointer; }
-                        pre { background: #333; color: #fff; padding: 15px; white-space: pre-wrap; }
-                    </style>
-                    <script>
-                        function toggle(id, btn) {
-                            var el = document.getElementById(id);
-                            if(el.style.display === 'none') { el.style.display = 'block'; btn.innerText = 'Hide Details'; }
-                            else { el.style.display = 'none'; btn.innerText = 'Show Details'; }
-                        }
-                        function showLog(id) {
-                            document.getElementById('logPre').innerHTML = document.getElementById(id).innerHTML;
-                            document.getElementById('logModal').style.display = 'block';
-                        }
-                        function closeLog() { document.getElementById('logModal').style.display = 'none'; }
-                    </script>
-                    </head><body>
-                    <div class="container">
-                        <div class="header">
-                            <img src="https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png">
-                            <div style="text-align:right">
-                                <h1>Sanity Test Report</h1>
-                                <p>${env.JOB_NAME} #${env.BUILD_NUMBER}</p>
-                                <p>${istDate}</p>
-                            </div>
-                        </div>
-                        <h3>Device Info: ${localIP} | FW: ${local_fw}</h3>
-                    """
-
-                    def hiddenLogs = ""
-
-                    testTypes.each { testName ->
-                        def safeName = testName.replaceAll(' ', '_').toLowerCase()
-                        def results = jsonReport.iterations.findAll { it.test == safeName }
-
-                        if(results) {
-                            def total = results.size()
-                            def pass = results.count { it.status == 'PASS' }
-                            def fail = total - pass
-                            def rate = (total > 0) ? String.format("%.1f", (pass/total)*100) : "0.0"
-                            def tableId = "${safeName}_table"
-
-                            htmlContent += """
-                            <div class="summary-card">
-                                <div class="card-header">
-                                    <h3>${testName}</h3>
-                                    <button class="btn" onclick="toggle('${tableId}', this)">Show Details</button>
-                                </div>
-                                <div class="stats">
-                                    <div class="stat-item"><div>Total</div><strong>${total}</strong></div>
-                                    <div class="stat-item"><div>Pass</div><strong class="pass">${pass}</strong></div>
-                                    <div class="stat-item"><div>Fail</div><strong class="fail">${fail}</strong></div>
-                                    <div class="stat-item"><div>Rate</div><strong>${rate}%</strong></div>
-                                </div>
-                                <div id="${tableId}" class="details-table">
-                                    <table><tr><th>Iter</th><th>Status</th><th>Log</th></tr>
-                            """
-
-                            results.each { res ->
-                                def logId = "log_${safeName}_${res.iteration}"
-                                def logText = ""
-                                try { logText = readFile(file: res.logFile).replace("<","&lt;") } catch(e) { logText = "Log Missing" }
-                                hiddenLogs += "<div id='${logId}' style='display:none'>${logText}</div>"
-
-                                htmlContent += "<tr><td>${res.iteration}</td><td class='${res.status == "PASS" ? "pass" : "fail"}'>${res.status}</td>"
-                                htmlContent += "<td><button class='btn' style='background:#666' onclick=\"showLog('${logId}')\">View Log</button></td></tr>"
-                            }
-                            htmlContent += "</table></div></div>"
-                        }
-                    }
-
-                    htmlContent += """
-                    </div>
-                    <div id="logModal" class="modal"><div class="modal-content"><span class="close" onclick="closeLog()">&times;</span><pre id="logPre"></pre></div></div>
-                    ${hiddenLogs}
-                    </body></html>
-                    """
-
-                    writeFile file: reportFilename, text: htmlContent
-
-                    publishHTML(target: [
-                        allowMissing: false, alwaysLinkToLastBuild: true, keepAll: true,
-                        reportDir: '.', reportFiles: reportFilename, reportName: 'Sanity Report'
-                    ])
-                    archiveArtifacts('*.html, *.json, *.log')
-
-                    // Email
-                    def emails = ["harman": "harmanjot.singh@senao.com", "puneet": "puneet.sharma@senao.com"]
-                    def userId = currentBuild.getBuildCauses()[0]?.userId ?: "harman"
-                    emailext (
-                        subject: "Sanity: ${currentBuild.currentResult}",
-                        body: "Check Jenkins for report.",
-                        to: emails.get(userId, emails["harman"]),
-                        attachmentsPattern: reportFilename
-                    )
-                }
-            }
-        }
-    }
-}
-
+// Helper to run specific test commands based on type
 def runTestList(tests, iteration, localIP, remoteIP) {
     tests.each { testTypeRaw ->
         def testType = testTypeRaw.replaceAll('&amp;', '&')
@@ -328,7 +73,7 @@ def runTestList(tests, iteration, localIP, remoteIP) {
         }
 
         def safeTestName = testType.replaceAll(' ', '_').toLowerCase()
-        // --- Indentation-safe Python script ---
+        // Indentation-safe Python script to append result to JSON
         def pyCmd = """
 import json
 try:
@@ -339,8 +84,344 @@ try:
         json.dump(data, f, indent=4)
 except Exception as e: print(e)
 """
-        // Using stripIndent() to prevent indentation errors
         sh "python3 -c \"${pyCmd.stripIndent()}\""
-        sleep 20
+        sleep 10
+    }
+}
+
+// --- PIPELINE ---
+pipeline {
+    agent { node { label "${params.TARGET_STAND}" } }
+
+    options {
+        timestamps()
+        timeout(time: 6, unit: 'HOURS')
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+
+    stages {
+        stage('Preparation') {
+            steps {
+                script {
+                    echo "========================================"
+                    echo "   MASTER SANITY AUTOMATION SUITE       "
+                    echo "========================================"
+                    echo "TARGET STAND    : ${params.TARGET_STAND}"
+                    echo "REMOTE NODE     : ${params['Remote PC']}"
+                    echo "TESTS SELECTED  : ${params.TEST_TYPES}"
+                    echo "========================================"
+
+                    if (!params['Local IP Address']) {
+                        error "❌ Missing required parameter: Local IP Address"
+                    }
+
+                    // Clean Workspace
+                    sh 'rm -f *.json *.html *.log *.zip'
+                    sh 'rm -rf artifacts debug_tables'
+                    sh 'mkdir -p artifacts debug_tables'
+
+                    // Initialize Master JSON Result file
+                    sh 'echo "{\\"iterations\\": []}" > iteration_results.json'
+                }
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                script {
+                    echo "--- Installing Dependencies ---"
+                    sh '''
+                        pip3 install pytest || true
+                        if [ -f "utilities/requirements.txt" ]; then
+                            sh utilities/requirements.txt || true
+                        fi
+                        # Check for SNMP tools
+                        which snmpget >/dev/null 2>&1 || {
+                            echo "--- Installing SNMP tools ---"
+                            sudo apt-get update -qq
+                            sudo apt-get install -y snmp snmp-mibs-downloader sshpass
+                        }
+                    '''
+                }
+            }
+        }
+
+        stage('Firmware Prep') {
+            when { expression { return params.TEST_TYPES.contains('Firmware Upgrade') } }
+            steps {
+                script {
+                    echo "--- Pre-downloading Firmware ---"
+                    def url = params['Build']
+                    if (url && url.contains('/bonsai/')) {
+                        def buildPath = url.substring(url.indexOf('/bonsai/') + 8)
+                        def WGET_URL = "https://jenkins.senao.com/bonsai/${buildPath}"
+                        if (!WGET_URL.endsWith('/')) WGET_URL += '/'
+
+                        sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc,*-apps.tgz' --no-directories ${WGET_URL} 2>&1"
+
+                        sh """
+                           imgfile=\$(ls -t *-apps.img.enc 2>/dev/null | head -n 1)
+                           if [ -n "\$imgfile" ]; then mv -f "\$imgfile" "fw.img.enc"; fi
+                           tgzfile=\$(ls -t *-apps.tgz 2>/dev/null | head -n 1)
+                           if [ -n "\$tgzfile" ]; then mv -f "\$tgzfile" "fw.tgz"; fi
+                        """
+                        env.FIRMWARE_FILE = "fw.tgz"
+                        archiveArtifacts('fw.img.enc, fw.tgz')
+                    } else {
+                        echo "⚠️ No valid Bonsai URL provided. Assuming local file availability."
+                    }
+                }
+            }
+        }
+
+        stage('Execute Tests') {
+            steps {
+                script {
+                    // Split Active Choices comma-separated string
+                    def allSelectedTests = params.TEST_TYPES.split(',').collect { it.trim() }
+
+                    def factoryResetTest = allSelectedTests.find { it == 'Factory Reset' }
+                    def standardTests = allSelectedTests - 'Factory Reset'
+
+                    def globalIterations = params.ITERATION_COUNT.isInteger() ? params.ITERATION_COUNT.toInteger() : 2
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
+
+                    // 1. Run Standard Tests
+                    if (standardTests) {
+                        for (int i = 1; i <= globalIterations; i++) {
+                            echo "ITERATION ${i} / ${globalIterations}"
+                            runTestList(standardTests, i, localIP, remoteIP)
+                        }
+                    }
+
+                    // 2. Run Factory Reset (Last, 1 Iteration)
+                    if (factoryResetTest) {
+                        echo "Running Factory Reset..."
+                        runTestList([factoryResetTest], 1, localIP, remoteIP)
+                    }
+                }
+            }
+        }
+
+        stage('Generate Report') {
+            steps {
+                script {
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
+
+                    // --- Fetch Firmware Versions for Report Header ---
+                    def local_fw = "N/A"
+                    def remote_fw = "N/A"
+                    try {
+                         sh "ssh-keygen -R ${localIP} || true"
+                         local_fw = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version' || echo 'N/A'", returnStdout: true).trim()
+                    } catch(e) {}
+                     try {
+                         if(remoteIP) {
+                             sh "ssh-keygen -R ${remoteIP} || true"
+                             remote_fw = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version' || echo 'N/A'", returnStdout: true).trim()
+                         }
+                    } catch(e) {}
+
+                    // --- Process JSON Data ---
+                    def jsonReport = readJSON file: 'iteration_results.json'
+                    def testTypes = params.TEST_TYPES.split(',').collect { it.trim().replaceAll('&amp;', '&') }
+
+                    def istZone = TimeZone.getTimeZone("Asia/Kolkata")
+                    def istDate = Calendar.getInstance(istZone).getTime()
+                    def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
+
+                    def reportFilename = "Sanity_Report_${env.BUILD_NUMBER}.html"
+                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+
+                    // --- Build HTML ---
+                    def htmlContent = """
+                    <html>
+                    <head>
+                        <title>Sanity Test Report</title>
+                        <style>
+                            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f9fafb; color: #1f2937; }
+                            .container { max-width: 1200px; margin: 24px auto; padding: 24px; }
+                            .header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%); padding: 28px 36px; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04); }
+                            .header img { height: 65px; transition: transform 0.2s ease-in-out; }
+                            .header img:hover { transform: scale(1.03); }
+                            .header-info { text-align: right; }
+                            .header-info h1 { margin: 0; font-size: 30px; font-weight: 700; color: #0a2540; }
+                            .header-info p { margin: 5px 0; font-size: 15px; color: #4a5568; }
+                            h2 { margin-top: 32px; font-size: 24px; font-weight: 600; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; }
+
+                            /* Table Styles */
+                            table { width: 100%; border-collapse: collapse; margin-top: 15px; background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
+                            th, td { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle; }
+                            th { background-color: #f9fafb; font-weight: 600; color: #6b7280; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+                            tr:last-child td { border-bottom: none; }
+                            tr:hover { background-color: #f9fafb; }
+
+                            /* Status Chips */
+                            .status-pass { color: #059669; font-weight: 600; background-color: #d1fae5; padding: 5px 10px; border-radius: 99px; display: inline-block; }
+                            .status-fail { color: #dc2626; font-weight: 600; background-color: #fee2e2; padding: 5px 10px; border-radius: 99px; display: inline-block; }
+
+                            /* Log Button */
+                            .log-button { background-color: #3b82f6; color: white; padding: 8px 16px; border: none; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; transition: background-color 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+                            .log-button:hover { background-color: #2563eb; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+
+                            /* Modal */
+                            .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); }
+                            .modal-content { background-color: #ffffff; margin: 5% auto; border: 1px solid #e5e7eb; border-radius: 12px; width: 80%; max-width: 900px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); overflow: hidden; }
+                            .modal-header { padding: 20px 32px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+                            .modal-header h2 { border: none; padding: 0; margin: 0; font-size: 20px; }
+                            .modal-close { color: #9ca3af; font-size: 28px; font-weight: bold; cursor: pointer; transition: color 0.2s; }
+                            .modal-close:hover { color: #1f2937; }
+                            .modal-body { padding: 0; }
+                            #log-content-pre { background-color: #1f2937; color: #e5e7eb; padding: 24px 32px; max-height: 60vh; overflow: auto; white-space: pre-wrap; word-wrap: break-word; margin: 0; font-family: "SFMono-Regular", Consolas, monospace; font-size: 14px; }
+                        </style>
+                        <script>
+                            function showLog(logDataId) {
+                                var logContent = document.getElementById(logDataId).innerHTML;
+                                document.getElementById('log-content-pre').innerHTML = logContent;
+                                document.getElementById('logModal').style.display = 'block';
+                            }
+                            function closeModal() { document.getElementById('logModal').style.display = 'none'; }
+                            window.onclick = function(event) { if (event.target == document.getElementById('logModal')) { closeModal(); } }
+                        </script>
+                    </head>
+                    <body>
+                        <div class="container">
+                            <div class="header">
+                                <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
+                                <div class="header-info">
+                                    <h1>Sanity Test Report</h1>
+                                    <p><strong>Pipeline:</strong> ${env.JOB_NAME} #${env.BUILD_NUMBER}</p>
+                                    <p><strong>Date:</strong> ${currentDateTime}</p>
+                                </div>
+                            </div>
+
+                            <h2>Device Information</h2>
+                            <table>
+                                <tr><th>Parameter</th><th>Value</th></tr>
+                                <tr><td><b>Local IP / FW</b></td><td>${localIP} / ${local_fw}</td></tr>
+                                <tr><td><b>Remote IP / FW</b></td><td>${remoteIP} / ${remote_fw}</td></tr>
+                            </table>
+                    """
+
+                    def hiddenLogDivs = ""
+
+                    // Iterate through selected test types and create separate tables
+                    testTypes.each { testName ->
+                        def safeName = testName.replaceAll(' ', '_').toLowerCase()
+                        def results = jsonReport.iterations.findAll { it.test == safeName }
+
+                        if(results) {
+                             htmlContent += """
+                             <h2>${testName} Results</h2>
+                             <table>
+                                <tr>
+                                    <th style="width: 100px;">Iteration</th>
+                                    <th style="width: 150px; text-align: center;">Status</th>
+                                    <th style="text-align: center;">Logs</th>
+                                </tr>
+                             """
+
+                             results.each { res ->
+                                 def statusClass = (res.status == 'PASS') ? 'status-pass' : 'status-fail'
+                                 def logId = "log_${safeName}_${res.iteration}"
+                                 def logText = ""
+                                 try {
+                                     logText = readFile(file: res.logFile)
+                                     logText = logText.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                                 } catch(e) { logText = "Log Missing" }
+
+                                 hiddenLogDivs += "<div id='${logId}' style='display:none'>${logText}</div>\n"
+
+                                 htmlContent += """
+                                 <tr>
+                                    <td>${res.iteration}</td>
+                                    <td style="text-align: center;"><span class="${statusClass}">${res.status}</span></td>
+                                    <td style="text-align: center;"><button class="log-button" onclick="showLog('${logId}')">View Log</button></td>
+                                 </tr>
+                                 """
+                             }
+                             htmlContent += "</table>"
+                        }
+                    }
+
+                    // Close body and add modal
+                    htmlContent += """
+                        </div>
+                        <div id="logModal" class="modal">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h2>Test Log</h2>
+                                    <span class="modal-close" onclick="closeModal()">&times;</span>
+                                </div>
+                                <div class="modal-body">
+                                    <pre id="log-content-pre"></pre>
+                                </div>
+                            </div>
+                        </div>
+                        ${hiddenLogDivs}
+                    </body>
+                    </html>
+                    """
+
+                    writeFile file: reportFilename, text: htmlContent
+                    env.REPORT_FILE = reportFilename
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                // Publish HTML Report
+                publishHTML(target: [
+                    allowMissing: false, alwaysLinkToLastBuild: true, keepAll: true,
+                    reportDir: '.', reportFiles: env.REPORT_FILE, reportName: 'Sanity Report'
+                ])
+                archiveArtifacts("*.html, *.json, *.log")
+
+                // Cleanup Logs
+                sh 'rm -f log_*.log || true'
+
+                // --- Email Logic from Reboot Script ---
+                def buildCauses = currentBuild.getBuildCauses()
+                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+                def buildUserName = userCause?.userName ?: "Unknown User"
+                def buildUserId = userCause?.userId ?: "unknown"
+
+                def userEmails = [
+                    "puneet": "puneet.sharma@senao.com",
+                    "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@senao.com",
+                    "sandeep": "sandeep.manchikanti@senao.com",
+                    "sampath": "sampath.marella@senao.com",
+                    "jayanth": "jayanth.munnaluru@senao.com",
+                    "srilatha": "srilatha.tadiboina@senao.com",
+                    "phani": "phani.darla@senao.com",
+                    "dinesh": "dinesh.redddy@senao.com"
+                ]
+                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+
+                emailext(
+                    subject: "Sanity Result: ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    body: """
+                        <html><body>
+                            <h2 style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
+                                Sanity Automation: ${currentBuild.currentResult}
+                            </h2>
+                            <p><strong>Build:</strong> ${env.JOB_NAME} #${env.BUILD_NUMBER}</p>
+                            <p><strong>Started By:</strong> ${buildUserName}</p>
+                            <p><strong>Check Report:</strong> <a href="${env.BUILD_URL}Sanity_20Report/">View HTML Report</a></p>
+                            <p><strong>Console:</strong> <a href="${env.BUILD_URL}console">View Console</a></p>
+                        </body></html>
+                    """,
+                    to: userEmail,
+                    mimeType: 'text/html',
+                    attachmentsPattern: env.REPORT_FILE
+                )
+            }
+        }
     }
 }
