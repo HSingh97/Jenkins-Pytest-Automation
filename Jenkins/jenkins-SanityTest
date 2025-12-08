@@ -101,7 +101,7 @@ pipeline {
             steps {
                 script {
                     echo "========================================"
-                    echo "    SANITY AUTOMATION TEST  SUITE       "
+                    echo "    SANITY AUTOMATION TEST SUITE        "
                     echo "========================================"
                     echo "TARGET STAND    : ${params.TARGET_STAND}"
                     echo "REMOTE NODE     : ${params['Remote PC']}"
@@ -112,7 +112,7 @@ pipeline {
                         error "❌ Missing required parameter: Local IP Address"
                     }
 
-                    // --- KEY FIX: Define Report File Globally Here ---
+                    // --- Define Report File Globally Here ---
                     env.REPORT_FILE = "Sanity_Report_${env.BUILD_NUMBER}.html"
 
                     // Clean Workspace
@@ -192,15 +192,26 @@ pipeline {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
 
+                    // 1. EXECUTE STANDARD TESTS (Iterate Test -> Then Count)
                     if (standardTests) {
-                        for (int i = 1; i <= globalIterations; i++) {
-                            echo "ITERATION ${i} / ${globalIterations}"
-                            runTestList(standardTests, i, localIP, remoteIP)
+                        standardTests.each { currentTest ->
+                            echo "=================================================="
+                            echo "   STARTING TEST SUITE: ${currentTest}"
+                            echo "=================================================="
+
+                            for (int i = 1; i <= globalIterations; i++) {
+                                echo "   -> Running ${currentTest} : Iteration ${i} / ${globalIterations}"
+                                // Pass the single test as a list to match function signature
+                                runTestList([currentTest], i, localIP, remoteIP)
+                            }
                         }
                     }
 
+                    // 2. EXECUTE FACTORY RESET (Once, at the end)
                     if (factoryResetTest) {
-                        echo "Running Factory Reset..."
+                        echo "=================================================="
+                        echo "   RUNNING FACTORY RESET (1 Iteration Only)"
+                        echo "=================================================="
                         runTestList([factoryResetTest], 1, localIP, remoteIP)
                     }
                 }
