@@ -1,5 +1,4 @@
 import jenkins.model.Jenkins
-import groovy.json.JsonSlurper
 
 // --- Helper Functions ---
 def archiveArtifacts(pattern) {
@@ -73,7 +72,6 @@ def runTestList(tests, iteration, localIP, remoteIP) {
         }
 
         def safeTestName = testType.replaceAll(' ', '_').toLowerCase()
-        // Indentation-safe Python script to append result to JSON
         def pyCmd = """
 import json
 try:
@@ -89,7 +87,6 @@ except Exception as e: print(e)
     }
 }
 
-// --- PIPELINE ---
 pipeline {
     agent { node { label "${params.TARGET_STAND}" } }
 
@@ -104,7 +101,7 @@ pipeline {
             steps {
                 script {
                     echo "========================================"
-                    echo "   MASTER SANITY AUTOMATION SUITE       "
+                    echo "    SANITY AUTOMATION TEST  SUITE       "
                     echo "========================================"
                     echo "TARGET STAND    : ${params.TARGET_STAND}"
                     echo "REMOTE NODE     : ${params['Remote PC']}"
@@ -114,6 +111,9 @@ pipeline {
                     if (!params['Local IP Address']) {
                         error "❌ Missing required parameter: Local IP Address"
                     }
+
+                    // --- KEY FIX: Define Report File Globally Here ---
+                    env.REPORT_FILE = "Sanity_Report_${env.BUILD_NUMBER}.html"
 
                     // Clean Workspace
                     sh 'rm -f *.json *.html *.log *.zip'
@@ -157,16 +157,23 @@ pipeline {
                         def WGET_URL = "https://jenkins.senao.com/bonsai/${buildPath}"
                         if (!WGET_URL.endsWith('/')) WGET_URL += '/'
 
-                        sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc,*-apps.tgz' --no-directories ${WGET_URL} 2>&1"
+                        // Check if URL exists before trying recursive download
+                        def status = sh(script: "wget --spider -S ${WGET_URL} 2>&1 | grep 'HTTP/.* 200 OK'", returnStatus: true)
 
-                        sh """
-                           imgfile=\$(ls -t *-apps.img.enc 2>/dev/null | head -n 1)
-                           if [ -n "\$imgfile" ]; then mv -f "\$imgfile" "fw.img.enc"; fi
-                           tgzfile=\$(ls -t *-apps.tgz 2>/dev/null | head -n 1)
-                           if [ -n "\$tgzfile" ]; then mv -f "\$tgzfile" "fw.tgz"; fi
-                        """
-                        env.FIRMWARE_FILE = "fw.tgz"
-                        archiveArtifacts('fw.img.enc, fw.tgz')
+                        if (status == 0) {
+                             sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc,*-apps.tgz' --no-directories ${WGET_URL} 2>&1"
+
+                            sh """
+                               imgfile=\$(ls -t *-apps.img.enc 2>/dev/null | head -n 1)
+                               if [ -n "\$imgfile" ]; then mv -f "\$imgfile" "fw.img.enc"; fi
+                               tgzfile=\$(ls -t *-apps.tgz 2>/dev/null | head -n 1)
+                               if [ -n "\$tgzfile" ]; then mv -f "\$tgzfile" "fw.tgz"; fi
+                            """
+                            env.FIRMWARE_FILE = "fw.tgz"
+                            archiveArtifacts('fw.img.enc, fw.tgz')
+                        } else {
+                            error "❌ FIRMWARE URL NOT FOUND (404): ${WGET_URL}"
+                        }
                     } else {
                         echo "⚠️ No valid Bonsai URL provided. Assuming local file availability."
                     }
@@ -177,9 +184,7 @@ pipeline {
         stage('Execute Tests') {
             steps {
                 script {
-                    // Split Active Choices comma-separated string
                     def allSelectedTests = params.TEST_TYPES.split(',').collect { it.trim() }
-
                     def factoryResetTest = allSelectedTests.find { it == 'Factory Reset' }
                     def standardTests = allSelectedTests - 'Factory Reset'
 
@@ -187,7 +192,6 @@ pipeline {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
 
-                    // 1. Run Standard Tests
                     if (standardTests) {
                         for (int i = 1; i <= globalIterations; i++) {
                             echo "ITERATION ${i} / ${globalIterations}"
@@ -195,7 +199,6 @@ pipeline {
                         }
                     }
 
-                    // 2. Run Factory Reset (Last, 1 Iteration)
                     if (factoryResetTest) {
                         echo "Running Factory Reset..."
                         runTestList([factoryResetTest], 1, localIP, remoteIP)
@@ -210,7 +213,6 @@ pipeline {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
 
-                    // --- Fetch Firmware Versions for Report Header ---
                     def local_fw = "N/A"
                     def remote_fw = "N/A"
                     try {
@@ -224,7 +226,6 @@ pipeline {
                          }
                     } catch(e) {}
 
-                    // --- Process JSON Data ---
                     def jsonReport = readJSON file: 'iteration_results.json'
                     def testTypes = params.TEST_TYPES.split(',').collect { it.trim().replaceAll('&amp;', '&') }
 
@@ -232,10 +233,8 @@ pipeline {
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
 
-                    def reportFilename = "Sanity_Report_${env.BUILD_NUMBER}.html"
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
-                    // --- Build HTML ---
                     def htmlContent = """
                     <html>
                     <head>
@@ -251,22 +250,18 @@ pipeline {
                             .header-info p { margin: 5px 0; font-size: 15px; color: #4a5568; }
                             h2 { margin-top: 32px; font-size: 24px; font-weight: 600; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; }
 
-                            /* Table Styles */
                             table { width: 100%; border-collapse: collapse; margin-top: 15px; background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
                             th, td { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle; }
                             th { background-color: #f9fafb; font-weight: 600; color: #6b7280; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
                             tr:last-child td { border-bottom: none; }
                             tr:hover { background-color: #f9fafb; }
 
-                            /* Status Chips */
                             .status-pass { color: #059669; font-weight: 600; background-color: #d1fae5; padding: 5px 10px; border-radius: 99px; display: inline-block; }
                             .status-fail { color: #dc2626; font-weight: 600; background-color: #fee2e2; padding: 5px 10px; border-radius: 99px; display: inline-block; }
 
-                            /* Log Button */
                             .log-button { background-color: #3b82f6; color: white; padding: 8px 16px; border: none; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; transition: background-color 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
                             .log-button:hover { background-color: #2563eb; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
 
-                            /* Modal */
                             .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); }
                             .modal-content { background-color: #ffffff; margin: 5% auto; border: 1px solid #e5e7eb; border-radius: 12px; width: 80%; max-width: 900px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); overflow: hidden; }
                             .modal-header { padding: 20px 32px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
@@ -307,7 +302,6 @@ pipeline {
 
                     def hiddenLogDivs = ""
 
-                    // Iterate through selected test types and create separate tables
                     testTypes.each { testName ->
                         def safeName = testName.replaceAll(' ', '_').toLowerCase()
                         def results = jsonReport.iterations.findAll { it.test == safeName }
@@ -346,7 +340,6 @@ pipeline {
                         }
                     }
 
-                    // Close body and add modal
                     htmlContent += """
                         </div>
                         <div id="logModal" class="modal">
@@ -365,8 +358,7 @@ pipeline {
                     </html>
                     """
 
-                    writeFile file: reportFilename, text: htmlContent
-                    env.REPORT_FILE = reportFilename
+                    writeFile file: env.REPORT_FILE, text: htmlContent
                 }
             }
         }
@@ -375,17 +367,19 @@ pipeline {
     post {
         always {
             script {
-                // Publish HTML Report
-                publishHTML(target: [
-                    allowMissing: false, alwaysLinkToLastBuild: true, keepAll: true,
-                    reportDir: '.', reportFiles: env.REPORT_FILE, reportName: 'Sanity Report'
-                ])
-                archiveArtifacts("*.html, *.json, *.log")
+                // Check if the report file actually exists before trying to publish
+                if (fileExists(env.REPORT_FILE)) {
+                    publishHTML(target: [
+                        allowMissing: false, alwaysLinkToLastBuild: true, keepAll: true,
+                        reportDir: '.', reportFiles: env.REPORT_FILE, reportName: 'Sanity Report'
+                    ])
+                    archiveArtifacts("*.html, *.json, *.log")
+                } else {
+                    echo "⚠️ Report file ${env.REPORT_FILE} not found. Skipping publish."
+                }
 
-                // Cleanup Logs
                 sh 'rm -f log_*.log || true'
 
-                // --- Email Logic from Reboot Script ---
                 def buildCauses = currentBuild.getBuildCauses()
                 def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
                 def buildUserName = userCause?.userName ?: "Unknown User"
@@ -404,6 +398,9 @@ pipeline {
                 ]
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
 
+                // Only attach report if it exists
+                def attachments = fileExists(env.REPORT_FILE) ? env.REPORT_FILE : ""
+
                 emailext(
                     subject: "Sanity Result: ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                     body: """
@@ -415,11 +412,12 @@ pipeline {
                             <p><strong>Started By:</strong> ${buildUserName}</p>
                             <p><strong>Check Report:</strong> <a href="${env.BUILD_URL}Sanity_20Report/">View HTML Report</a></p>
                             <p><strong>Console:</strong> <a href="${env.BUILD_URL}console">View Console</a></p>
+                            ${!attachments ? "<p style='color:red;'><b>Note:</b> HTML Report generation skipped due to pipeline failure.</p>" : ""}
                         </body></html>
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: env.REPORT_FILE
+                    attachmentsPattern: attachments
                 )
             }
         }
