@@ -1,110 +1,294 @@
-pipeline {
-    agent { label 'test-puneet' }   // ONLY YOUR NODE, NO CHANCE OF GIT ERROR
+// Functions
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
 
-    parameters {
-        string(name: 'Local IP Address', defaultValue: '192.168.1.10')
-        string(name: 'Build URL', defaultValue: 'https://jenkins.senao.com/bonsai/5018/UBR655/debug/425/')
-        string(name: 'FIRMWARE_UPGRADE_COUNT', defaultValue: '10')
-        booleanParam(name: 'Keep Setting', defaultValue: true)
-        choice(name: 'Model', choices: ['UBR655', 'Other'])
-    }
+// Main Pipeline - CLI Firmware Upgrade (Exact same as your Selenium one)
+pipeline {
+    agent { node { label "${TARGET_STAND}" } }
 
     stages {
+        stage('Prepare tests') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "--- TARGET STAND: ${TARGET_STAND}"
+                    echo "--- DUT IP      : ${params['Local IP Address']}"
+                    echo "--- MODEL       : ${params.Model}"
+                    echo "--- CYCLES      : ${params.FIRMWARE_UPGRADE_COUNT}"
+                    echo "----------------------------------------"
+                }
+            }
+        }
+
+        stage('Install Python Dependencies') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "Installing Dependencies"
+                    echo "----------------------------------------"
+                    sh "sh utilities/requirements.txt"
+                }
+            }
+        }
+
         stage('Download Firmware') {
             steps {
                 script {
-                    sh 'rm -f fw.tgz fw.img.enc'
-                    def url = params['Build URL'].trim()
-                    def base = url.startsWith('http') ? url : "https://jenkins.senao.com/bonsai/${url}"
-                    if (!base.endsWith('/')) base += '/'
+                    echo "----------------------------------------"
+                    echo "Downloading the Build"
+                    echo "----------------------------------------"
+                    sh "mkdir -p artifacts"
+                    sh "pwd"
 
-                    sh "wget -q --no-check-certificate --recursive --level=1 --no-directories -A '*-apps.tgz,*-apps.img.enc,*single*.img.enc' '${base}'"
-                    sh 'mv -f *-apps.tgz fw.tgz || true'
-                    sh 'img=\$(ls *-apps.img.enc *single*.img.enc 2>/dev/null | head -n1); [ -n "\$img" ] && mv "\$img" fw.img.enc || true'
+                    echo "Cleaning up any old firmware files..."
+                    sh "rm -f fw.img.enc fw.tgz"
 
-                    env.FW_FILE = fileExists('fw.tgz') ? 'fw.tgz' : 'fw.img.enc'
-                    echo "Using → ${env.FW_FILE}"
+                    def targetImgFile = "fw.img.enc"
+                    def targetTgzFile = "fw.tgz"
+
+                    def singleImage = params['Single Image'] ?: false
+                    def customBuildFile = params.UPLOADED_FIRMWARE
+                    def logFile = "${workspace}/artifacts/flashing-device.log"
+
+                    def url = params['Build URL']
+                    int bonsaiIndex = url.indexOf('/bonsai/')
+                    if (bonsaiIndex == -1) {
+                        error "Invalid Build URL: ${url}. URL must contain '/bonsai/'."
+                    }
+                    def buildPath = url.substring(bonsaiIndex + 8)
+                    def WGET_URL = "https://jenkins.senao.com/bonsai/${buildPath}"
+                    if (!WGET_URL.endsWith('/')) {
+                        WGET_URL += '/'
+                    }
+                    echo "Full WGET URL: ${WGET_URL}"
+
+                    if (customBuildFile) {
+                        if (singleImage) {
+                            echo "Using custom uploaded file as SINGLE IMAGE: ${targetImgFile}"
+                            sh "mv -f '${customBuildFile}' ${targetImgFile} 2>&1 | tee \"${logFile}\""
+                            sh "echo 'Downloading .tgz file...' | tee -a \"${logFile}\""
+                            sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
+                            sh "mv -f *-apps.tgz ${targetTgzFile} 2>&1 | tee -a \"${logFile}\""
+                        } else {
+                            echo "Using custom uploaded file as TGZ: ${targetTgzFile}"
+                            sh "mv -f '${customBuildFile}' ${targetTgzFile} 2>&1 | tee \"${logFile}\""
+                            sh "echo 'Downloading .img.enc file...' | tee -a \"${logFile}\""
+                            sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
+                            sh """
+                               #!/bin/bash
+                               imgfile=\$(ls -t *-apps.img.enc 2>/dev/null | head -n 1)
+                               if [ -n "\$imgfile" ]; then mv -f "\$imgfile" "${targetImgFile}"; fi
+                            """ + " 2>&1 | tee -a \"${logFile}\""
+                        }
+                    } else {
+                        sh "echo 'No custom build found. Downloading from URL.' | tee \"${logFile}\""
+                        sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc,*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
+
+                        sh "mv -f *-apps.tgz ${targetTgzFile} 2>&1 | tee -a \"${logFile}\""
+                        sh """
+                           #!/bin/bash
+                           imgfile=\$(ls -t *-apps.img.enc 2>/dev/null | head -n 1)
+                           if [ -n "\$imgfile" ]; then
+                               echo "Found image file: \$imgfile. Renaming to ${targetImgFile}"
+                               mv -f "\$imgfile" "${targetImgFile}"
+                           fi
+                        """ + " 2>&1 | tee -a \"${logFile}\""
+                    }
+
+                    if (singleImage) {
+                        echo "Single Image selected. Setting firmware for upgrade: ${targetImgFile}"
+                        env.FIRMWARE_FILE = targetImgFile
+                    } else {
+                        echo "Single Image not selected. Setting firmware for upgrade: ${targetTgzFile}"
+                        env.FIRMWARE_FILE = targetTgzFile
+                    }
+
+                    archiveArtifacts(targetImgFile)
+                    archiveArtifacts(targetTgzFile)
                 }
             }
         }
 
-        stage('Deploy Script') {
-            steps {
-                sh '''
-                    # TRY EVERY POSSIBLE NAME — ONE WILL WORK
-                    cp -f testCases/test_CLI_FW_Upgrade.py . 2>/dev/null || \
-                    cp -f testCases/test_CLI_FW_upgrade.py . 2>/dev/null || \
-                    cp -f testCases/test_cli_fw_upgrade.py . 2>/dev/null || \
-                    cp -f testCases/*.py . 2>/dev/null || \
-                    (echo "SCRIPT NOT FOUND IN testCases/ — CHECK FILENAME & COMMIT!" && exit 1)
-
-                    # RENAME TO STANDARD NAME
-                    mv *.py test_CLI_FW_Upgrade.py 2>/dev/null || true
-                    chmod +x test_CLI_FW_Upgrade.py
-                    echo "SCRIPT DEPLOYED → test_CLI_FW_Upgrade.py"
-                    ls -la test_CLI_FW_Upgrade.py
-                '''
-            }
-        }
-
-        stage('Run Cycles') {
+        stage('Firmware Upgrade') {
             steps {
                 script {
-                    def ip = params['Local IP Address']
-                    def n = params.FIRMWARE_UPGRADE_COUNT.toInteger()
+                    def localIP = params['Local IP Address']
                     def keep = params['Keep Setting'] ? "" : "-n"
 
-                    sh 'echo \'{"iterations": []}\' > iteration_results.json'
+                    sh 'rm -f test-*.log'
+                    sh "echo '{\"iterations\": []}' > iteration_results.json"
 
-                    for (int i = 1; i <= n; i++) {
-                        echo "CYCLE ${i}/${n}"
-                        timeout(22) {
-                            sh "python3 test_CLI_FW_Upgrade.py '${ip}' '${env.FW_FILE}' '${i}' '${keep}'"
+                    echo "----------------------------------------"
+                    echo "Upgrading the Firmware (CLI)"
+                    echo "----------------------------------------"
+                    sh "mkdir -p artifacts"
+
+                    def FIRMWARE_UPGRADE_COUNT = params.FIRMWARE_UPGRADE_COUNT ?: "1"
+
+                    for (int i = 1; i <= FIRMWARE_UPGRADE_COUNT.toInteger(); i++) {
+                        echo "Running CLI Firmware Upgrade - Iteration ${i}"
+                        try {
+                            sh """
+                                python3 testCases/test_CLI_FW_Upgrade.py '${localIP}' '${env.FIRMWARE_FILE}' '${i}' '${keep}'
+                            """
+                        } catch (Exception e) {
+                            echo "CLI Upgrade iteration ${i} failed: ${e.message}"
                         }
                     }
+
+                    archiveArtifacts('artifacts/**/*')
                 }
             }
         }
 
-        stage('Report') {
+        stage('Generate Report') {
             steps {
                 script {
-                    def json = readJSON file: 'iteration_results.json'
-                    def total = json.iterations.size()
-                    def pass = json.iterations.count { it.status == 'PASS' }
-                    def rate = total > 0 ? String.format("%.1f", pass * 100.0 / total) : "0.0"
-                    env.SUCCESS_RATE = rate
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
 
-                    def ver = "Unknown"
-                    try { ver = sh(script: "sshpass -p admin ssh -o StrictHostKeyChecking=no root@${params['Local IP Address']} 'cat /etc/version'", returnStdout: true).trim() }
-                    catch(e) { ver = "Failed to read" }
+                    def local_fw_version = "N/A"
+                    def remote_fw_version = "N/A"
 
-                    def now = new Date().format('dd MMM yyyy, HH:mm:ss z', TimeZone.getTimeZone('Asia/Kolkata'))
+                    try {
+                        local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
+                    } catch (e) { echo "Failed to get local version" }
 
-                    writeFile file: 'report.html', text: """
-                    <!DOCTYPE html>
-                    <html><head><meta charset="utf-8"><title>CLI Upgrade Report</title>
-                    <style>
-                        body{background:#000;color:#0f0;font-family:system-ui;text-align:center;padding:100px;}
-                        .box{background:#111;padding:120px;border-radius:60px;display:inline-block;box-shadow:0 0 150px #0f0;width:90%;max-width:1100px;}
-                        h1{font-size:100px;margin:20px;color:#22c55e;}
-                        .big{font-size:400px;font-weight:900;color:#22c55e;line-height:1;}
-                        .logo{height:90px;margin-bottom:40px;}
-                    </style></head>
+                    try {
+                        remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
+                    } catch (e) { echo "Failed to get remote version" }
+
+                    def jsonReport = readJSON file: 'iteration_results.json'
+
+                    def totalTests = jsonReport.iterations ? jsonReport.iterations.size() : 0
+                    def passCount = jsonReport.iterations ? jsonReport.iterations.count { it.status == 'PASS' } : 0
+                    def failCount = totalTests - passCount
+                    def successPercentageStr = totalTests > 0 ? String.format("%.1f", (passCount / (double)totalTests) * 100) : "0.0"
+
+                    def istDate = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata")).getTime()
+                    def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
+
+                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+                    def pipelineName = env.JOB_NAME
+
+                    def buildParams = [
+                        "Local IP Address": localIP,
+                        "Remote IP Address": remoteIP,
+                        "Model": params.Model,
+                        "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}",
+                        "Build URL": params['Build URL'],
+                        "Cycles": totalTests
+                    ]
+
+                    // SAME EXACT REPORT AS YOUR SELENIUM ONE
+                    def htmlContent = """
+                    <html>
+                    <head>
+                        <title>CLI Firmware Upgrade Report</title>
+                        <style>
+                            body {font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;margin:0;padding:0;background:#f9fafb;color:#1f2937;}
+                            .container {max-width:1200px;margin:24px auto;padding:24px;}
+                            .header {display:flex;justify-content:space-between;align-items:center;background:linear-gradient(to right,#ffffff 10%,#f9fafb 100%);padding:28px 36px;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.04);}
+                            .header img {height:65px;transition:transform .2s;}
+                            .header img:hover {transform:scale(1.03);}
+                            .header-info h1 {margin:0;font-size:30px;font-weight:700;color:#0a2540;}
+                            .header-info p {margin:5px 0;font-size:15px;color:#4a5568;}
+                            h2 {margin-top:32px;font-size:24px;font-weight:600;color:#111827;border-bottom:2px solid #e5e7eb;padding-bottom:12px;}
+                            .summary-container {display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:24px;margin-top:24px;}
+                            .summary-card {background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 2px 4px rgba(0,0,0,0.04);display:flex;padding:24px;align-items:center;border-top:4px solid;}
+                            .card-icon {font-size:32px;margin-right:20px;padding:12px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
+                            .card-info-title {font-size:16px;color:#6b7280;margin:0 0 4px;}
+                            .card-info-value {font-size:32px;font-weight:700;color:#111827;margin:0;}
+                            .percent .percent-sign {font-size:20px;font-weight:600;}
+                            .card-percent {border-color:#6b7280;}.card-percent .card-icon {background:#f3f4f6;color:#6b7280;}
+                            .card-total {border-color:#3b82f6;}.card-total .card-icon {background:#dbeafe;color:#3b82f6;}
+                            .card-pass {border-color:#10b981;}.card-pass .card-icon {background:#d1fae5;color:#10b981;}
+                            .card-fail {border-color:#ef4444;}.card-fail .card-icon {background:#fee2e2;color:#ef4444;}
+                            table {width:100%;border-collapse:collapse;margin-top:24px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,0.04);}
+                            th,td {padding:16px 20px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:middle;}
+                            th {background:#f9fafb;font-weight:600;color:#6b7280;font-size:13px;text-transform:uppercase;letter-spacing:.5px;}
+                            tr:last-child td {border-bottom:none;}
+                            tr:hover {background:#f9fafb;}
+                            .status-pass {color:#059669;font-weight:600;background:#d1fae5;padding:5px 10px;border-radius:99px;display:inline-block;}
+                            .status-fail {color:#dc2626;font-weight:600;background:#fee2e2;padding:5px 10px;border-radius:99px;display:inline-block;}
+                            .log-button {background:#3b82f6;color:white;padding:8px 16px;border:none;border-radius:8px;font-weight:600;cursor:pointer;}
+                            .log-button:hover {background:#2563eb;}
+                            .modal {display:none;position:fixed;z-index:100;inset:0;background:rgba(0,0,0,.6);justify-content:center;align-items:center;}
+                            .modal-content {background:#fff;margin:auto;border-radius:12px;width:80%;max-width:900px;box-shadow:0 10px 25px rgba(0,0,0,.1);overflow:hidden;}
+                            .modal-header {padding:20px 32px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;}
+                            .modal-close {font-size:28px;cursor:pointer;}
+                            #log-content-pre {background:#1f2937;color:#e5e7eb;padding:24px 32px;max-height:60vh;overflow:auto;white-space:pre-wrap;font-family:SFMono-Regular,Consolas,monospace;font-size:14px;}
+                        </style>
+                        <script>
+                            function showLog(id){document.getElementById('logModal').style.display='flex';document.getElementById('log-content-pre').textContent=document.getElementById(id).textContent;}
+                            function closeModal(){document.getElementById('logModal').style.display='none';}
+                            window.onclick=e=>e.target===document.getElementById('logModal')&&closeModal();
+                        </script>
+                    </head>
                     <body>
-                        <div class="box">
-                            <img src="https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png" class="logo">
-                            <h1>CLI FIRMWARE UPGRADE</h1>
-                            <h1>${params.Model} • test-puneet</h1>
-                            <div class="big">${rate}<span style="font-size:200px;">%</span></div>
-                            <h1>${pass}/${total} PASSED</h1>
-                            <h1>Final Version: ${ver}</h1>
-                            <p style="font-size:50px;margin-top:60px;">${now}</p>
-                        </div>
-                    </body></html>
+                        <div class="container">
+                            <div class="header">
+                                <img src="${companyLogoUrl}" alt="Senao"/>
+                                <div class="header-info">
+                                    <h1>CLI Firmware Upgrade Report</h1>
+                                    <p><strong>Pipeline:</strong> ${pipelineName}</p>
+                                    <p><strong>Date & Time:</strong> ${currentDateTime}</p>
+                                </div>
+                            </div>
+
+                            <h2>Build Parameters</h2>
+                            <table>
+                                <tr><th>Parameter</th><th>Value</th></tr>
+                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join()}
+                            </table>
+
+                            <h2>Test Summary</h2>
+                            <div class="summary-container">
+                                <div class="summary-card card-percent"><div class="card-icon">Target</div><div class="card-info"><p class="card-info-title">Success Rate</p><p class="card-info-value percent">${successPercentageStr}<span class="percent-sign">%</span></p></div></div>
+                                <div class="summary-card card-total"><div class="card-icon">Package</div><div class="card-info"><p class="card-info-title">Total Iterations</p><p class="card-info-value">${totalTests}</p></div></div>
+                                <div class="summary-card card-pass"><div class="card-icon">Check</div><div class="card-info"><p class="card-info-title">Passed</p><p class="card-info-value">${passCount}</p></div></div>
+                                <div class="summary-card card-fail"><div class="card-icon">Cross</div><div class="card-info"><p class="card-info-title">Failed</p><p class="card-info-value">${failCount}</p></div></div>
+                            </div>
+
+                            <h2>Test Results</h2>
+                            <table>
+                                <tr><th>Iteration</th><th style="text-align:center;">Status</th><th style="text-align:center;">Logs</th></tr>
                     """
 
-                    publishHTML([reportName: 'CLI Upgrade Report', reportDir: '.', reportFiles: 'report.html', keepAll: true])
+                    def tableRows = ""
+                    def logBlocks = ""
+
+                    if (jsonReport.iterations) {
+                        jsonReport.iterations.each { result ->
+                            def iteration = result.iteration ?: "-"
+                            def status = result.status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
+
+                            def logFile = "test-${iteration}.log"
+                            def logDataId = "log-data-${iteration}"
+                            def logContent = ""
+
+                            try {
+                                logContent = readFile(file: logFile)
+                                logContent = logContent.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                            } catch (e) {
+                                logContent = "Log file not found"
+                            }
+
+                            def logButton = "<button class='log-button' onclick=\"showLog('${logDataId}')\">See Logs</button>"
+
+                            tableRows += "<tr><td>${iteration}</td><td style='text-align:center;'>${status}</td><td style='text-align:center;'>${logButton}</td></tr>"
+                            logBlocks += "<div id='${logDataId}' style='display:none;'>${logContent}</div>"
+                        }
+                    } else {
+                        tableRows += "<tr><td colspan='3' style='text-align:center;'>No results</td></tr>"
+                    }
+
+                    htmlContent += tableRows + "</table>"
+                    htmlContent += "<div id='logModal' class='modal' onclick='closeModal()'><div class='modal-content' onclick='event.stopPropagation()'><div class='modal-header'><h2>Log</h2><span class='modal-close' onclick='closeModal()'>×</span></div><div class='modal-body'><pre id='log-content-pre'></pre></div></div></div>"
+                    htmlContent += logBlocks + "</body></html>"
+
+                    writeFile file: 'report.html', text: htmlContent
                 }
             }
         }
@@ -112,12 +296,32 @@ pipeline {
 
     post {
         always {
+            publishHTML(target: [
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: '.',
+                reportFiles: 'report.html',
+                reportName: 'Test Report'
+            ])
+
+            sh 'rm -f test-*.log || true'
+
+            echo "-----------------------------------------"
+            echo 'CLI Firmware Upgrade Done!'
+            echo "-----------------------------------------"
+
             script {
-                def rate = env.SUCCESS_RATE ?: "0.0"
+                def userId = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')?.userId ?: "puneet"
+                def email = [
+                    "puneet": "puneet.sharma@senao.com",
+                    "harman": "harmanjot.singh@senao.com"
+                ].get(userId, "puneet.sharma@senao.com")
+
                 emailext(
-                    to: 'puneet.sharma@senao.com',
-                    subject: "CLI Upgrade #${BUILD_NUMBER} → ${rate}% SUCCESS",
-                    body: "<h2>CLI Firmware Upgrade Done!</h2><p>Success Rate: <b style='font-size:50px;color:green;'>${rate}%</b></p><p><a href='${BUILD_URL}CLI_Upgrade_Report/'>View Full Report</a></p>",
+                    to: email,
+                    subject: "CLI FW Upgrade #${BUILD_NUMBER} - ${currentBuild.currentResult}",
+                    body: "<h2>CLI Firmware Upgrade Completed</h2><p><a href='${BUILD_URL}Test_Report/'>View Report</a></p>",
                     mimeType: 'text/html',
                     attachmentsPattern: 'report.html'
                 )
