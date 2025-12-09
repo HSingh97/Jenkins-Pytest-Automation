@@ -11,7 +11,7 @@ def runTestList(tests, iteration, localIP, remoteIP) {
         try {
             switch(testType) {
                 case 'Channel Test':
-                    cmd = "python3.10 -m pytest -v -v -s testCases/test_channelTest.py --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${params.Radio}' --country '${params.Countries}' --bandwidth '${params.Bandwidth}' 2>&1 | tee ${logFile}"
+                    cmd = "python3.10 -m pytest -v -s testCases/test_channelTest.py --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${params.Radio}' --country '${params.Countries}' --bandwidth '${params.Bandwidth}' 2>&1 | tee ${logFile}"
                     break
                 case 'Firmware Upgrade':
                     cmd = "export FW_PATH=\"${env.FIRMWARE_FILE ?: 'fw.tgz'}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade --local-ip '${localIP}' --remote-ip '${remoteIP}' --serialPort '${params['Serial Logging Port']}' --iter ${iteration} 2>&1 | tee ${logFile}"
@@ -24,13 +24,11 @@ def runTestList(tests, iteration, localIP, remoteIP) {
                     break
                 case 'Disconnect Connect':
                     cmd = "pytest -v -s testCases/test_SSHDisconnect.py::test_Disconnect_Connect --local-ip '${localIP}' --remote-ip '${remoteIP}' --model '${params.Model}' --radio '${params.Radio}' --iter ${iteration} 2>&1 | tee ${logFile}"
-                    cmd = "pytest -v -s testCases/test_SSHDisconnect.py::test_Disconnect_Connect --local-ip '${localIP}' --remote-ip '${remoteIP}' --model '${params.Model}' --radio '${params.Radio}' --iter ${iteration} 2>&1 | tee ${logFile}"
                     break
                 case 'Reboot':
                     cmd = "pytest -v -s testCases/test_SSHReboot.py::test_reboot --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${iteration} 2>&1 | tee ${logFile}"
                     break
                 case 'Throughput':
-                    // FIXED: Proper dollar escaping for Jenkins
                     def rPCIP = ""
                     node(params['Remote PC']) {
                         rPCIP = sh(script: '''ip -4 -o addr show | awk '$4 ~ /^192\\.168\\.1\\./ {print $4}' | cut -d'/' -f1 | head -n1''', returnStdout: true).trim()
@@ -140,18 +138,17 @@ pipeline {
                     def factory = allTests.contains('Factory Reset') ? ['Factory Reset'] : []
                     def normal = allTests - 'Factory Reset'
 
-                    def iters = params.ITERATION_COUNT?.isInteger() ? params.ITERATION_COUNT.toInteger() : 2
+                    def iters = params.ITERATION_COUNT?.isInteger() ? params.ITERATION_COUNT.toInteger() : 1
                     def lIP = params['Local IP Address']
                     def rIP = params['Remote IP Address']
 
-                    if (normal) {
-                        (1..iters).each { i ->
-                            echo "=== ITERATION ${i}/${iters} ==="
-                            runTestList(normal, i, lIP, rIP)
-                        }
+                    // FIXED: NO IntRange → use simple for loop
+                    for (def i = 1; i <= iters; i++) {
+                        echo "=== ITERATION ${i}/${iters} ==="
+                        runTestList(normal, i, lIP, rIP)
                     }
                     if (factory) {
-                        echo "=== FACTORY RESET (RUN ONCE) ==="
+                        echo "=== RUNNING FACTORY RESET (ONCE) ==="
                         runTestList(factory, 1, lIP, rIP)
                     }
                 }
@@ -198,7 +195,7 @@ pipeline {
                             html += "<tr><td>${name}</td><td class='${cls}'>${status}</td></tr>"
                         }
                     }
-                    html += "</table></body></html>"
+                    html += "</table><p>Report will be enhanced with full tables soon.</p></body></html>"
 
                     writeFile file: env.REPORT_FILE, text: html
                 }
