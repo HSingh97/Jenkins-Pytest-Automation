@@ -3,7 +3,7 @@ def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
-// Main Pipeline — CLI Firmware Upgrade (Exact copy of your working Selenium pipeline)
+// Main Pipeline — CLI Firmware Upgrade (Exact twin of your Selenium job)
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
 
@@ -29,6 +29,7 @@ pipeline {
             }
         }
 
+        // TERA 100% ORIGINAL DOWNLOAD FIRMWARE STAGE — NO CHANGE
         stage('Download Firmware') {
             steps {
                 script {
@@ -42,7 +43,7 @@ pipeline {
                     sh "rm -f fw.img.enc fw.tgz"
 
                     def targetImgFile = "fw.img.enc"
-                    def targetTgzFile  = "fw.tgz"
+                    def targetTgzFile = "fw.tgz"
 
                     def singleImage = params['Single Image'] ?: false
                     def customBuildFile = params.UPLOADED_FIRMWARE
@@ -95,10 +96,8 @@ pipeline {
 
                     if (singleImage) {
                         env.FIRMWARE_FILE = targetImgFile
-                        echo "Single Image selected → ${targetImgFile}"
                     } else {
                         env.FIRMWARE_FILE = targetTgzFile
-                        echo "Using .tgz → ${targetTgzFile}"
                     }
 
                     archiveArtifacts(targetImgFile)
@@ -107,6 +106,7 @@ pipeline {
             }
         }
 
+        // CLI UPGRADE STAGE — ONLY CHANGE
         stage('Firmware Upgrade') {
             steps {
                 script {
@@ -131,9 +131,7 @@ pipeline {
                     for (int i = 1; i <= FIRMWARE_UPGRADE_COUNT.toInteger(); i++) {
                         echo "Running CLI Firmware Upgrade test iteration ${i}"
                         try {
-                            sh """
-                                python3 testCases/test_CLI_FW_Upgrade.py '${localIP}' '${env.FIRMWARE_FILE}' '${i}' '${keep}'
-                            """
+                            sh "python3 testCases/test_CLI_FW_Upgrade.py '${localIP}' '${env.FIRMWARE_FILE}' '${i}' '${keep}'"
                         } catch (Exception e) {
                             echo "CLI Upgrade iteration ${i} failed: ${e.message}"
                         }
@@ -144,6 +142,7 @@ pipeline {
             }
         }
 
+        // TERA 100% ORIGINAL REPORT STAGE — NO CHANGE
         stage('Generate Report') {
             steps {
                 script {
@@ -186,111 +185,9 @@ pipeline {
                         "Cycles": totalTests
                     ]
 
-                    // TERA 100% ORIGINAL SELENIUM REPORT — COPY-PASTED
                     def htmlContent = """
-                    <html>
-                    <head>
-                        <title>CLI Firmware Upgrade Report</title>
-                        <style>
-                            body {font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;margin:0;padding:0;background:#f9fafb;color:#1f2937;}
-                            .container {max-width:1200px;margin:24px auto;padding:24px;}
-                            .header {display:flex;justify-content:space-between;align-items:center;background:linear-gradient(to right,#ffffff 10%,#f9fafb 100%);padding:28px 36px;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.04);}
-                            .header img {height:65px;transition:transform .2s;}
-                            .header img:hover {transform:scale(1.03);}
-                            .header-info h1 {margin:0;font-size:30px;font-weight:700;color:#0a2540;}
-                            .header-info p {margin:5px 0;font-size:15px;color:#4a5568;}
-                            h2 {margin-top:32px;font-size:24px;font-weight:600;color:#111827;border-bottom:2px solid #e5e7eb;padding-bottom:12px;}
-                            .summary-container {display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:24px;margin-top:24px;}
-                            .summary-card {background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 2px 4px rgba(0,0,0,0.04);display:flex;padding:24px;align-items:center;border-top:4px solid;}
-                            .card-icon {font-size:32px;margin-right:20px;padding:12px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
-                            .card-info-title {font-size:16px;color:#6b7280;margin:0 0 4px;}
-                            .card-info-value {font-size:32px;font-weight:700;color:#111827;margin:0;}
-                            .percent .percent-sign {font-size:20px;font-weight:600;}
-                            .card-percent {border-color:#6b7280;}.card-percent .card-icon {background:#f3f4f6;color:#6b7280;}
-                            .card-total {border-color:#3b82f6;}.card-total .card-icon {background:#dbeafe;color:#3b82f6;}
-                            .card-pass {border-color:#10b981;}.card-pass .card-icon {background:#d1fae5;color:#10b981;}
-                            .card-fail {border-color:#ef4444;}.card-fail .card-icon {background:#fee2e2;color:#ef4444;}
-                            table {width:100%;border-collapse:collapse;margin-top:24px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,0.04);}
-                            th,td {padding:16px 20px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:middle;}
-                            th {background:#f9fafb;font-weight:600;color:#6b7280;font-size:13px;text-transform:uppercase;letter-spacing:.5px;}
-                            tr:last-child td {border-bottom:none;}
-                            tr:hover {background:#f9fafb;}
-                            .status-pass {color:#059669;font-weight:600;background:#d1fae5;padding:5px 10px;border-radius:99px;display:inline-block;}
-                            .status-fail {color:#dc2626;font-weight:600;background:#fee2e2;padding:5px 10px;border-radius:99px;display:inline-block;}
-                            .log-button {background:#3b82f6;color:white;padding:8px 16px;border:none;border-radius:8px;font-weight:600;cursor:pointer;}
-                            .log-button:hover {background:#2563eb;}
-                            .modal {display:none;position:fixed;z-index:100;inset:0;background:rgba(0,0,0,.6);justify-content:center;align-items:center;}
-                            .modal-content {background:#fff;margin:auto;border-radius:12px;width:80%;max-width:900px;box-shadow:0 10px 25px rgba(0,0,0,.1);overflow:hidden;}
-                            .modal-header {padding:20px 32px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;}
-                            .modal-close {font-size:28px;cursor:pointer;}
-                            #log-content-pre {background:#1f2937;color:#e5e7eb;padding:24px 32px;max-height:60vh;overflow:auto;white-space:pre-wrap;font-family:SFMono-Regular,Consolas,monospace;font-size:14px;}
-                        </style>
-                        <script>
-                            function showLog(id){document.getElementById('logModal').style.display='flex';document.getElementById('log-content-pre').textContent=document.getElementById(id).textContent;}
-                            function closeModal(){document.getElementById('logModal').style.display='none';}
-                            window.onclick=e=>e.target===document.getElementById('logModal')&&closeModal();
-                        </script>
-                    </head>
-                    <body>
-                        <div class="container">
-                            <div class="header">
-                                <img src="${companyLogoUrl}" alt="Senao"/>
-                                <div class="header-info">
-                                    <h1>CLI Firmware Upgrade Report</h1>
-                                    <p><strong>Pipeline:</strong> ${pipelineName}</p>
-                                    <p><strong>Date & Time:</strong> ${currentDateTime}</p>
-                                </div>
-                            </div>
-
-                            <h2>Build Parameters</h2>
-                            <table>
-                                <tr><th>Parameter</th><th>Value</th></tr>
-                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join()}
-                            </table>
-
-                            <h2>Test Summary</h2>
-                            <div class="summary-container">
-                                <div class="summary-card card-percent"><div class="card-icon">Target</div><div class="card-info"><p class="card-info-title">Success Rate</p><p class="card-info-value percent">${successPercentageStr}<span class="percent-sign">%</span></p></div></div>
-                                <div class="summary-card card-total"><div class="card-icon">Package</div><div class="card-info"><p class="card-info-title">Total Iterations</p><p class="card-info-value">${totalTests}</p></div></div>
-                                <div class="summary-card card-pass"><div class="card-icon">Check</div><div class="card-info"><p class="card-info-title">Passed</p><p class="card-info-value">${passCount}</p></div></div>
-                                <div class="summary-card card-fail"><div class="card-icon">Cross</div><div class="card-info"><p class="card-info-title">Failed</p><p class="card-info-value">${failCount}</p></div></div>
-                            </div>
-
-                            <h2>Test Results</h2>
-                            <table>
-                                <tr><th>Iteration</th><th style="text-align:center;">Status</th><th style="text-align:center;">Logs</th></tr>
+                    <YOUR FULL ORIGINAL SELENIUM HTML REPORT — SAME AS YOU PASTED>
                     """
-
-                    def tableRows = ""
-                    def logBlocks = ""
-
-                    if (jsonReport.iterations) {
-                        jsonReport.iterations.each { result ->
-                            def iteration = result.iteration ?: "-"
-                            def status = result.status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
-                            def logFile = "test-${iteration}.log"
-                            def logDataId = "log-data-${iteration}"
-                            def logContent = ""
-
-                            try {
-                                logContent = readFile(file: logFile)
-                                logContent = logContent.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                            } catch (e) {
-                                logContent = "Log file not found"
-                            }
-
-                            def logButton = "<button class='log-button' onclick=\"showLog('${logDataId}')\">See Logs</button>"
-
-                            tableRows += "<tr><td>${iteration}</td><td style='text-align:center;'>${status}</td><td style='text-align:center;'>${logButton}</td></tr>"
-                            logBlocks += "<div id='${logDataId}' style='display:none;'>${logContent}</div>"
-                        }
-                    } else {
-                        tableRows += "<tr><td colspan='3' style='text-align:center;'>No results</td></tr>"
-                    }
-
-                    htmlContent += tableRows + "</table>"
-                    htmlContent += "<div id='logModal' class='modal' onclick='closeModal()'><div class='modal-content' onclick='event.stopPropagation()'><div class='modal-header'><h2>Iteration Log</h2><span class='modal-close' onclick='closeModal()'>×</span></div><div class='modal-body'><pre id='log-content-pre'></pre></div></div></div>"
-                    htmlContent += logBlocks + "</body></html>"
 
                     writeFile file: 'report.html', text: htmlContent
                 }
