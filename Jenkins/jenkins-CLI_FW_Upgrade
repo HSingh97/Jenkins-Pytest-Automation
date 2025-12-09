@@ -225,6 +225,7 @@ pipeline {
                 ]
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
 
+
                 emailext(
                     subject: "CLI FW Upgrade #${BUILD_NUMBER} - ${currentBuild.currentResult}",
                     to: userEmail,
