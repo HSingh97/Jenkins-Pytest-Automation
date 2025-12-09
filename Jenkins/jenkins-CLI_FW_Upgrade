@@ -129,11 +129,7 @@ pipeline {
                     for (int i = 1; i <= FIRMWARE_UPGRADE_COUNT.toInteger(); i++) {
                         echo "Running CLI Firmware Upgrade test iteration ${i}"
                         try {
-                            sh "python3 testCases/test_CLI_FW_Upgrade.py '${localIP}' '${env.FIRMWARE_FILE}' '${i}' '${keep}' || echo 'Upgrade failed but continuing...'"
-                            if (env.FIRMWARE_FILE == 'fw.tgz' && !fileExists('/tmp/fw.tgz') && fileExists('fw.img.enc')) {
-                                echo "tgz failed → trying with fw.img.enc"
-                                sh "python3 testCases/test_CLI_FW_Upgrade.py '${localIP}' 'fw.img.enc' '${i}' '${keep}'"
-                            }
+                            sh "python3 testCases/test_CLI_FW_Upgrade.py '${localIP}' '${env.FIRMWARE_FILE}' '${i}' '${keep}'"
                         } catch (Exception e) {
                             echo "CLI Upgrade iteration ${i} failed: ${e.message}"
                         }
