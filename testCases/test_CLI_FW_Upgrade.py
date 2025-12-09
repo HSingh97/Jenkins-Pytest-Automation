@@ -66,7 +66,7 @@ print(f"{'='*90}")
 try:
     # Step 1: Upload firmware
     print(f"[{datetime.now():%H:%M:%S}] Uploading firmware...")
-    if run_scp(fw_path, "/tmp/firmware.tgz", local_ip) != 0:
+    if run_scp(fw_path, "/tmp/fw.tgz", local_ip) != 0:
         raise Exception("Failed to upload firmware via SCP")
 
     # Step 2: Trigger sysupgrade (supports .tgz directly!)
