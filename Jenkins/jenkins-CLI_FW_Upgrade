@@ -23,7 +23,7 @@ pipeline {
             steps {
                 script {
                     echo "Installing Dependencies..."
-                    // FIX: Clean up requirements.txt (remove 'pip3 install', 'apt-get', etc.)
+                    // FIX: Remove 'pip3 install' and 'apt-get' text from requirements.txt to prevent errors
                     sh "sed -i 's/pip3 install //g' utilities/requirements.txt || true"
                     sh "sed -i '/apt-get/d' utilities/requirements.txt || true"
 
@@ -69,6 +69,7 @@ pipeline {
                         """
                     }
 
+                    // Force the environment variable to be the TGZ file
                     env.FIRMWARE_FILE = targetTgzFile
                     echo "Selected Firmware: ${env.FIRMWARE_FILE}"
                     archiveArtifacts(env.FIRMWARE_FILE)
@@ -105,7 +106,6 @@ pipeline {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
 
-                    // Clean known_hosts
                     sh "ssh-keygen -R ${localIP} || true"
                     sh "ssh-keygen -R ${remoteIP} || true"
 
