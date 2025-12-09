@@ -36,11 +36,11 @@ def runTestList(tests, iteration, localIP, remoteIP) {
                     cmd = "python3.10 -m pytest -v -s testCases/test_Throughput.py::test_throughputtest --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${params.Radio}' --mcs-rate '${params.MCS}' --traffic-type '${params['Traffic Type']}' --traffic-dir '${params.Direction}' --remote-pc-ip '${rPCIP}' --bandwidth '${params.Bandwidth}' --sleep '${params['Throughput Test Time']}' 2>&1 | tee ${logFile}"
                     break
                 case 'VLAN':
-                    // Add your VLAN test command here when ready
+
                     status = "SKIPPED"
                     break
                 case 'QOS':
-                    // Add your QOS test command here when ready
+
                     status = "SKIPPED"
                     break
                 case 'Factory Reset':
