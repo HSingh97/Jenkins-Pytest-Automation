@@ -5,11 +5,9 @@ import time
 import json
 from datetime import datetime
 
-# ========= CONFIGURATION =========
 USERNAME = "root"
-PASSWORD = "admin"                  # ← Confirmed working by you
-TIMEOUT = 600                       # Max wait after upgrade (seconds)
-# =================================
+PASSWORD = "admin"
+TIMEOUT = 600
 
 def run_ssh(cmd, ip):
     full_cmd = f"sshpass -p '{PASSWORD}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 {USERNAME}@{ip} \"{cmd}\""
@@ -23,7 +21,7 @@ def wait_for_device(ip, timeout=TIMEOUT):
     print(f"\nWaiting for device {ip} to come back online (max {timeout}s)...", end="", flush=True)
     for _ in range(timeout // 8):
         if os.system(f"ping -c 1 -W 2 {ip} > /dev/null 2>&1") == 0:
-            time.sleep(20)  # Extra wait for full boot
+            time.sleep(20)
             print(f"\nDEVICE {ip} IS BACK ONLINE!")
             return True
         time.sleep(8)
@@ -36,15 +34,14 @@ def get_version(ip):
     result = os.popen(f"sshpass -p '{PASSWORD}' ssh -o StrictHostKeyChecking=no {USERNAME}@{ip} \"{cmd}\"").read().strip()
     return result if result else "Unknown"
 
-# =============== MAIN ===============
 if len(sys.argv) != 5:
     print("Usage: test_CLI_FW_Upgrade.py <local_ip> <firmware_path> <iteration> <keep_flag>")
     sys.exit(1)
 
 local_ip     = sys.argv[1]
-fw_path      = sys.argv[2]   # Full path to .tgz or .bin on Jenkins
+fw_path      = sys.argv[2]
 iteration    = sys.argv[3]
-keep_flag    = sys.argv[4]   # "" = keep settings, "-n" = factory reset
+keep_flag    = sys.argv[4]
 
 keep_text = "YES" if keep_flag == "" else "NO"
 
