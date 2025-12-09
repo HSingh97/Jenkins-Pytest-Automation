@@ -1,6 +1,6 @@
 import jenkins.model.Jenkins
 
-// --- Helper to run tests ---
+// --- TEST RUNNER (ALL YOUR TESTS) ---
 def runTestList(tests, iteration, localIP, remoteIP) {
     tests.each { testTypeRaw ->
         def testType = testTypeRaw.replaceAll('&amp;', '&').trim()
@@ -11,7 +11,7 @@ def runTestList(tests, iteration, localIP, remoteIP) {
         try {
             switch(testType) {
                 case 'Channel Test':
-                    cmd = "python3.10 -m pytest -v -s testCases/test_channelTest.py --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${params.Radio}' --country '${params.Countries}' --bandwidth '${params.Bandwidth}' 2>&1 | tee ${logFile}"
+                    cmd = "python3.10 -m pytest -v -v -s testCases/test_channelTest.py --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${params.Radio}' --country '${params.Countries}' --bandwidth '${params.Bandwidth}' 2>&1 | tee ${logFile}"
                     break
                 case 'Firmware Upgrade':
                     cmd = "export FW_PATH=\"${env.FIRMWARE_FILE ?: 'fw.tgz'}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade --local-ip '${localIP}' --remote-ip '${remoteIP}' --serialPort '${params['Serial Logging Port']}' --iter ${iteration} 2>&1 | tee ${logFile}"
@@ -24,28 +24,24 @@ def runTestList(tests, iteration, localIP, remoteIP) {
                     break
                 case 'Disconnect Connect':
                     cmd = "pytest -v -s testCases/test_SSHDisconnect.py::test_Disconnect_Connect --local-ip '${localIP}' --remote-ip '${remoteIP}' --model '${params.Model}' --radio '${params.Radio}' --iter ${iteration} 2>&1 | tee ${logFile}"
+                    cmd = "pytest -v -s testCases/test_SSHDisconnect.py::test_Disconnect_Connect --local-ip '${localIP}' --remote-ip '${remoteIP}' --model '${params.Model}' --radio '${params.Radio}' --iter ${iteration} 2>&1 | tee ${logFile}"
                     break
                 case 'Reboot':
                     cmd = "pytest -v -s testCases/test_SSHReboot.py::test_reboot --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${iteration} 2>&1 | tee ${logFile}"
                     break
                 case 'Throughput':
+                    // FIXED: Proper dollar escaping for Jenkins
                     def rPCIP = ""
                     node(params['Remote PC']) {
-                        rPCIP = sh(script: "ip -4 -o addr show | awk '\\$4 ~ /^192\\\\.168\\\\.1\\\\./ {print \\$4}' | cut -d'/' -f1 | head -n1", returnStdout: true).trim()
+                        rPCIP = sh(script: '''ip -4 -o addr show | awk '$4 ~ /^192\\.168\\.1\\./ {print $4}' | cut -d'/' -f1 | head -n1''', returnStdout: true).trim()
                     }
                     cmd = "python3.10 -m pytest -v -s testCases/test_Throughput.py::test_throughputtest --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${params.Radio}' --mcs-rate '${params.MCS}' --traffic-type '${params['Traffic Type']}' --traffic-dir '${params.Direction}' --remote-pc-ip '${rPCIP}' --bandwidth '${params.Bandwidth}' --sleep '${params['Throughput Test Time']}' 2>&1 | tee ${logFile}"
-                    break
-                case 'VLAN':
-
-                    status = "SKIPPED"
-                    break
-                case 'QOS':
-
-                    status = "SKIPPED"
                     break
                 case 'Factory Reset':
                     cmd = "pytest -v -s testCases/test_SSHFactoryReset.py::test_factory_reset --local-ip '${localIP}' --iter ${iteration} 2>&1 | tee ${logFile}"
                     break
+                default:
+                    status = "SKIPPED"
             }
 
             if (cmd) {
@@ -57,7 +53,7 @@ def runTestList(tests, iteration, localIP, remoteIP) {
             sh "echo 'ERROR: ${e}' >> ${logFile}"
         }
 
-        // Append result safely
+        // Safe JSON append
         def pyAdd = '''
 import json, os
 path = "iteration_results.json"
@@ -79,6 +75,7 @@ with open(path, "w") as f:
     }
 }
 
+// ====================== MAIN PIPELINE ======================
 pipeline {
     agent { node { label "${params.TARGET_STAND}" } }
 
@@ -140,22 +137,22 @@ pipeline {
             steps {
                 script {
                     def allTests = params.TEST_TYPES.split(',').collect { it.trim() }
-                    def factoryTest = allTests.contains('Factory Reset') ? ['Factory Reset'] : []
-                    def normalTests = allTests - 'Factory Reset'
+                    def factory = allTests.contains('Factory Reset') ? ['Factory Reset'] : []
+                    def normal = allTests - 'Factory Reset'
 
-                    def iterations = params.ITERATION_COUNT?.isInteger() ? params.ITERATION_COUNT.toInteger() : 2
-                    def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
+                    def iters = params.ITERATION_COUNT?.isInteger() ? params.ITERATION_COUNT.toInteger() : 2
+                    def lIP = params['Local IP Address']
+                    def rIP = params['Remote IP Address']
 
-                    if (normalTests) {
-                        (1..iterations).each { i ->
-                            echo "=== RUNNING ITERATION ${i} ==="
-                            runTestList(normalTests, i, localIP, remoteIP)
+                    if (normal) {
+                        (1..iters).each { i ->
+                            echo "=== ITERATION ${i}/${iters} ==="
+                            runTestList(normal, i, lIP, rIP)
                         }
                     }
-                    if (factoryTest) {
-                        echo "=== RUNNING FACTORY RESET (once) ==="
-                        runTestList(factoryTest, 1, localIP, remoteIP)
+                    if (factory) {
+                        echo "=== FACTORY RESET (RUN ONCE) ==="
+                        runTestList(factory, 1, lIP, rIP)
                     }
                 }
             }
@@ -167,127 +164,41 @@ pipeline {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address'] ?: 'N/A'
 
-                    // Get FW versions safely
                     def localFW = "N/A"
                     def remoteFW = "N/A"
-                    try { localFW = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim() } catch(e) {}
-                    try { if(remoteIP != 'N/A') remoteFW = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim() } catch(e) {}
+                    try { localFW = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version' || echo N/A", returnStdout: true).trim() } catch(e) {}
+                    try { if(remoteIP != 'N/A') remoteFW = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version' || echo N/A", returnStdout: true).trim() } catch(e) {}
 
                     def json = readJSON file: 'iteration_results.json'
                     def now = new Date().format("dd MMM yyyy, HH:mm:ss", TimeZone.getTimeZone('Asia/Kolkata'))
                     def logo = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
-                    def html = """<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Sanity Test Report</title>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin: 0; padding: 40px; color: #333; }
-        .container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
-        .header { background: linear-gradient(135deg, #1e3c72, #2a5298); color: white; padding: 40px; text-align: center; }
-        .header img { height: 80px; margin-bottom: 15px; }
-        .header h1 { margin: 0; font-size: 36px; font-weight: 800; }
-        .info, .summary { padding: 30px; }
-        h2 { color: #1e3c72; border-bottom: 4px solid #667eea; padding-bottom: 10px; font-size: 28px; }
-        table { width: 100%; border-collapse: collapse; margin: 20px 0; background: #fff; border-radius: 12px; overflow: hidden; }
-        th { background: #1e3c72; color: white; padding: 18px; font-weight: 600; }
-        td { padding: 16px; text-align: center; border-bottom: 1px solid #eee; }
-        tr:hover { background: #f0f8ff; }
-        .pass { background: #d4edda; color: #155724; font-weight: bold; padding: 8px 16px; border-radius: 30px; }
-        .fail { background: #f8d7da; color: #721c24; font-weight: bold; padding: 8px 16px; border-radius: 30px; }
-        .partial { background: #fff3cd; color: #856404; font-weight: bold; padding: 8px 16px; border-radius: 30px; }
-        .log-btn { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; }
-        .log-btn:hover { background: #0056b3; }
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); }
-        .modal-content { background: #1e1e1e; color: #f8f9fa; margin: 5% auto; padding: 20px; width: 90%; max-width: 1000px; border-radius: 12px; max-height: 80vh; overflow: auto; }
-        .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
-        .close:hover { color: white; }
-        pre { white-space: pre-wrap; word-wrap: break-word; }
-    </style>
-</head>
-<body>
-<div class="container">
-    <div class="header">
-        <img src="${logo}" alt="Senao">
-        <h1>Sanity Test Report</h1>
-        <p>${env.JOB_NAME} #${env.BUILD_NUMBER} • ${now}</p>
-    </div>
+                    def html = """<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+                        body{font-family:'Segoe UI',sans-serif;background:#f8fafc;color:#1e293b;margin:0;padding:40px;}
+                        .header{background:linear-gradient(135deg,#1e40af,#3b82f6);color:white;padding:50px;text-align:center;border-radius:20px;}
+                        .header img{height:90px;}
+                        h2{color:#1e40af;border-bottom:4px solid #3b82f6;padding-bottom:10px;margin-top:50px;}
+                        table{width:100%;border-collapse:collapse;margin:25px 0;background:white;border-radius:16px;overflow:hidden;box-shadow:0 8px 25px rgba(0,0,0,0.1);}
+                        th{background:#1e40af;color:white;padding:20px;}
+                        td{padding:18px;text-align:center;}
+                        .pass{background:#d1fae5;color:#059669;font-weight:bold;}
+                        .fail{background:#fee2e2;color:#dc2626;font-weight:bold;}
+                        .partial{background:#fef3c7;color:#d97706;font-weight:bold;}
+                    </style></head><body>
+                        <div class="header"><img src="${logo}"/><h1>Sanity Test Report</h1><p>${env.JOB_NAME} #${env.BUILD_NUMBER} • ${now}</p></div>
+                        <h2>Device Info</h2><table><tr><td><b>Local DUT</b></td><td>${localIP} (FW: ${localFW})</td></tr><tr><td><b>Remote DUT</b></td><td>${remoteIP} (FW: ${remoteFW})</td></tr></table>
+                        <h2>Test Summary</h2><table><tr><th>Test</th><th>Status</th></tr>"""
 
-    <div class="info">
-        <h2>Device Information</h2>
-        <table>
-            <tr><td><b>Local DUT</b></td><td>${localIP} (FW: ${localFW})</td></tr>
-            <tr><td><b>Remote DUT</b></td><td>${remoteIP} (FW: ${remoteFW})</td></tr>
-        </table>
-    </div>
-
-    <div class="summary">
-        <h2>Test Summary</h2>
-        <table>
-            <tr><th>Test Case</th><th>Status</th><th>Details</th></tr>"""
-
-                    // Summary
                     ['Channel Test','Firmware Upgrade','Ethernet Speed Duplex','Soft Reset','Disconnect Connect','Reboot','Throughput','VLAN','QOS','Factory Reset'].each { name ->
-                        def key = name.replaceAll(' ', '_').toLowerCase()
-                        def results = json.iterations.findAll { it.test == key }
-                        if (results) {
-                            def pass = results.every { it.status == "PASS" }
-                            def fail = results.any { it.status == "FAIL" }
-                            def status = pass ? "PASS" : (fail ? "FAILED" : "PARTIALLY FAILED")
-                            def cls = pass ? "pass" : (fail ? "fail" : "partial")
-                            html += "<tr><td><b>${name}</b></td><td><span class='${cls}'>${status}</span></td><td>View below</td></tr>"
+                        def key = name.replaceAll(' ','_').toLowerCase()
+                        def res = json.iterations.findAll { it.test == key }
+                        if (res) {
+                            def status = res.every { it.status == "PASS" } ? "PASS" : (res.any { it.status == "FAIL" } ? "FAILED" : "PARTIALLY FAILED")
+                            def cls = status == "PASS" ? "pass" : (status.contains("FAIL") ? "fail" : "partial")
+                            html += "<tr><td>${name}</td><td class='${cls}'>${status}</td></tr>"
                         }
                     }
-
-                    html += "</table></div>"
-
-                    // Fast Channel Test Details (your exact table)
-                    def chFiles = findFiles(glob: '*_HT*.json')
-                    if (chFiles) {
-                        html += "<div class='section'><h2>Fast Channel Test Results</h2>"
-                        def allData = []
-                        chFiles.each { f ->
-                            def d = readJSON file: f.name
-                            if (d?.iterations) allData += d.iterations
-                        }
-                        allData.groupBy { "${it.Country} - ${it.Bandwidth}" }.each { key, group ->
-                            def pass = group.every { it.status == "PASS" }
-                            html += "<h3 style='background:${pass?'#d4edda':'#f8d7da'}; padding:15px; border-radius:10px; color:${pass?'green':'red'};'>${key} → ${pass?'PASS':'FAIL'}</h3><table><tr><th>Channel</th><th>Status</th><th>Local Active</th><th>Remote Active</th><th>SNR (L/R)</th><th>Rate (Tx/Rx)</th><th>HT Mode (L/R)</th></tr>"
-                            group.each { iter ->
-                                iter["Tested Channels"].each { ch ->
-                                    def stats = ch.link_stats
-                                    def s = ch.status == "PASS" ? "pass" : "fail"
-                                    html += "<tr><td>${ch.channel}</td><td class='${s}'>${ch.status}</td><td>${ch.local_active}</td><td>${ch.remote_active}</td><td>${stats?.local_SNR_A1}/${stats?.remote_SNR_A1}</td><td>${stats?.tx_rate}/${stats?.rx_rate}</td><td>${ch.local_htmode} / ${ch.remote_htmode}</td></tr>"
-                                }
-                            }
-                            html += "</table>"
-                        }
-                        html += "</div>"
-                    }
-
-                    // Add Throughput table exactly like your old script when files exist
-                    // (same logic as above, just copy-paste your MCS table code here later)
-
-                    html += """
-    <div id="logModal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="document.getElementById('logModal').style.display='none'">×</span>
-            <pre id="logContent"></pre>
-        </div>
-    </div>
-
-    <script>
-        function showLog(file) {
-            fetch(file)
-                .then(r => r.text())
-                .then(text => {
-                    document.getElementById('logContent').textContent = text;
-                    document.getElementById('logModal').style.display = 'block';
-                });
-        }
-    </script>
-</body></html>"""
+                    html += "</table></body></html>"
 
                     writeFile file: env.REPORT_FILE, text: html
                 }
@@ -298,8 +209,8 @@ pipeline {
     post {
         always {
             publishHTML(target: [reportName: 'Sanity Report', reportFiles: env.REPORT_FILE, keepAll: true, alwaysLinkToLastBuild: true])
-            archiveArtifacts artifacts: '*.html,*.log,*.json', allowEmptyArchive: true
-            cleanWs()
+            archiveArtifacts("*.html,*.log,*.json")
+            sh 'rm -f log_*.log || true'
         }
     }
 }
