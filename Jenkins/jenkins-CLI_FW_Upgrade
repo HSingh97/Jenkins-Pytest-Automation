@@ -23,9 +23,12 @@ pipeline {
             steps {
                 script {
                     echo "Installing Dependencies..."
-                    // FIX: Remove 'pip3 install' and 'apt-get' text from requirements.txt to prevent errors
+                    // FIX 1: Remove 'pip3 install' text
                     sh "sed -i 's/pip3 install //g' utilities/requirements.txt || true"
+                    // FIX 2: Remove 'apt-get' lines
                     sh "sed -i '/apt-get/d' utilities/requirements.txt || true"
+                    // FIX 3: Convert spaces to newlines (fixes 'pytest pytest-html' on one line)
+                    sh "sed -i 's/ /\\n/g' utilities/requirements.txt || true"
 
                     // Install packages
                     sh "pip3 install -r utilities/requirements.txt --break-system-packages || pip3 install -r utilities/requirements.txt || true"
@@ -53,10 +56,9 @@ pipeline {
                     if (customBuildFile) {
                          sh "mv -f '${customBuildFile}' ${targetTgzFile}"
                     } else {
-                        // Download ONLY .tgz files
+                        // Download .tgz
                         sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.tgz' --no-directories ${WGET_URL}"
 
-                        // Rename the downloaded file to fw.tgz
                         sh """
                             tgzfile=\$(ls -t *-apps.tgz 2>/dev/null | head -n 1)
                             if [ -n "\$tgzfile" ]; then
@@ -69,7 +71,6 @@ pipeline {
                         """
                     }
 
-                    // Force the environment variable to be the TGZ file
                     env.FIRMWARE_FILE = targetTgzFile
                     echo "Selected Firmware: ${env.FIRMWARE_FILE}"
                     archiveArtifacts(env.FIRMWARE_FILE)

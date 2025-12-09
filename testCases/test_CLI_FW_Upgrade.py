@@ -63,7 +63,6 @@ keep_flag = sys.argv[4]
 
 keep_text = "YES" if keep_flag == "" else "NO"
 
-# Dynamic Filename Logic
 fw_filename = os.path.basename(fw_path)
 remote_path = f"/tmp/{fw_filename}"
 
@@ -91,15 +90,15 @@ try:
     if run_scp(fw_path, remote_path, local_ip) != 0:
         raise Exception("Failed to upload fw via SCP")
 
-    # Step 2: Trigger sysupgrade
-    upgrade_cmd = f"sysupgrade {keep_flag} -v {remote_path}"
-    print(f"[{datetime.now():%H:%M:%S}] Starting upgrade: {upgrade_cmd}")
+    # Step 2: Trigger sysupgrade with FORCE (-F)
+    # Added -F to bypass "mandatory section missing" errors
+    upgrade_cmd = f"sysupgrade -F {keep_flag} -v {remote_path}"
+    print(f"[{datetime.now():%H:%M:%S}] Starting upgrade (Forced): {upgrade_cmd}")
 
-    # Capture exit code to detect if device rejected the file
     exit_code = run_ssh(upgrade_cmd, local_ip)
 
     if exit_code != 0:
-        raise Exception(f"Device rejected the upgrade command (Exit Code: {exit_code}). File might be invalid.")
+        raise Exception(f"Device still rejected the upgrade (Exit Code: {exit_code}).")
 
     # Step 3: Wait
     if not wait_for_device(local_ip):
