@@ -5,7 +5,6 @@ def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
-
 // Helper to run specific test commands based on type
 def runTestList(tests, iteration, localIP, remoteIP) {
     tests.each { testTypeRaw ->
