@@ -35,7 +35,7 @@ def get_version(ip):
     return result if result else "Unknown"
 
 if len(sys.argv) != 5:
-    print("Usage: test_CLI_FW_Upgrade.py <local_ip> <firmware_path> <iteration> <keep_flag>")
+    print("Usage: test_CLI_FW_Upgrade.py <local_ip> <fw_path> <iteration> <keep_flag>")
     sys.exit(1)
 
 local_ip     = sys.argv[1]
@@ -64,13 +64,13 @@ print(f" File        : {os.path.basename(fw_path)}")
 print(f"{'='*90}")
 
 try:
-    # Step 1: Upload firmware
-    print(f"[{datetime.now():%H:%M:%S}] Uploading firmware...")
+    # Step 1: Upload fw
+    print(f"[{datetime.now():%H:%M:%S}] Uploading fw...")
     if run_scp(fw_path, "/tmp/fw.tgz", local_ip) != 0:
-        raise Exception("Failed to upload firmware via SCP")
+        raise Exception("Failed to upload fw via SCP")
 
     # Step 2: Trigger sysupgrade (supports .tgz directly!)
-    upgrade_cmd = f"sysupgrade {keep_flag} -v /tmp/firmware.tgz"
+    upgrade_cmd = f"sysupgrade {keep_flag} -v /tmp/fw.tgz"
     print(f"[{datetime.now():%H:%M:%S}] Starting upgrade: {upgrade_cmd}")
     if run_ssh(upgrade_cmd, local_ip) != 0:
         raise Exception("Failed to trigger sysupgrade")
