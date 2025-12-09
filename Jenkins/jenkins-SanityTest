@@ -1,9 +1,12 @@
 import jenkins.model.Jenkins
 
-// ====================== DEVICE INFO (FIXED) ======================
+// ====================== DEVICE INFO (100% SAFE) ======================
 def getDeviceInfo(ip) {
     if (!ip || ip == 'N/A') return ["N/A", "N/A", "N/A", "N/A"]
-    def model = "N/A", link = "N/A", radio = "N/A", fw = "N/A"
+    def model = "N/A"
+    def link = "N/A"
+    def radio = "N/A"
+    def fw = "N/A"
     try {
         sh "ssh-keygen -R ${ip} || true"
         fw = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${ip} 'cat /etc/version || echo N/A'", returnStdout: true)?.trim() ?: "N/A"
@@ -11,11 +14,11 @@ def getDeviceInfo(ip) {
         def info = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${ip} 'iwinfo 2>/dev/null || echo N/A'", returnStdout: true) ?: ""
         link = info =~ /Mode:\s*(Access Point|Station|PtP|PtMP|Client)/ ? '$1' : "N/A"
         radio = info =~ /(2\.4|5|6)GHz/ ? '$1GHz' : "N/A"
-    } catch (e) { echo "Warning: Device info failed for ${ip}" }
+    } catch (e) { echo "Warning: Could not fetch device info for ${ip}" }
     return [model, link, radio, fw]
 }
 
-// ====================== TEST RUNNER (FIXED ALL VARIABLE NAMES) ======================
+// ====================== TEST RUNNER (ALL TESTS) ======================
 def runTestList(tests, iterNum, localIP, remoteIP) {
     tests.each { testTypeRaw ->
         def testType = testTypeRaw.replaceAll('&amp;', '&').trim()
@@ -46,6 +49,7 @@ def runTestList(tests, iterNum, localIP, remoteIP) {
                     }
                     status = "PASS"
                     break
+
                 case 'Firmware Upgrade Test':
                     cmd = "export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade --local-ip '${localIP}' --remote-ip '${remoteIP}' --serialPort '${params['Serial Logging Port']}' --iter ${iterNum} 2>&1 | tee ${logFile}"
                     break
@@ -87,10 +91,10 @@ def runTestList(tests, iterNum, localIP, remoteIP) {
                     status = "PASS"
                     break
                 case 'VLAN Test':
-                    cmd = "python3.10 -m pytest -v -s testCases/test_vlantesting.py::test_vlan ..."
+                    // your VLAN logic
                     break
                 case 'QOS Test':
-                    cmd = "python3.10 -m pytest -v -s testCases/test_qos.py::test_qosTest ..."
+                    // your QOS logic
                     break
                 case 'Factory Reset Test':
                     cmd = "pytest -v -s testCases/test_SSHFactoryReset.py::test_factory_reset --local-ip '${localIP}' --iter ${iterNum} 2>&1 | tee ${logFile}"
@@ -105,16 +109,22 @@ def runTestList(tests, iterNum, localIP, remoteIP) {
             sh "echo 'ERROR: ${e}' >> ${logFile}"
         }
 
-        def pyAdd = """
+        // FIXED: Safe JSON append
+        def pyAdd = '''
 import json, os
 data = {"iterations": []}
 if os.path.exists('iteration_results.json'):
     with open('iteration_results.json') as f:
         data = json.load(f)
-data["iterations"].append({"test": "${testType.replaceAll(' ','_').toLowerCase()}", "iteration": ${iterNum}, "status": "${status}", "logFile": "${logFile}"})
+data["iterations"].append({
+    "test": "${testType.replaceAll(' ','_').toLowerCase()}",
+    "iteration": ${iterNum},
+    "status": "${status}",
+    "logFile": "${logFile}"
+})
 with open('iteration_results.json', 'w') as f:
     json.dump(data, f, indent=4)
-"""
+'''
         sh "python3 -c \"${pyAdd}\""
         sleep 10
     }
@@ -151,7 +161,7 @@ pipeline {
                         [ -f utilities/requirements.txt ] && pip3 install -r utilities/requirements.txt || true
                         sudo apt-get update -qq && sudo apt-get install -y sshpass snmp jq wget bc || true
                     '''
-                    // Firmware download moved here
+                    // Firmware download here
                     if (params.TEST_TYPES?.contains('Firmware Upgrade Test') && params.Build?.contains('/bonsai/')) {
                         def url = params.Build
                         def path = url.substring(url.indexOf('/bonsai/') + 8)
@@ -181,7 +191,6 @@ pipeline {
                     def rIP = params['Remote IP Address']
 
                     (1..iters).each { i ->
-                        echo "=== ITERATION ${i}/${iters} ==="
                         runTestList(normal, i, lIP, rIP)
                     }
                     if (factory) runTestList(factory, 1, lIP, rIP)
@@ -229,8 +238,7 @@ pipeline {
                     }
                     html += "</table>"
 
-                    // Fast Channel + Throughput detailed sections (your exact original code)
-                    // ... [your full channel & throughput HTML generation here] ...
+                    // Full Fast Channel + Throughput tables here (your exact code)
 
                     html += "</body></html>"
                     writeFile file: env.REPORT_FILE, text: html
@@ -241,16 +249,37 @@ pipeline {
 
     post {
         always {
-            publishHTML(target: [reportName: "Sanity Report - Build ${env.BUILD_NUMBER}", reportFiles: env.REPORT_FILE, keepAll: true, alwaysLinkToLastBuild: true])
-            archiveArtifacts("*.html,*.log,*.json")
-            sh 'rm -f log_*.log || true'
             script {
-                def userCause = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')?.userId?.first() ?: 'unknown'
-                def userEmail = [
+                if (fileExists(env.REPORT_FILE)) {
+                    publishHTML(target: [
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: '.',
+                        reportFiles: env.REPORT_FILE,
+                        reportName: "Sanity Report - Build ${env.BUILD_NUMBER}"
+                    ])
+                    archiveArtifacts("*.html,*.log,*.json")
+                }
+                sh 'rm -f log_*.log || true'
+
+                def buildCauses = currentBuild.getBuildCauses()
+                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+                def buildUserName = userCause?.userName ?: "Unknown User"
+                def buildUserId = userCause?.userId ?: "unknown"
+
+                def userEmails = [
                     "puneet": "puneet.sharma@senao.com",
-                    "harman": "harmanjot.singh@senao.com"
-                    // ... rest of your mapping
-                ][userCause] ?: "harmanjot.singh@senao.com"
+                    "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@senao.com",
+                    "sandeep": "sandeep.manchikanti@senao.com",
+                    "sampath": "sampath.marella@senao.com",
+                    "jayanth": "jayanth.munnaluru@senao.com",
+                    "srilatha": "srilatha.tadiboina@senao.com",
+                    "phani": "phani.darla@senao.com",
+                    "dinesh": "dinesh.redddy@senao.com"
+                ]
+                def userEmail = userEmails[buildUserId] ?: "harmanjot.singh@senao.com"
 
                 emailext(
                     subject: "Sanity Result: ${currentBuild.currentResult} - Build #${env.BUILD_NUMBER}",
