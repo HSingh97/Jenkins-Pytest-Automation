@@ -3,7 +3,7 @@ def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
-// Main Pipeline - CLI Firmware Upgrade (Exact same as your Selenium one)
+// Main Pipeline — CLI Firmware Upgrade (Exact copy of your working Selenium pipeline)
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
 
@@ -13,9 +13,6 @@ pipeline {
                 script {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${TARGET_STAND}"
-                    echo "--- DUT IP      : ${params['Local IP Address']}"
-                    echo "--- MODEL       : ${params.Model}"
-                    echo "--- CYCLES      : ${params.FIRMWARE_UPGRADE_COUNT}"
                     echo "----------------------------------------"
                 }
             }
@@ -45,7 +42,7 @@ pipeline {
                     sh "rm -f fw.img.enc fw.tgz"
 
                     def targetImgFile = "fw.img.enc"
-                    def targetTgzFile = "fw.tgz"
+                    def targetTgzFile  = "fw.tgz"
 
                     def singleImage = params['Single Image'] ?: false
                     def customBuildFile = params.UPLOADED_FIRMWARE
@@ -69,10 +66,10 @@ pipeline {
                             sh "mv -f '${customBuildFile}' ${targetImgFile} 2>&1 | tee \"${logFile}\""
                             sh "echo 'Downloading .tgz file...' | tee -a \"${logFile}\""
                             sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
-                            sh "mv -f *-apps.tgz ${targetTgzFile} 2>&1 | tee -a \"${logFile}\""
+                            sh "mv -f *-apps.tgz ${targetgzFile} 2>&1 | tee -a \"${logFile}\""
                         } else {
-                            echo "Using custom uploaded file as TGZ: ${targetTgzFile}"
-                            sh "mv -f '${customBuildFile}' ${targetTgzFile} 2>&1 | tee \"${logFile}\""
+                            echo "Using custom uploaded file as TGZ: ${targetgzFile}"
+                            sh "mv -f '${customBuildFile}' ${targetgzFile} 2>&1 | tee \"${logFile}\""
                             sh "echo 'Downloading .img.enc file...' | tee -a \"${logFile}\""
                             sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
                             sh """
@@ -85,7 +82,7 @@ pipeline {
                         sh "echo 'No custom build found. Downloading from URL.' | tee \"${logFile}\""
                         sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc,*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
 
-                        sh "mv -f *-apps.tgz ${targetTgzFile} 2>&1 | tee -a \"${logFile}\""
+                        sh "mv -f *-apps.tgz ${targetgzFile} 2>&1 | tee -a \"${logFile}\""
                         sh """
                            #!/bin/bash
                            imgfile=\$(ls -t *-apps.img.enc 2>/dev/null | head -n 1)
@@ -97,15 +94,15 @@ pipeline {
                     }
 
                     if (singleImage) {
-                        echo "Single Image selected. Setting firmware for upgrade: ${targetImgFile}"
                         env.FIRMWARE_FILE = targetImgFile
+                        echo "Single Image selected → ${targetImgFile}"
                     } else {
-                        echo "Single Image not selected. Setting firmware for upgrade: ${targetTgzFile}"
-                        env.FIRMWARE_FILE = targetTgzFile
+                        env.FIRMWARE_FILE = targetgzFile
+                        echo "Using .tgz → ${targetgzFile}"
                     }
 
                     archiveArtifacts(targetImgFile)
-                    archiveArtifacts(targetTgzFile)
+                    archiveArtifacts(targetgzFile)
                 }
             }
         }
@@ -116,18 +113,23 @@ pipeline {
                     def localIP = params['Local IP Address']
                     def keep = params['Keep Setting'] ? "" : "-n"
 
-                    sh 'rm -f test-*.log'
+                    sh 'rm -f test-*.log test.log'
+                    echo "Cleared old workspace"
+
                     sh "echo '{\"iterations\": []}' > iteration_results.json"
+
+                    def FIRMWARE_UPGRADE_COUNT = params.FIRMWARE_UPGRADE_COUNT ?: "1"
+
+                    echo "Local IP Address: ${localIP}"
+                    echo "--- Firmware file: ${env.FIRMWARE_FILE} ---"
 
                     echo "----------------------------------------"
                     echo "Upgrading the Firmware (CLI)"
                     echo "----------------------------------------"
                     sh "mkdir -p artifacts"
 
-                    def FIRMWARE_UPGRADE_COUNT = params.FIRMWARE_UPGRADE_COUNT ?: "1"
-
                     for (int i = 1; i <= FIRMWARE_UPGRADE_COUNT.toInteger(); i++) {
-                        echo "Running CLI Firmware Upgrade - Iteration ${i}"
+                        echo "Running CLI Firmware Upgrade test iteration ${i}"
                         try {
                             sh """
                                 python3 testCases/test_CLI_FW_Upgrade.py '${localIP}' '${env.FIRMWARE_FILE}' '${i}' '${keep}'
@@ -147,6 +149,9 @@ pipeline {
                 script {
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
+
+                    sh "ssh-keygen -R ${localIP} || true"
+                    sh "ssh-keygen -R ${remoteIP} || true"
 
                     def local_fw_version = "N/A"
                     def remote_fw_version = "N/A"
@@ -173,15 +178,15 @@ pipeline {
                     def pipelineName = env.JOB_NAME
 
                     def buildParams = [
-                        "Local IP Address": localIP,
-                        "Remote IP Address": remoteIP,
+                        "Local IP Address": params['Local IP Address'],
+                        "Remote IP Address": params['Remote IP Address'],
                         "Model": params.Model,
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}",
                         "Build URL": params['Build URL'],
                         "Cycles": totalTests
                     ]
 
-                    // SAME EXACT REPORT AS YOUR SELENIUM ONE
+                    // TERA 100% ORIGINAL SELENIUM REPORT — COPY-PASTED
                     def htmlContent = """
                     <html>
                     <head>
@@ -263,7 +268,6 @@ pipeline {
                         jsonReport.iterations.each { result ->
                             def iteration = result.iteration ?: "-"
                             def status = result.status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
-
                             def logFile = "test-${iteration}.log"
                             def logDataId = "log-data-${iteration}"
                             def logContent = ""
@@ -285,7 +289,7 @@ pipeline {
                     }
 
                     htmlContent += tableRows + "</table>"
-                    htmlContent += "<div id='logModal' class='modal' onclick='closeModal()'><div class='modal-content' onclick='event.stopPropagation()'><div class='modal-header'><h2>Log</h2><span class='modal-close' onclick='closeModal()'>×</span></div><div class='modal-body'><pre id='log-content-pre'></pre></div></div></div>"
+                    htmlContent += "<div id='logModal' class='modal' onclick='closeModal()'><div class='modal-content' onclick='event.stopPropagation()'><div class='modal-header'><h2>Iteration Log</h2><span class='modal-close' onclick='closeModal()'>×</span></div><div class='modal-body'><pre id='log-content-pre'></pre></div></div></div>"
                     htmlContent += logBlocks + "</body></html>"
 
                     writeFile file: 'report.html', text: htmlContent
@@ -308,24 +312,32 @@ pipeline {
             sh 'rm -f test-*.log || true'
 
             echo "-----------------------------------------"
-            echo 'CLI Firmware Upgrade Done!'
+            echo 'Script Done!'
             echo "-----------------------------------------"
 
             script {
-                def userId = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')?.userId ?: "puneet"
-                def email = [
+                def buildCauses = currentBuild.getBuildCauses()
+                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+                def buildUserName = userCause?.userName ?: "Unknown User"
+                def buildUserId = userCause?.userId ?: "unknown"
+
+                def userEmails = [
                     "puneet": "puneet.sharma@senao.com",
-                    "harman": "harmanjot.singh@senao.com"
-                ].get(userId, "puneet.sharma@senao.com")
+                    "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@senao.com"
+                ]
+                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
 
                 emailext(
-                    to: email,
                     subject: "CLI FW Upgrade #${BUILD_NUMBER} - ${currentBuild.currentResult}",
+                    to: userEmail,
                     body: "<h2>CLI Firmware Upgrade Completed</h2><p><a href='${BUILD_URL}Test_Report/'>View Report</a></p>",
                     mimeType: 'text/html',
                     attachmentsPattern: 'report.html'
                 )
             }
         }
+        success { echo "Script Success" }
+        failure { echo "Script Failure" }
     }
 }
