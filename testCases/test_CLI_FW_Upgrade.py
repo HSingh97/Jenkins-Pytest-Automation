@@ -13,7 +13,7 @@ TIMEOUT = 600
 def run_ssh(cmd, ip):
     """
     Executes an SSH command on the remote device.
-    Supresses host key checking and strictly manages timeouts.
+    Suppress host key checking and strictly manage timeouts.
     """
     ssh_opts = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 -o LogLevel=ERROR"
     full_cmd = f"sshpass -p '{PASSWORD}' ssh {ssh_opts} {USERNAME}@{ip} \"{cmd}\""
@@ -80,7 +80,7 @@ keep_flag = sys.argv[4]
 
 keep_text = "YES" if keep_flag == "" else "NO"
 
-# Fix: Dynamically get the filename so we don't force .tgz if it's .img.enc
+# FIX: Dynamically get the filename so we don't force .tgz if it's .img.enc
 fw_filename = os.path.basename(fw_path)
 remote_path = f"/tmp/{fw_filename}"
 
@@ -112,8 +112,11 @@ try:
     upgrade_cmd = f"sysupgrade {keep_flag} -v {remote_path}"
     print(f"[{datetime.now():%H:%M:%S}] Starting upgrade: {upgrade_cmd}")
 
-    if run_ssh(upgrade_cmd, local_ip) != 0:
-        raise Exception("Failed to trigger sysupgrade command")
+    # We capture the exit code. If sysupgrade rejects the file, this returns != 0
+    exit_code = run_ssh(upgrade_cmd, local_ip)
+
+    if exit_code != 0:
+        raise Exception(f"Device rejected the upgrade command (Exit Code: {exit_code}). File might be invalid.")
 
     # Step 3: Wait for reboot
     if not wait_for_device(local_ip):
