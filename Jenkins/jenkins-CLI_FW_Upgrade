@@ -66,10 +66,10 @@ pipeline {
                             sh "mv -f '${customBuildFile}' ${targetImgFile} 2>&1 | tee \"${logFile}\""
                             sh "echo 'Downloading .tgz file...' | tee -a \"${logFile}\""
                             sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
-                            sh "mv -f *-apps.tgz ${targetgzFile} 2>&1 | tee -a \"${logFile}\""
+                            sh "mv -f *-apps.tgz ${targetTgzFile} 2>&1 | tee -a \"${logFile}\""
                         } else {
-                            echo "Using custom uploaded file as TGZ: ${targetgzFile}"
-                            sh "mv -f '${customBuildFile}' ${targetgzFile} 2>&1 | tee \"${logFile}\""
+                            echo "Using custom uploaded file as TGZ: ${targetTgzFile}"
+                            sh "mv -f '${customBuildFile}' ${targetTgzFile} 2>&1 | tee \"${logFile}\""
                             sh "echo 'Downloading .img.enc file...' | tee -a \"${logFile}\""
                             sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
                             sh """
@@ -82,7 +82,7 @@ pipeline {
                         sh "echo 'No custom build found. Downloading from URL.' | tee \"${logFile}\""
                         sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc,*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
 
-                        sh "mv -f *-apps.tgz ${targetgzFile} 2>&1 | tee -a \"${logFile}\""
+                        sh "mv -f *-apps.tgz ${targetTgzFile} 2>&1 | tee -a \"${logFile}\""
                         sh """
                            #!/bin/bash
                            imgfile=\$(ls -t *-apps.img.enc 2>/dev/null | head -n 1)
@@ -97,12 +97,12 @@ pipeline {
                         env.FIRMWARE_FILE = targetImgFile
                         echo "Single Image selected → ${targetImgFile}"
                     } else {
-                        env.FIRMWARE_FILE = targetgzFile
-                        echo "Using .tgz → ${targetgzFile}"
+                        env.FIRMWARE_FILE = targetTgzFile
+                        echo "Using .tgz → ${targetTgzFile}"
                     }
 
                     archiveArtifacts(targetImgFile)
-                    archiveArtifacts(targetgzFile)
+                    archiveArtifacts(targetTgzFile)
                 }
             }
         }
