@@ -3,15 +3,18 @@ import jenkins.model.Jenkins
 // ====================== DEVICE INFO ======================
 def getDeviceInfo(ip) {
     if (!ip || ip == 'N/A') return ["N/A", "N/A", "N/A", "N/A"]
-    def model = "N/A", link = "N/A", radio = "N/A", fw = "N/A"
+    def model = "N/A"
+    def link = "N/A"
+    def radio = "N/A"
+    def fw = "N/A"
     try {
         sh "ssh-keygen -R ${ip} || true"
         fw = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${ip} 'cat /etc/version || echo N/A'", returnStdout: true)?.trim() ?: "N/A"
         model = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${ip} 'cat /etc/board.json | jq -r '.model.name // \"N/A\"' 2>/dev/null || echo N/A'", returnStdout: true)?.trim() ?: "N/A"
         def info = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${ip} 'iwinfo 2>/dev/null || echo N/A'", returnStdout: true) ?: ""
-        link = info =~ /Mode:\s*(Access Point|Station|PtP|PtMP|Client)/ ? '$1' : "N/A"
-        radio = info =~ /(2\.4|5|6)GHz/ ? '$1GHz' : "N/A"
-    } catch (e) { echo "Warning: Device info failed for ${ip}" }
+        link = (info =~ /Mode:\s*(Access Point|Station|PtP|PtMP|Client)/) ? '$1' : "N/A"
+        radio = (info =~ /(2\.4|5|6)GHz/) ? '$1GHz' : "N/A"
+    } catch (e) { echo "Warning: Could not get info for ${ip}" }
     return [model, link, radio, fw]
 }
 
@@ -26,20 +29,54 @@ def runTestList(tests, iterNum, localIP, remoteIP) {
         try {
             switch(testType) {
                 case 'Fast Channel Test':
-                    def radio = params.Radio
-                    def countries = params.Countries.split(',')
+                    def selectedRadio = params['Radio']
                     def bandwidths = params.Bandwidth.split(',')
+                    def countries = params.Countries.split(',')
                     sh 'rm -f *_HT*.json custom_results.json'
-                    countries.each { country ->
-                        sh "pytest -v -s testCases/test_channelTest.py::test_changecountry --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${radio}' --country '${country}'"
-                        bandwidths.each { bw ->
-                            if ((country == "Canada" || country == "US 5GHz Non-DFS") && bw == "HT160") return
+                    echo "✅ Cleared old workspace"
+                    sh "echo {\\\"iterations\\\": []} > iteration_results.json"
+                    def counter = 1
+                    for (country in countries) {
+                        echo "--------------------------------------------------------------"
+                        echo " Configuring Country : ${country}"
+                        echo "--------------------------------------------------------------"
+                        sh """
+                            pytest -v -s testCases/test_channelTest.py::test_changecountry \
+                            --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                            --radio '${selectedRadio}' --country '${country}' 2>&1
+                        """
+                        for (bandwidth in bandwidths) {
+                            echo "----------------------------------------"
+                            echo " Testing: Country=${country}, Bandwidth=${bandwidth}"
+                            echo "----------------------------------------"
                             sh "echo '{\"iterations\": []}' > custom_results.json"
-                            sh(script: "python3.10 -m pytest -v -s testCases/test_channelTest.py::test_channelconnectivity --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${radio}' --bandwidth '${bw}' --country '${country}' --extra '1' 2>&1 | tee ${logFile}", returnStdout: true)
-                            def res = readJSON file: 'custom_results.json'
-                            def norm = bw == "HT40" ? "HT40+" : bw
-                            def matches = res.iterations.findAll { it.Country == country && it.Bandwidth == norm }
-                            writeJSON file: "${country.replaceAll('\\s+','_')}_${bw}.json", json: [iterations: matches]
+                            if ((country == "Canada" || country == "US 5GHz Non-DFS") && bandwidth == "HT160") continue
+                            def pytest_output = sh(script: """
+                                python3.10 -m pytest -v -s testCases/test_channelTest.py::test_channelconnectivity \
+                                --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                                --radio '${selectedRadio}' --bandwidth '${bandwidth}' --country '${country}' --extra '1'\
+                                2>&1
+                            """, returnStdout: true).trim()
+                            echo "Pytest Output:\n${pytest_output}"
+                            def iterationResults = readJSON file: 'custom_results.json'
+                            def normalizedBandwidth = bandwidth == "HT40" ? "HT40+" : bandwidth
+                            def newTests = iterationResults.iterations.findAll {
+                                it.Country == country && it.Bandwidth == normalizedBandwidth
+                            }
+                            newTests.each { test ->
+                                test.iteration = counter++
+                                test.logs = pytest_output
+                            }
+                            def filename = "${country.trim().replaceAll("\\s+", "_")}_${bandwidth.trim()}.json"
+                            writeJSON file: filename, json: [iterations: newTests]
+                            newTests.each {
+                                echo "Iteration ${it.iteration} - ${it.test} => ${it.status}"
+                                echo "Country: ${it.Country}, Bandwidth: ${it.Bandwidth}"
+                                echo "Channels Tested:"
+                                it['Tested Channels'].each { ch ->
+                                    echo " - Channel: ${ch.channel}, Status: ${ch.status}"
+                                }
+                            }
                         }
                     }
                     status = "PASS"
@@ -60,23 +97,85 @@ def runTestList(tests, iterNum, localIP, remoteIP) {
                     cmd = "pytest -v -s testCases/test_SSHReboot.py::test_reboot --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${iterNum} 2>&1 | tee ${logFile}"
                     break
                 case 'Throughput Test':
-                    def rPCIP = ""
-                    node(params['Remote PC']) {
-                        rPCIP = sh(script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$4}' | cut -d'/' -f1 | head -n1", returnStdout: true).trim()
+                    def remotePC = params['Remote PC']
+                    def remotePCIP = null
+                    node(remotePC) {
+                        remotePCIP = sh(script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$4}' | cut -d'/' -f1 | head -n1", returnStdout: true).trim()
                     }
-                    def tt = params['Traffic Type'].split(',')
-                    def dir = params.Direction.split(',')
-                    def bwList = params.Bandwidth.split(',')
-                    def mcsList = params.MCS.split(',')
-                    def time = params['Throughput Test Time']
+                    def selectedRadio = params['Radio']
+                    def traffic_types = params['Traffic Type'].split(',')
+                    def directions = params.Direction.split(',')
+                    def bandwidths = params.Bandwidth.split(',')
+                    def link_types = params['Link Type'].split(',')
+                    def modulationrates = params.MCS.split(',')
+                    def test_time = params['Throughput Test Time']
                     sh 'rm -f Throughput_*.json custom_results.json'
-                    bwList.each { bw ->
-                        mcsList.each { mcs ->
-                            tt.each { type ->
-                                sh "echo '{\"iterations\": []}' > custom_results.json"
-                                sh(script: "python3.10 -m pytest -v -s testCases/test_Throughput.py::test_throughputtest --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${params.Radio}' --mcs-rate '${mcs}' --traffic-type '${type}' --traffic-dir '${dir.join(',')}' --remote-pc-ip '${rPCIP}' --bandwidth '${bw}' --sleep '${time}' 2>&1 | tee ${logFile}", returnStdout: true)
-                                def res = readJSON file: 'custom_results.json'
-                                writeJSON file: "Throughput_${bw}_${mcs}.json", json: res
+                    echo "✅ Cleared old workspace"
+                    sh "echo {\\\"iterations\\\": []} > iteration_results.json"
+                    def counter = 1
+                    for (link_type in link_types) {
+                        echo "=============================================================="
+                        echo " Testing Link Type : ${link_type}"
+                        echo "=============================================================="
+                        sh """
+                            python3.10 -m pytest -v -s testCases/test_Throughput.py::test_changelinktype \
+                            --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                            --radio '${selectedRadio}' --link-type '${link_type}' 2>&1
+                        """
+                        for (bandwidth in bandwidths) {
+                            echo "--------------------------------------------------------------"
+                            echo " Configuring Bandwidth : ${bandwidth}"
+                            echo "--------------------------------------------------------------"
+                            sh """
+                                python3.10 -m pytest -v -s testCases/test_Throughput.py::test_changebandwidth \
+                                --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                                --radio '${selectedRadio}' --bandwidth '${bandwidth}' 2>&1
+                            """
+                            for (mcsrate in modulationrates) {
+                                echo "--------------------------------------------------------------"
+                                echo " Configuring MCS : ${mcsrate}"
+                                echo "--------------------------------------------------------------"
+                                sh """
+                                    python3.10 -m pytest -v -s testCases/test_Throughput.py::test_changemcs \
+                                    --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                                    --radio '${selectedRadio}' --mcs-rate '${mcsrate}' 2>&1
+                                """
+                                for (traffic_type in traffic_types) {
+                                    echo "--------------------------------------------------------------"
+                                    echo " Testing: Bandwidth=${bandwidth} | MCS=${mcsrate} | Type=${traffic_type} "
+                                    echo "--------------------------------------------------------------"
+                                    sh "echo '{\"iterations\": []}' > custom_results.json"
+                                    def pytest_output = sh(script: """
+                                        python3.10 -m pytest -v -s testCases/test_Throughput.py::test_throughputtest \
+                                        --local-ip '${localIP}' \
+                                        --remote-ip '${remoteIP}' \
+                                        --radio '${selectedRadio}' \
+                                        --mcs-rate '${mcsrate}' \
+                                        --traffic-type '${traffic_type}' \
+                                        --traffic-dir '${directions.join(",")}' \
+                                        --remote-pc-ip '${remotePCIP}' \
+                                        --bandwidth '${bandwidth}' \
+                                        --sleep '${test_time}' \
+                                        2>&1
+                                    """, returnStdout: true).trim()
+                                    echo "Pytest Output:\n${pytest_output}"
+                                    def iterationResults = readJSON file: 'custom_results.json'
+                                    def normalizedBandwidth = bandwidth == "HT40" ? "HT40+" : bandwidth
+                                    def newTests = iterationResults.iterations
+                                    newTests.each { test ->
+                                        test.iteration = counter++
+                                        test.logs = pytest_output
+                                    }
+                                    def filename = "Throughput_${link_type.trim()}_${bandwidth.trim()}_${mcsrate.trim()}.json"
+                                    writeJSON file: filename, json: [iterations: newTests]
+                                    newTests.each { test ->
+                                        echo "Iteration ${test.iteration} - ${test.test} => ${test.status}"
+                                        test.results_direction.eachWithIndex { result, idx ->
+                                            echo " ↪ Run ${idx + 1} => Dir: ${result.Direction}, Type: ${result.traffic_type}"
+                                            echo " Bandwidth: ${result.bandwidth}, MCS: ${result.data_rate}, Throughput: ${result.throughput} Mbps"
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -91,6 +190,9 @@ def runTestList(tests, iterNum, localIP, remoteIP) {
                 case 'Factory Reset Test':
                     cmd = "pytest -v -s testCases/test_SSHFactoryReset.py::test_factory_reset --local-ip '${localIP}' --iter ${iterNum} 2>&1 | tee ${logFile}"
                     break
+                default:
+                    // Other tests
+                    break
             }
             if (cmd) {
                 def code = sh(script: cmd, returnStatus: true)
@@ -102,21 +204,21 @@ def runTestList(tests, iterNum, localIP, remoteIP) {
         }
 
         // FIXED PYTHON APPEND
-        def pyAdd = '''
+        def pyAdd = """
 import json, os
 data = {"iterations": []}
 if os.path.exists('iteration_results.json'):
     with open('iteration_results.json') as f:
         data = json.load(f)
 data["iterations"].append({
-    "test": "${testType.replaceAll(' ','_').toLowerCase()}",
-    "iteration": ${iterNum},
-    "status": "${status}",
-    "logFile": "${logFile}"
+    'test': '${testType.replaceAll(' ','_').toLowerCase()}',
+    'iteration': ${iterNum},
+    'status': '${status}',
+    'logFile': '${logFile}'
 })
 with open('iteration_results.json', 'w') as f:
     json.dump(data, f, indent=4)
-'''
+"""
         sh "python3 -c \"${pyAdd}\""
         sleep 10
     }
@@ -209,16 +311,13 @@ pipeline {
 
                     def html = """<html><head><meta charset="utf-8"><style>
                         body {font-family:'Segoe UI',sans-serif;background:#f8fafc;color:#1e293b;margin:0;padding:40px;}
-                        .header {background:linear-gradient(135deg,#1e40af,#3b82f6);color:white;padding:40px;border-radius:20px;box-shadow:0 15px 35px rgba(0,0,0,0.2);margin-bottom:40px;}
-                        .header h1 {margin:0;font-size:38px;font-weight:800;}
+                        .header {background:linear-gradient(135deg,#1e40af,#3b82f6);color:white;padding:40px;border-radius:20px;}
                         table {width:100%;border-collapse:collapse;margin:25px 0;background:white;border-radius:16px;overflow:hidden;box-shadow:0 8px 25px rgba(0,0,0,0.1);}
-                        th {background:#1e40af;color:white;padding:20px;font-size:18px;}
+                        th {background:#1e40af;color:white;padding:20px;}
                         td {padding:18px;text-align:left;}
                         .pass {background:#d1fae5;color:#059669;font-weight:bold;}
                         .fail {background:#fee2e2;color:#dc2626;font-weight:bold;}
                         .partial {background:#fef3c7;color:#d97706;font-weight:bold;}
-                        .section {margin-top:60px;}
-                        .section h2 {color:#1e40af;font-size:30px;border-bottom:4px solid #3b82f6;padding-bottom:15px;}
                     </style></head><body>
                         <div class="header"><img src="${logo}" height="80"/><div style="text-align:right;"><h1>Complete Sanity Report</h1><p>${env.JOB_NAME} #${env.BUILD_NUMBER} • ${now}</p></div></div>
                         <h2>Device Information</h2>
@@ -240,25 +339,62 @@ pipeline {
                     html += "</table>"
 
                     // Fast Channel Test Details (exact as your channel script)
-                    def chFiles = findFiles(glob: '*_HT*.json')
+                    def chFiles = findFiles(glob: '*_HT*.json').findAll { it.name != 'iteration_results.json' && it.length > 20 }
                     if (chFiles) {
-                        html += "<div class='section'><h2>Fast Channel Test Details</h2>"
+                        html += "<h2>Fast Channel Test Details</h2>"
                         def allResults = []
                         chFiles.each { f ->
                             def d = readJSON file: f.name
                             if (d?.iterations) allResults += d.iterations
                         }
                         allResults.groupBy { "${it.Country} - ${it.Bandwidth}" }.each { key, group ->
-                            def allPass = group.every { it.status == "PASS" }
-                            html += "<h3 style='background:#e0f2fe;padding:15px;border-radius:10px;'>${key} | Status: <span style='background-color:${allPass ? '#d4edda' : '#f8d7da'}; color:${allPass ? 'green' : 'red'}; padding:5px 10px; border-radius:5px;'>${allPass ? 'PASS' : 'FAIL'}</span></h3>"
-                            html += "<table><tr><th rowspan='2'>Channel</th><th rowspan='2'>Status</th><th colspan='2'>Active Channel</th><th rowspan='2'>Device Uptime</th><th rowspan='2'>Remote IP</th><th rowspan='2'>Link Uptime</th><th colspan='2'>Local SNR</th><th colspan='2'>Remote SNR</th><th colspan='2'>Noise Floor</th><th colspan='2'>Rate</th><th colspan='3'>HT Mode</th></tr><tr><th>Local</th><th>Remote</th><th>A1</th><th>A2</th><th>A1</th><th>A2</th><th>Local</th><th>Remote</th><th>Tx</th><th>Rx</th><th>Configured Local</th><th>Active Local</th><th>Active Remote</th></tr>"
-                            group.each { iter ->
-                                iter["Tested Channels"].each { ch ->
-                                    def stats = ch["link_stats"]
-                                    def status = ch["status"] == "PASS" ? "<span class='pass'>✅ PASS</span>" : "<span class='fail'>❌ FAIL</span>"
-                                    def localHT = ch.local_htmode ?: "-"
-                                    def remoteHT = ch.remote_htmode ?: "-"
-                                    def expectedBW = iter.Bandwidth.replaceAll("[^\\d]", "")
+                            def statuses = group.collect { it.status }
+                            def iterationStatus = statuses.every { it == "PASS" } ? "PASS" : (statuses.every { it == "FAIL" } ? "FAIL" : "PARTIAL")
+                            def statusColor = iterationStatus == "PASS" ? "#d4edda" : (iterationStatus == "FAIL" ? "#f8d7da" : "#fff3cd")
+                            def statusTextColor = iterationStatus == "PASS" ? "green" : (iterationStatus == "FAIL" ? "red" : "orange")
+                            html += """
+                                <h3>
+                                    Country: <i><span style="background-color:#ffff99; padding:2px 6px; border-radius:4px;"><b>${key.split(' - ')[0]}</b></span></i> |
+                                    Bandwidth: <i><span style="background-color:#d0ebff; padding:2px 6px; border-radius:4px;"><b>${key.split(' - ')[1]} MHz</b></span></i> |
+                                    Status: <span style="background-color:${statusColor}; color:${statusTextColor}; padding:2px 8px; border-radius:5px;"><b>${iterationStatus}</b></span>
+                                </h3>
+                                <table>
+                                  <tr>
+                                    <th rowspan="2">Channel</th>
+                                    <th rowspan="2">Status</th>
+                                    <th colspan="2">Active Channel</th>
+                                    <th rowspan="2">Device Uptime</th>
+                                    <th rowspan="2">Remote IP</th>
+                                    <th rowspan="2">Link Uptime</th>
+                                    <th colspan="2">Local SNR</th>
+                                    <th colspan="2">Remote SNR</th>
+                                    <th colspan="2">Noise Floor</th>
+                                    <th colspan="2">Rate</th>
+                                    <th colspan="3">HT Mode</th>
+                                  </tr>
+                                  <tr>
+                                    <th>Local</th>
+                                    <th>Remote</th>
+                                    <th>A1</th>
+                                    <th>A2</th>
+                                    <th>A1</th>
+                                    <th>A2</th>
+                                    <th>Local</th>
+                                    <th>Remote</th>
+                                    <th>Tx</th>
+                                    <th>Rx</th>
+                                    <th>Configured Local</th>
+                                    <th>Active Local</th>
+                                    <th>Active Remote</th>
+                                  </tr>
+                            """
+                            group.each { iteration ->
+                                iteration["Tested Channels"].each { channel ->
+                                    def stats = channel["link_stats"]
+                                    def status = channel["status"] == "PASS" ? "<span class='pass'>✅ PASS</span>" : "<span class='fail'>❌ FAIL</span>"
+                                    def localHT = channel.local_htmode ?: "-"
+                                    def remoteHT = channel.remote_htmode ?: "-"
+                                    def expectedBW = iteration.Bandwidth.replaceAll("[^\\d]", "")
                                     def isHTMatch = { htmode, bw ->
                                         def validMap = [
                                             "20": ["11AHE20"],
@@ -275,11 +411,11 @@ pipeline {
                                     def remoteStyle = (bandwidthMismatchRemote || modeMismatch) ? "color:red; font-weight:bold;" : ""
                                     html += """
                                         <tr>
-                                          <td>${ch.channel}</td>
+                                          <td>${channel.channel}</td>
                                           <td>${status}</td>
-                                          <td>${ch.local_active ?: '-'}</td>
-                                          <td>${ch.remote_active ?: '-'}</td>
-                                          <td>${ch.device_uptime ?: '-'}</td>
+                                          <td>${channel.local_active ?: '-'}</td>
+                                          <td>${channel.remote_active ?: '-'}</td>
+                                          <td>${channel.device_uptime ?: '-'}</td>
                                           <td>${stats?.ip_address ?: 'N/A'}</td>
                                           <td>${stats?.link_uptime ?: '-'}</td>
                                           <td>${stats?.local_SNR_A1 ?: '-'}</td>
@@ -290,7 +426,7 @@ pipeline {
                                           <td>${stats?.remote_noise ?: '-'}</td>
                                           <td>${stats?.tx_rate ?: '-'}</td>
                                           <td>${stats?.rx_rate ?: '-'}</td>
-                                          <td>${ch.conf_htmode ?: '-'}</td>
+                                          <td>${channel.conf_htmode ?: '-'}</td>
                                           <td style="${localStyle}">${localHT}</td>
                                           <td style="${remoteStyle}">${remoteHT}</td>
                                         </tr>
@@ -299,13 +435,12 @@ pipeline {
                             }
                             html += "</table>"
                         }
-                        html += "</div>"
                     }
 
                     // Throughput Test Details (exact as your throughput script)
                     def tpFiles = findFiles(glob: 'Throughput_*.json')
                     if (tpFiles) {
-                        html += "<div class='section'><h2>Throughput Test Details</h2>"
+                        html += "<h2>Throughput Test Details</h2>"
                         def modulationBase = [
                             "MCS0": "BPSK 1/2", "MCS1": "QPSK 1/2", "MCS2": "QPSK 3/4",
                             "MCS3": "16-QAM 1/2", "MCS4": "16-QAM 3/4", "MCS5": "64-QAM 2/3",
@@ -385,7 +520,7 @@ pipeline {
 
     post {
         always {
-            publishHTML(target: [reportName: "Sanity Report - Build ${env.BUILD_NUMBER}", reportFiles: env.REPORT_FILE, keepAll: true, alwaysLinkToLastBuild: true])
+            publishHTML(target: [allowMissing: false, alwaysLinkToLastBuild: true, keepAll: true, reportDir: '.', reportFiles: env.REPORT_FILE, reportName: "Sanity Report - Build ${env.BUILD_NUMBER}"])
             archiveArtifacts("*.html,*.log,*.json")
             sh 'rm -f log_*.log || true'
 
