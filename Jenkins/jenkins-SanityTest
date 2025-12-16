@@ -1,10 +1,8 @@
 import jenkins.model.Jenkins
-
 // --- Helper Functions ---
 def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
-
 // Helper to run specific test commands based on type
 def runTestList(tests, iteration, localIP, remoteIP) {
     tests.each { testTypeRaw ->
@@ -12,7 +10,6 @@ def runTestList(tests, iteration, localIP, remoteIP) {
         def logFile = "log_${testType.replaceAll(' ', '_')}_iter${iteration}.log"
         def status = "FAIL"
         def cmd = ""
-
         try {
             switch(testType) {
                 case 'Channel Test':
@@ -70,7 +67,6 @@ def runTestList(tests, iteration, localIP, remoteIP) {
             echo "Exception in ${testType}: ${e.message}"
             sh "echo 'Error: ${e.message}' >> ${logFile}"
         }
-
         def safeTestName = testType.replaceAll(' ', '_').toLowerCase()
         def pyCmd = """
 import json
@@ -86,46 +82,35 @@ except Exception as e: print(e)
         sleep 10
     }
 }
-
 pipeline {
     agent { node { label "${params.TARGET_STAND}" } }
-
     options {
         timestamps()
         timeout(time: 6, unit: 'HOURS')
         buildDiscarder(logRotator(numToKeepStr: '20'))
     }
-
     stages {
         stage('Preparation') {
             steps {
                 script {
                     echo "========================================"
-                    echo "    SANITY AUTOMATION TEST  SUITE       "
+                    echo " SANITY AUTOMATION TEST SUITE "
                     echo "========================================"
-                    echo "TARGET STAND    : ${params.TARGET_STAND}"
-                    echo "REMOTE NODE     : ${params['Remote PC']}"
-                    echo "TESTS SELECTED  : ${params.TEST_TYPES}"
+                    echo "TARGET STAND : ${params.TARGET_STAND}"
+                    echo "REMOTE NODE : ${params['Remote PC']}"
+                    echo "TESTS SELECTED : ${params.TEST_TYPES}"
                     echo "========================================"
-
                     if (!params['Local IP Address']) {
                         error "❌ Missing required parameter: Local IP Address"
                     }
-
-                    // --- KEY FIX: Define Report File Globally Here ---
                     env.REPORT_FILE = "Sanity_Report_${env.BUILD_NUMBER}.html"
-
-                    // Clean Workspace
                     sh 'rm -f *.json *.html *.log *.zip'
                     sh 'rm -rf artifacts debug_tables'
                     sh 'mkdir -p artifacts debug_tables'
-
-                    // Initialize Master JSON Result file
                     sh 'echo "{\\"iterations\\": []}" > iteration_results.json'
                 }
             }
         }
-
         stage('Install Dependencies') {
             steps {
                 script {
@@ -135,7 +120,6 @@ pipeline {
                         if [ -f "utilities/requirements.txt" ]; then
                             sh utilities/requirements.txt || true
                         fi
-                        # Check for SNMP tools
                         which snmpget >/dev/null 2>&1 || {
                             echo "--- Installing SNMP tools ---"
                             sudo apt-get update -qq
@@ -145,7 +129,6 @@ pipeline {
                 }
             }
         }
-
         stage('Firmware Prep') {
             when { expression { return params.TEST_TYPES.contains('Firmware Upgrade') } }
             steps {
@@ -156,13 +139,9 @@ pipeline {
                         def buildPath = url.substring(url.indexOf('/bonsai/') + 8)
                         def WGET_URL = "https://jenkins.senao.com/bonsai/${buildPath}"
                         if (!WGET_URL.endsWith('/')) WGET_URL += '/'
-
-                        // Check if URL exists before trying recursive download
                         def status = sh(script: "wget --spider -S ${WGET_URL} 2>&1 | grep 'HTTP/.* 200 OK'", returnStatus: true)
-
                         if (status == 0) {
                              sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc,*-apps.tgz' --no-directories ${WGET_URL} 2>&1"
-
                             sh """
                                imgfile=\$(ls -t *-apps.img.enc 2>/dev/null | head -n 1)
                                if [ -n "\$imgfile" ]; then mv -f "\$imgfile" "fw.img.enc"; fi
@@ -180,25 +159,21 @@ pipeline {
                 }
             }
         }
-
         stage('Execute Tests') {
             steps {
                 script {
                     def allSelectedTests = params.TEST_TYPES.split(',').collect { it.trim() }
                     def factoryResetTest = allSelectedTests.find { it == 'Factory Reset' }
                     def standardTests = allSelectedTests - 'Factory Reset'
-
                     def globalIterations = params.ITERATION_COUNT.isInteger() ? params.ITERATION_COUNT.toInteger() : 2
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
-
                     if (standardTests) {
                         for (int i = 1; i <= globalIterations; i++) {
                             echo "ITERATION ${i} / ${globalIterations}"
                             runTestList(standardTests, i, localIP, remoteIP)
                         }
                     }
-
                     if (factoryResetTest) {
                         echo "Running Factory Reset..."
                         runTestList([factoryResetTest], 1, localIP, remoteIP)
@@ -206,168 +181,306 @@ pipeline {
                 }
             }
         }
-
         stage('Generate Report') {
             steps {
                 script {
-                    def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
-
+                    def localIP = params['Local IP Address'] ?: 'N/A'
+                    def remoteIP = params['Remote IP Address'] ?: 'N/A'
                     def local_fw = "N/A"
                     def remote_fw = "N/A"
                     try {
                          sh "ssh-keygen -R ${localIP} || true"
                          local_fw = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version' || echo 'N/A'", returnStdout: true).trim()
                     } catch(e) {}
-                     try {
-                         if(remoteIP) {
+                    try {
+                         if(remoteIP && remoteIP != 'N/A') {
                              sh "ssh-keygen -R ${remoteIP} || true"
                              remote_fw = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version' || echo 'N/A'", returnStdout: true).trim()
                          }
                     } catch(e) {}
 
-                    def jsonReport = readJSON file: 'iteration_results.json'
-                    def testTypes = params.TEST_TYPES.split(',').collect { it.trim().replaceAll('&amp;', '&') }
+                    def selectedTests = params.TEST_TYPES.split(',').collect { it.trim().replaceAll('&amp;', '&') }
+
+                    // Dynamically build parameters based on selected tests
+                    def buildParams = [:]
+                    buildParams["Local IP Address"] = localIP
+                    buildParams["Remote IP Address"] = remoteIP
+                    buildParams["Firmware (Local / Remote)"] = "${local_fw} / ${remote_fw}"
+                    buildParams["Iteration Count"] = params.ITERATION_COUNT ?: '2'
+
+                    if (selectedTests.any { it in ['Channel Test', 'Throughput', 'VLAN', 'Disconnect Connect'] }) {
+                        if (params.Radio) buildParams["Radio"] = params.Radio
+                    }
+                    if (selectedTests.contains('Channel Test')) {
+                        if (params.Countries) buildParams["Countries"] = params.Countries
+                        if (params.Bandwidth) buildParams["Bandwidth"] = params.Bandwidth
+                    }
+                    if (selectedTests.contains('Throughput')) {
+                        if (params.MCS) buildParams["MCS Rates"] = params.MCS
+                        if (params['Traffic Type']) buildParams["Traffic Type"] = params['Traffic Type']
+                        if (params.Direction) buildParams["Direction"] = params.Direction
+                        if (params['Throughput Test Time']) buildParams["Throughput Test Time (s)"] = params['Throughput Test Time']
+                        if (params.Bandwidth) buildParams["Bandwidth"] = params.Bandwidth
+                    }
+                    if (selectedTests.contains('VLAN')) {
+                        if (params.VLAN) buildParams["VLAN ID"] = params.VLAN
+                    }
+                    if (selectedTests.contains('QOS')) {
+                        if (params['QOS PIR']) buildParams["QOS PIR"] = params['QOS PIR']
+                    }
+                    if (selectedTests.any { it in ['Disconnect Connect', 'Firmware Upgrade'] }) {
+                        if (params.Model) buildParams["Model"] = params.Model
+                    }
+                    if (selectedTests.contains('Firmware Upgrade')) {
+                        if (params['Serial Logging Port']) buildParams["Serial Logging Port"] = params['Serial Logging Port']
+                    }
 
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
-                    def istDate = Calendar.getInstance(istZone).getTime()
-                    def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
-
+                    def currentDateTime = Calendar.getInstance(istZone).getTime().format("dd MMM yyyy, HH:mm:ss z", istZone)
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
+                    def hiddenLogDivs = ""
                     def htmlContent = """
                     <html>
                     <head>
                         <title>Sanity Test Report</title>
                         <style>
                             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f9fafb; color: #1f2937; }
-                            .container { max-width: 1200px; margin: 24px auto; padding: 24px; }
-                            .header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%); padding: 28px 36px; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04); }
-                            .header img { height: 65px; transition: transform 0.2s ease-in-out; }
-                            .header img:hover { transform: scale(1.03); }
+                            .container { max-width: 1400px; margin: 24px auto; padding: 24px; }
+                            .header { display: flex; justify-content: space-between; align-items: center; background: #ffffff; padding: 28px 36px; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 32px; }
+                            .header img { height: 70px; transition: transform 0.2s; }
+                            .header img:hover { transform: scale(1.05); }
                             .header-info { text-align: right; }
-                            .header-info h1 { margin: 0; font-size: 30px; font-weight: 700; color: #0a2540; }
-                            .header-info p { margin: 5px 0; font-size: 15px; color: #4a5568; }
-                            h2 { margin-top: 32px; font-size: 24px; font-weight: 600; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; }
-
-                            table { width: 100%; border-collapse: collapse; margin-top: 15px; background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
-                            th, td { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle; }
-                            th { background-color: #f9fafb; font-weight: 600; color: #6b7280; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
-                            tr:last-child td { border-bottom: none; }
-                            tr:hover { background-color: #f9fafb; }
-
-                            .status-pass { color: #059669; font-weight: 600; background-color: #d1fae5; padding: 5px 10px; border-radius: 99px; display: inline-block; }
-                            .status-fail { color: #dc2626; font-weight: 600; background-color: #fee2e2; padding: 5px 10px; border-radius: 99px; display: inline-block; }
-
-                            .log-button { background-color: #3b82f6; color: white; padding: 8px 16px; border: none; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; transition: background-color 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-                            .log-button:hover { background-color: #2563eb; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-
-                            .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); }
-                            .modal-content { background-color: #ffffff; margin: 5% auto; border: 1px solid #e5e7eb; border-radius: 12px; width: 80%; max-width: 900px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); overflow: hidden; }
-                            .modal-header { padding: 20px 32px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
-                            .modal-header h2 { border: none; padding: 0; margin: 0; font-size: 20px; }
-                            .modal-close { color: #9ca3af; font-size: 28px; font-weight: bold; cursor: pointer; transition: color 0.2s; }
+                            .header-info h1 { margin: 0; font-size: 32px; font-weight: 700; color: #0a2540; }
+                            .header-info p { margin: 6px 0; font-size: 16px; color: #4b5563; }
+                            h2 { margin-top: 40px; font-size: 26px; font-weight: 600; color: #111827; border-bottom: 3px solid #3b82f6; padding-bottom: 10px; }
+                            table { width: 100%; border-collapse: collapse; margin-top: 16px; background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+                            th, td { padding: 14px 18px; border-bottom: 1px solid #e5e7eb; text-align: center; }
+                            th { background-color: #1e40af; color: white; font-weight: 600; font-size: 14px; text-transform: uppercase; letter-spacing: 0.6px; }
+                            tr:hover { background-color: #f8fafc; }
+                            .status-pass { background: #d1fae5; color: #065f46; padding: 6px 12px; border-radius: 999px; font-weight: 600; }
+                            .status-fail { background: #fee2e2; color: #991b1b; padding: 6px 12px; border-radius: 999px; font-weight: 600; }
+                            .log-button { background: #2563eb; color: white; padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: background 0.2s; }
+                            .log-button:hover { background: #1d4ed8; }
+                            .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); }
+                            .modal-content { background: white; margin: 5% auto; width: 90%; max-width: 1100px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+                            .modal-header { padding: 20px 32px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border-radius: 12px 12px 0 0; }
+                            .modal-close { font-size: 30px; cursor: pointer; color: #6b7280; }
                             .modal-close:hover { color: #1f2937; }
-                            .modal-body { padding: 0; }
-                            #log-content-pre { background-color: #1f2937; color: #e5e7eb; padding: 24px 32px; max-height: 60vh; overflow: auto; white-space: pre-wrap; word-wrap: break-word; margin: 0; font-family: "SFMono-Regular", Consolas, monospace; font-size: 14px; }
+                            pre { background: #1e293b; color: #e2e8f0; padding: 24px; margin: 0; max-height: 70vh; overflow: auto; border-radius: 0 0 12px 12px; white-space: pre-wrap; font-size: 14px; }
+                            .mismatch { color: red; font-weight: bold; }
+                            .percent-green { color: green; }
+                            .percent-orange { color: orange; }
+                            .percent-red { color: red; }
                         </style>
                         <script>
-                            function showLog(logDataId) {
-                                var logContent = document.getElementById(logDataId).innerHTML;
-                                document.getElementById('log-content-pre').innerHTML = logContent;
+                            function showLog(id) {
+                                document.getElementById('log-content').innerText = document.getElementById(id).innerText;
                                 document.getElementById('logModal').style.display = 'block';
                             }
                             function closeModal() { document.getElementById('logModal').style.display = 'none'; }
-                            window.onclick = function(event) { if (event.target == document.getElementById('logModal')) { closeModal(); } }
+                            window.onclick = function(e) { if (e.target == document.getElementById('logModal')) closeModal(); }
                         </script>
                     </head>
                     <body>
                         <div class="container">
                             <div class="header">
-                                <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
+                                <img src="${companyLogoUrl}" alt="Senao Networks"/>
                                 <div class="header-info">
-                                    <h1>Sanity Test Report</h1>
+                                    <h1>Sanity Automation Report</h1>
                                     <p><strong>Pipeline:</strong> ${env.JOB_NAME} #${env.BUILD_NUMBER}</p>
-                                    <p><strong>Date:</strong> ${currentDateTime}</p>
+                                    <p><strong>Date (IST):</strong> ${currentDateTime}</p>
                                 </div>
                             </div>
 
-                            <h2>Device Information</h2>
+                            <h2>Build Parameters</h2>
                             <table>
                                 <tr><th>Parameter</th><th>Value</th></tr>
-                                <tr><td><b>Local IP / FW</b></td><td>${localIP} / ${local_fw}</td></tr>
-                                <tr><td><b>Remote IP / FW</b></td><td>${remoteIP} / ${remote_fw}</td></tr>
+                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('')}
                             </table>
                     """
 
-                    def hiddenLogDivs = ""
+                    selectedTests.each { testName ->
+                        if (testName == 'Channel Test') {
+                            def channelFiles = findFiles(glob: '*_HT*.json').findAll { it.length > 20 }
+                            channelFiles.each { file ->
+                                def data = readJSON file: file.name
+                                if (!data?.iterations || data.iterations.isEmpty()) return
+                                def parts = file.name.replace('.json','').split('_')
+                                def country = parts[0..-2].join(' ')
+                                def bandwidth = parts[-1].toUpperCase()
+                                def statuses = data.iterations.collect { it['Tested Channels']*.status }.flatten()
+                                def iterationStatus = statuses.every { it == "PASS" } ? "PASS" : (statuses.contains("PASS") ? "PARTIAL" : "FAIL")
+                                def statusBg = iterationStatus == "PASS" ? "#d4edda" : (iterationStatus == "FAIL" ? "#f8d7da" : "#fff3cd")
+                                def statusColor = iterationStatus == "PASS" ? "green" : (iterationStatus == "FAIL" ? "red" : "orange")
 
-                    testTypes.each { testName ->
-                        def safeName = testName.replaceAll(' ', '_').toLowerCase()
-                        def results = jsonReport.iterations.findAll { it.test == safeName }
+                                htmlContent += """
+                                <h2>
+                                    Country: <span style="background:#ffff99;padding:2px 6px;border-radius:4px;"><b>${country}</b></span> |
+                                    Bandwidth: <span style="background:#d0ebff;padding:2px 6px;border-radius:4px;"><b>${bandwidth} MHz</b></span> |
+                                    Status: <span style="background:${statusBg};color:${statusColor};padding:2px 8px;border-radius:5px;"><b>${iterationStatus}</b></span>
+                                </h2>
+                                <table>
+                                    <tr>
+                                        <th rowspan="2">Channel</th>
+                                        <th rowspan="2">Status</th>
+                                        <th colspan="2">Active Channel</th>
+                                        <th rowspan="2">Device Uptime</th>
+                                        <th rowspan="2">Remote IP</th>
+                                        <th rowspan="2">Link Uptime</th>
+                                        <th colspan="2">Local SNR</th>
+                                        <th colspan="2">Remote SNR</th>
+                                        <th colspan="2">Noise Floor</th>
+                                        <th colspan="2">Rate</th>
+                                        <th colspan="3">HT Mode</th>
+                                    </tr>
+                                    <tr>
+                                        <th>Local</th><th>Remote</th>
+                                        <th>A1</th><th>A2</th>
+                                        <th>A1</th><th>A2</th>
+                                        <th>Local</th><th>Remote</th>
+                                        <th>Tx</th><th>Rx</th>
+                                        <th>Configured Local</th><th>Active Local</th><th>Active Remote</th>
+                                    </tr>
+                                """
+                                data.iterations.each { iter ->
+                                    iter['Tested Channels'].each { ch ->
+                                        def stats = ch.link_stats ?: [:]
+                                        def statusClass = ch.status == "PASS" ? "status-pass" : "status-fail"
+                                        def localHT = ch.local_htmode ?: "-"
+                                        def remoteHT = ch.remote_htmode ?: "-"
+                                        def modeMismatch = localHT != remoteHT
+                                        def localStyle = modeMismatch ? "class='mismatch'" : ""
+                                        def remoteStyle = modeMismatch ? "class='mismatch'" : ""
+                                        htmlContent += """
+                                        <tr>
+                                            <td>${ch.channel}</td>
+                                            <td><span class="${statusClass}">${ch.status}</span></td>
+                                            <td>${ch.local_active ?: '-'}</td>
+                                            <td>${ch.remote_active ?: '-'}</td>
+                                            <td>${ch.device_uptime ?: '-'}</td>
+                                            <td>${stats.ip_address ?: 'N/A'}</td>
+                                            <td>${stats.link_uptime ?: '-'}</td>
+                                            <td>${stats.local_SNR_A1 ?: '-'}</td>
+                                            <td>${stats.local_SNR_A2 ?: '-'}</td>
+                                            <td>${stats.remote_SNR_A1 ?: '-'}</td>
+                                            <td>${stats.remote_SNR_A2 ?: '-'}</td>
+                                            <td>${stats.local_noise ?: '-'}</td>
+                                            <td>${stats.remote_noise ?: '-'}</td>
+                                            <td>${stats.tx_rate ?: '-'}</td>
+                                            <td>${stats.rx_rate ?: '-'}</td>
+                                            <td>${ch.conf_htmode ?: '-'}</td>
+                                            <td ${localStyle}>${localHT}</td>
+                                            <td ${remoteStyle}>${remoteHT}</td>
+                                        </tr>
+                                        """
+                                    }
+                                }
+                                htmlContent += "</table>"
+                            }
 
-                        if(results) {
-                             htmlContent += """
-                             <h2>${testName} Results</h2>
-                             <table>
+                        } else if (testName == 'Throughput') {
+                            def tpFiles = findFiles(glob: 'Throughput_*.json').findAll { it.length > 20 }
+                            def bandwidthOrder = ["HT20", "HT40", "HT80", "HT160"]
+                            def mcsOrder = (0..23).collect { "MCS${it}".toUpperCase() }
+
+                            def trafficTypes = params['Traffic Type']?.split(',')?.collect { it.trim().toUpperCase() } ?: []
+                            def directions = params.Direction?.split(',')?.collect { it.trim().capitalize() } ?: []
+
+                            bandwidthOrder.each { bw ->
+                                def relevant = tpFiles.findAll { it.name.contains("_${bw}_") }
+                                if (relevant.isEmpty()) return
+
+                                def mcsMap = [:]
+                                relevant.each { file ->
+                                    def data = readJSON file: file.name
+                                    def parts = file.name.replace('.json','').split('_')
+                                    def mcs = parts.find { it.startsWith('MCS') }?.toUpperCase() ?: "UNKNOWN"
+                                    mcsMap[mcs] = data.iterations
+                                }
+
+                                htmlContent += "<h2>Throughput Results – Bandwidth: ${bw}</h2><table>"
+                                htmlContent += "<tr><th rowspan='2'>MCS</th><th colspan='2'>Rate (Mbps)</th>"
+                                trafficTypes.each { type -> htmlContent += "<th colspan='${directions.size()}'>Throughput (${type}) (Mbps)</th>" }
+                                htmlContent += "<th colspan='2'>Local SNR (dB)</th><th colspan='2'>Remote SNR (dB)</th><th colspan='2'>Noise (dBm)</th></tr><tr>"
+                                htmlContent += "<th>Tx</th><th>Rx</th>"
+                                trafficTypes.each { directions.each { htmlContent += "<th>${it}</th>" } }
+                                htmlContent += "<th>A1</th><th>A2</th><th>A1</th><th>A2</th><th>Local</th><th>Remote</th></tr>"
+
+                                mcsOrder.each { mcs ->
+                                    def iterations = mcsMap[mcs]
+                                    if (!iterations) return
+                                    def firstIter = iterations[0]
+                                    def stats = firstIter.results_direction[0]?.link_stats ?: [:]
+                                    def tx = (stats.tx_rate ?: 0) as double
+                                    def rx = (stats.rx_rate ?: 0) as double
+                                    def rateStyle = tx != rx ? "class='mismatch'" : ""
+                                    htmlContent += "<tr><td>${mcs}</td><td ${rateStyle}>${tx.intValue()}</td><td ${rateStyle}>${rx.intValue()}</td>"
+                                    firstIter.results_direction.each { res ->
+                                        def percent = tx > 0 ? Math.round((res.throughput as double) / tx * 100) : 0
+                                        def pClass = percent < 40 ? "percent-red" : (percent < 65 ? "percent-orange" : "percent-green")
+                                        def extra = ""
+                                        if (res.Direction.toLowerCase() == "bi-di") {
+                                            extra = " (${res.tx_value ?: 0}+${res.rx_value ?: 0})"
+                                        }
+                                        htmlContent += "<td><b>${res.throughput}</b>${extra} <span class='${pClass}'>(~${percent}%)</span></td>"
+                                    }
+                                    htmlContent += "<td>${stats.local_SNR_A1 ?: '-'}</td><td>${stats.local_SNR_A2 ?: '-'}</td>"
+                                    htmlContent += "<td>${stats.remote_SNR_A1 ?: '-'}</td><td>${stats.remote_SNR_A2 ?: '-'}</td>"
+                                    htmlContent += "<td>${stats.local_noise ?: '-'}</td><td>${stats.remote_noise ?: '-'}</td></tr>"
+                                }
+                                htmlContent += "</table>"
+                            }
+
+                        } else {
+                            def safeName = testName.replaceAll(' ', '_').toLowerCase()
+                            def results = readJSON(file: 'iteration_results.json').iterations.findAll { it.test == safeName }
+                            if (results.isEmpty()) return
+                            htmlContent += "<h2>${testName} Results</h2><table>"
+                            htmlContent += "<tr><th>Iteration</th><th>Status</th><th>Log</th></tr>"
+                            results.each { res ->
+                                def statusClass = res.status == 'PASS' ? 'status-pass' : 'status-fail'
+                                def logId = "log_${safeName}_${res.iteration}"
+                                def logText = ""
+                                try {
+                                    logText = readFile(file: res.logFile).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                                } catch(e) { logText = "Log file missing or unreadable." }
+                                hiddenLogDivs += "<div id='${logId}' style='display:none'>${logText}</div>"
+                                htmlContent += """
                                 <tr>
-                                    <th style="width: 100px;">Iteration</th>
-                                    <th style="width: 150px; text-align: center;">Status</th>
-                                    <th style="text-align: center;">Logs</th>
-                                </tr>
-                             """
-
-                             results.each { res ->
-                                 def statusClass = (res.status == 'PASS') ? 'status-pass' : 'status-fail'
-                                 def logId = "log_${safeName}_${res.iteration}"
-                                 def logText = ""
-                                 try {
-                                     logText = readFile(file: res.logFile)
-                                     logText = logText.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                                 } catch(e) { logText = "Log Missing" }
-
-                                 hiddenLogDivs += "<div id='${logId}' style='display:none'>${logText}</div>\n"
-
-                                 htmlContent += """
-                                 <tr>
                                     <td>${res.iteration}</td>
-                                    <td style="text-align: center;"><span class="${statusClass}">${res.status}</span></td>
-                                    <td style="text-align: center;"><button class="log-button" onclick="showLog('${logId}')">View Log</button></td>
-                                 </tr>
-                                 """
-                             }
-                             htmlContent += "</table>"
+                                    <td><span class="${statusClass}">${res.status}</span></td>
+                                    <td><button class="log-button" onclick="showLog('${logId}')">View Log</button></td>
+                                </tr>
+                                """
+                            }
+                            htmlContent += "</table>"
                         }
                     }
 
                     htmlContent += """
-                        </div>
-                        <div id="logModal" class="modal">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h2>Test Log</h2>
-                                    <span class="modal-close" onclick="closeModal()">&times;</span>
-                                </div>
-                                <div class="modal-body">
-                                    <pre id="log-content-pre"></pre>
+                            ${hiddenLogDivs}
+                            <div id="logModal" class="modal">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h2>Test Log Output</h2>
+                                        <span class="modal-close" onclick="closeModal()">&times;</span>
+                                    </div>
+                                    <pre id="log-content"></pre>
                                 </div>
                             </div>
                         </div>
-                        ${hiddenLogDivs}
                     </body>
                     </html>
                     """
-
                     writeFile file: env.REPORT_FILE, text: htmlContent
                 }
             }
         }
     }
-
     post {
         always {
             script {
-                // Check if the report file actually exists before trying to publish
                 if (fileExists(env.REPORT_FILE)) {
                     publishHTML(target: [
                         allowMissing: false, alwaysLinkToLastBuild: true, keepAll: true,
@@ -377,14 +490,11 @@ pipeline {
                 } else {
                     echo "⚠️ Report file ${env.REPORT_FILE} not found. Skipping publish."
                 }
-
                 sh 'rm -f log_*.log || true'
-
                 def buildCauses = currentBuild.getBuildCauses()
                 def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
                 def buildUserName = userCause?.userName ?: "Unknown User"
                 def buildUserId = userCause?.userId ?: "unknown"
-
                 def userEmails = [
                     "puneet": "puneet.sharma@senao.com",
                     "harman": "harmanjot.singh@senao.com",
@@ -397,10 +507,7 @@ pipeline {
                     "dinesh": "dinesh.redddy@senao.com"
                 ]
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
-
-                // Only attach report if it exists
                 def attachments = fileExists(env.REPORT_FILE) ? env.REPORT_FILE : ""
-
                 emailext(
                     subject: "Sanity Result: ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                     body: """
