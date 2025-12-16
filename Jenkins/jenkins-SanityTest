@@ -55,23 +55,21 @@ def runTestList(tests, iteration, localIP, remoteIP) {
                                 --radio '${radio}' --bandwidth '${bandwidth}' --country '${country}' --extra '1' 2>&1 | tee ${logFile}
                             """
 
-                            // Fixed Python parsing script with triple single quotes
-                            def parseScript = '''import json
+                            // FIXED: Use GString with proper escaping
+                            def parseScript = """
+import json
 try:
     with open('custom_results.json') as f:
         data = json.load(f)
-    new_tests = []
-    for t in data.get('iterations', []):
-        if t.get('Country') == ''' + "'${country}'" + ''' and t.get('Bandwidth') == ''' + "'${normBW}'" + ''':
-            new_tests.append(t)
+    new_tests = [t for t in data.get('iterations', []) if t.get('Country') == '${country}' and t.get('Bandwidth') == '${normBW}']
     if new_tests:
         for i, t in enumerate(new_tests):
             t['iteration'] = i + 1
-        with open('''' + "${filename}" + '''', 'w') as f:
+        with open('${filename}', 'w') as f:
             json.dump({'iterations': new_tests}, f, indent=4)
 except Exception as e:
     print("Parse error: " + str(e))
-'''
+"""
                             sh "python3 -c \"${parseScript}\""
                         }
                     }
@@ -133,6 +131,7 @@ except Exception as e:
                     status = "PASS"
                     break
 
+                // Other tests (same as before)
                 case 'Firmware Upgrade':
                     cmd = "export FW_PATH=\"${env.FIRMWARE_FILE ?: 'fw.tgz'}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade --local-ip '${localIP}' --remote-ip '${remoteIP}' --serialPort '${params['Serial Logging Port'] ?: '/dev/ttyUSB0'}' --iter ${iteration} 2>&1 | tee ${logFile}"
                     break
@@ -151,7 +150,6 @@ except Exception as e:
                 case 'Factory Reset':
                     cmd = "pytest -v -s testCases/test_SSHFactoryReset.py::test_factory_reset --local-ip '${localIP}' --iter ${iteration} 2>&1 | tee ${logFile}"
                     break
-                // Add other cases if needed
             }
 
             if (cmd && !['Channel Test', 'Throughput'].contains(testType)) {
@@ -180,6 +178,8 @@ with open('iteration_results.json', 'w') as f:
         sleep 10
     }
 }
+
+
 
 pipeline {
     agent { node { label "${params.TARGET_STAND}" } }
