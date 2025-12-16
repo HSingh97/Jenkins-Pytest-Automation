@@ -34,8 +34,7 @@ pipeline {
                     // Initialize generic result file
                     writeFile file: 'iteration_results.json', text: '{"iterations": []}'
 
-                    // Create Python Helper for Channel Test Parsing
-                    // This creates a dedicated script file to avoid shell quoting errors
+                    // --- HELPER 1: Python Script to Update Channel Results ---
                     writeFile file: 'update_channel.py', text: '''
 import json, sys, os
 
@@ -43,6 +42,7 @@ try:
     country = sys.argv[1]
     bandwidth = sys.argv[2]
     iteration = int(sys.argv[3])
+    # Normalize BW name for matching
     norm_bw = bandwidth if bandwidth != "HT40" else "HT40+"
     target_file = f"{country.replace(' ', '_')}_{bandwidth}.json"
 
@@ -50,6 +50,7 @@ try:
         with open('custom_results.json') as f:
             data = json.load(f)
 
+        # Find results matching current criteria
         new_tests = [t for t in data.get('iterations', []) if t.get('Country') == country and t.get('Bandwidth') == norm_bw]
 
         if new_tests:
@@ -57,6 +58,7 @@ try:
                 t['iteration'] = iteration
 
             final_data = {'iterations': []}
+            # Append to existing file if it exists (for multi-iteration)
             if os.path.exists(target_file):
                 try:
                     with open(target_file) as tf:
@@ -72,7 +74,7 @@ except Exception as e:
     print(f"Error updating channel JSON: {str(e)}")
 '''
 
-                    // Create Python Helper for Throughput Parsing (Append Mode)
+                    // --- HELPER 2: Python Script to Update Throughput Results (Append Mode) ---
                     writeFile file: 'update_throughput.py', text: '''
 import json, sys, os
 
@@ -86,7 +88,7 @@ try:
 
         final_data = {'iterations': []}
 
-        # Load existing if available to append (fix overwrite issue)
+        # Load existing if available to append
         if os.path.exists(filename):
             try:
                 with open(filename) as tf:
@@ -103,6 +105,28 @@ try:
         print(f"Successfully updated {filename}")
 except Exception as e:
     print(f"Error updating throughput JSON: {str(e)}")
+'''
+
+                    // --- HELPER 3: Python Script to Append Simple Test Results ---
+                    writeFile file: 'append_simple.py', text: '''
+import json, sys, os
+try:
+    test_name = sys.argv[1]
+    iteration = int(sys.argv[2])
+    status = sys.argv[3]
+
+    data = {'iterations': []}
+    if os.path.exists('iteration_results.json'):
+        with open('iteration_results.json') as f:
+            try: data = json.load(f)
+            except: pass
+
+    data['iterations'].append({'test': test_name, 'iteration': iteration, 'status': status})
+
+    with open('iteration_results.json', 'w') as f:
+        json.dump(data, f, indent=4)
+except Exception as e:
+    print(f"Error appending simple result: {e}")
 '''
                 }
             }
@@ -134,14 +158,15 @@ except Exception as e:
                     def remoteIP = params['Remote IP Address']
                     def iterCount = params.ITERATION_COUNT.isInteger() ? params.ITERATION_COUNT.toInteger() : 1
 
-                    // --- 1. CHANNEL TEST ---
+                    // ==========================
+                    // 1. CHANNEL TEST EXECUTION
+                    // ==========================
                     if (tests.contains('Channel Test')) {
                         echo ">>> STARTING CHANNEL TEST <<<"
                         def countries = params.Countries.split(',')
                         def bandwidths = params.Bandwidth.split(',')
                         def radio = params.Radio
 
-                        // Loop through iterations
                         for (int i = 1; i <= iterCount; i++) {
                             echo "--- Channel Test Iteration ${i} ---"
                             for (country in countries) {
@@ -153,7 +178,7 @@ except Exception as e:
                                 for (bandwidth in bandwidths) {
                                     bandwidth = bandwidth.trim()
 
-                                    // Change BW
+                                    // Change BW (using Throughput script logic as requested)
                                     sh "python3.10 -m pytest -v -s testCases/test_Throughput.py::test_changebandwidth --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${radio}' --bandwidth '${bandwidth}' 2>&1"
                                     sleep 10
 
@@ -164,21 +189,23 @@ except Exception as e:
 
                                     sh "echo '{\"iterations\": []}' > custom_results.json"
 
-                                    // Run Scan
+                                    // Run Channel Test
                                     sh """
                                         python3.10 -m pytest -v -s testCases/test_channelTest.py::test_channelconnectivity \
                                         --local-ip '${localIP}' --remote-ip '${remoteIP}' \
                                         --radio '${radio}' --bandwidth '${bandwidth}' --country '${country}' --extra '1' 2>&1
                                     """
 
-                                    // Parse using the robust python script created in Prep
+                                    // Parse and Save
                                     sh "python3 update_channel.py '${country}' '${bandwidth}' ${i}"
                                 }
                             }
                         }
                     }
 
-                    // --- 2. THROUGHPUT TEST ---
+                    // ============================
+                    // 2. THROUGHPUT TEST EXECUTION
+                    // ============================
                     if (tests.contains('Throughput')) {
                         echo ">>> STARTING THROUGHPUT TEST <<<"
                         def linktypes = params['Link Type']?.split(',') ?: ['ptp']
@@ -214,7 +241,7 @@ except Exception as e:
 
                                             sh "echo '{\"iterations\": []}' > custom_results.json"
 
-                                            // Run Test
+                                            // Run Throughput Test
                                             sh """
                                                 python3.10 -m pytest -v -s testCases/test_Throughput.py::test_throughputtest \
                                                 --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${params.Radio}' \
@@ -232,7 +259,9 @@ except Exception as e:
                         }
                     }
 
-                    // --- 3. OTHER TESTS (Simple execution) ---
+                    // ============================
+                    // 3. OTHER SANITY TESTS
+                    // ============================
                     def simpleTests = tests.findAll { !['Channel Test', 'Throughput'].contains(it) }
                     if (simpleTests) {
                         for (int i = 1; i <= iterCount; i++) {
@@ -275,18 +304,7 @@ except Exception as e:
 
                                 // Save Simple Result
                                 def safeName = testType.replaceAll(' ', '_').toLowerCase()
-                                def pyAppend = """
-import json, os
-try:
-    data = {'iterations': []}
-    if os.path.exists('iteration_results.json'):
-        with open('iteration_results.json') as f: data = json.load(f)
-    data['iterations'].append({'test': '${safeName}', 'iteration': ${i}, 'status': '${status}'})
-    with open('iteration_results.json', 'w') as f: json.dump(data, f, indent=4)
-except: pass
-"""
-                                writeFile file: "append_simple.py", text: pyAppend
-                                sh "python3 append_simple.py"
+                                sh "python3 append_simple.py '${safeName}' ${i} '${status}'"
                             }
                         }
                     }
@@ -299,7 +317,7 @@ except: pass
                 script {
                     echo "Generating HTML Report..."
 
-                    // -- CSS & Styles --
+                    // -- CSS & Styles (Beautiful Format) --
                     def css = """
                         body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; color: #333; margin:0; padding:20px; }
                         .container { max-width: 1300px; margin: 0 auto; background: white; padding: 0; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }
@@ -323,7 +341,6 @@ except: pass
                     def dateStr = new Date().format("dd MMM yyyy, HH:mm z", TimeZone.getTimeZone("Asia/Kolkata"))
                     def html = "<html><head><style>${css}</style></head><body><div class='container'>"
 
-                    // -- Header --
                     html += """
                         <div class="header">
                             <img src="https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png" alt="Senao">
@@ -335,9 +352,7 @@ except: pass
                         <div class="content">
                     """
 
-                    // -- Parameters Table --
                     def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
                     def local_fw = "N/A"
                     try { local_fw = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version' || echo 'N/A'", returnStdout: true).trim() } catch(e){}
 
@@ -351,7 +366,7 @@ except: pass
                         </table>
                     """
 
-                    // -- 1. Channel Test Report --
+                    // --- Report: Channel Test ---
                     if (params.TEST_TYPES.contains('Channel Test')) {
                         def reportFiles = findFiles(glob: '*_HT*.json').findAll { it.length > 20 }
                         if (reportFiles) {
@@ -379,7 +394,7 @@ except: pass
                         }
                     }
 
-                    // -- 2. Throughput Report --
+                    // --- Report: Throughput Test ---
                     if (params.TEST_TYPES.contains('Throughput')) {
                         def reportFiles = findFiles(glob: 'Throughput_*.json').findAll { it.length > 20 }
                         if (reportFiles) {
@@ -398,20 +413,23 @@ except: pass
 
                                 // Group items by MCS for matrix rows
                                 def mcsGroups = items.groupBy { it.name.split('_')[3].replace('.json','') }
-                                // Sort by MCS number
                                 def sortedKeys = mcsGroups.keySet().sort { a,b -> (a =~ /\d+/)[0].toInteger() <=> (b =~ /\d+/)[0].toInteger() }
 
                                 sortedKeys.each { mcs ->
                                     def rowItems = mcsGroups[mcs]
-                                    def stats = rowItems[0].data[0].results_direction[0].link_stats ?: [:] // Grab stats from first available result
+                                    // Safety: check if data exists before accessing index 0
+                                    def firstItem = rowItems.find { it.data && it.data.size() > 0 && it.data[0].results_direction }
+                                    def stats = firstItem ? (firstItem.data[0].results_direction[0].link_stats ?: [:]) : [:]
+
                                     def tx = (stats.tx_rate ?: 0) as int
                                     def rx = (stats.rx_rate ?: 0) as int
 
-                                    // Extract TCP/UDP values
                                     def tcpVal = "-", udpVal = "-"
+
+                                    // FIX: Using 'iterData' instead of 'it' to avoid Groovy conflict
                                     rowItems.each { item ->
-                                        item.data.each { it ->
-                                            it.results_direction.each { r ->
+                                        item.data.each { iterData ->
+                                            iterData.results_direction.each { r ->
                                                 if (r.traffic_type.toUpperCase().contains('TCP')) tcpVal = r.throughput
                                                 if (r.traffic_type.toUpperCase().contains('UDP')) udpVal = r.throughput
                                             }
@@ -420,7 +438,7 @@ except: pass
 
                                     html += "<tr><td><b>${mcs}</b></td><td>${tx}</td><td>${rx}</td>"
 
-                                    // Color Logic
+                                    // Color Logic for Percentages
                                     [tcpVal, udpVal].each { val ->
                                         def cell = val
                                         if (val != "-" && tx > 0) {
@@ -437,7 +455,7 @@ except: pass
                         }
                     }
 
-                    // -- 3. Simple Tests Report --
+                    // --- Report: Simple Tests ---
                     def jsonFile = new File("${workspace}/iteration_results.json")
                     if (jsonFile.exists()) {
                         def master = readJSON file: 'iteration_results.json'
@@ -470,19 +488,45 @@ except: pass
                     archiveArtifacts("*.html, *.json, *.log")
                 }
 
-                // --- Email Notification ---
-                def buildUserId = currentBuild.getBuildCauses().find { it._class == 'hudson.model.Cause$UserIdCause' }?.userId ?: "unknown"
-                def userEmails = ["puneet": "puneet.sharma@senao.com", "harman": "harmanjot.singh@senao.com"]
-                def emailTo = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+                sh 'rm -f log_*.log || true'
 
-                def subject = "Sanity Result: ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}"
-                def body = "<html><body><h2>Build Status: <span style='color:${currentBuild.currentResult=='SUCCESS'?'green':'red'}'>${currentBuild.currentResult}</span></h2><p>Please check the attached report for details.</p></body></html>"
+                // --- RESTORED EXACT EMAIL LOGIC FROM MAIN SCRIPT ---
+                def buildCauses = currentBuild.getBuildCauses()
+                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+                def buildUserName = userCause?.userName ?: "Unknown User"
+                def buildUserId = userCause?.userId ?: "unknown"
+                def userEmails = [
+                    "puneet": "puneet.sharma@senao.com",
+                    "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@senao.com",
+                    "sandeep": "sandeep.manchikanti@senao.com",
+                    "sampath": "sampath.marella@senao.com",
+                    "jayanth": "jayanth.munnaluru@senao.com",
+                    "srilatha": "srilatha.tadiboina@senao.com",
+                    "phani": "phani.darla@senao.com",
+                    "dinesh": "dinesh.redddy@senao.com"
+                ]
+                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+                def attachments = fileExists(env.REPORT_FILE) ? env.REPORT_FILE : ""
 
-                if (fileExists(env.REPORT_FILE)) {
-                     emailext(subject: subject, body: body, to: emailTo, mimeType: 'text/html', attachmentsPattern: env.REPORT_FILE)
-                } else {
-                     emailext(subject: subject, body: body, to: emailTo, mimeType: 'text/html')
-                }
+                emailext(
+                    subject: "Sanity Result: ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    body: """
+                        <html><body>
+                            <h2 style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
+                                Sanity Automation: ${currentBuild.currentResult}
+                            </h2>
+                            <p><strong>Build:</strong> ${env.JOB_NAME} #${env.BUILD_NUMBER}</p>
+                            <p><strong>Started By:</strong> ${buildUserName}</p>
+                            <p><strong>Check Report:</strong> <a href="${env.BUILD_URL}Sanity_20Report/">View HTML Report</a></p>
+                            <p><strong>Console:</strong> <a href="${env.BUILD_URL}console">View Console</a></p>
+                            ${!attachments ? "<p style='color:red;'><b>Note:</b> HTML Report generation skipped due to pipeline failure.</p>" : ""}
+                        </body></html>
+                    """,
+                    to: userEmail,
+                    mimeType: 'text/html',
+                    attachmentsPattern: attachments
+                )
             }
         }
     }
