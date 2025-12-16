@@ -14,7 +14,7 @@ def runTestList(tests, iteration, localIP, remoteIP) {
         try {
             switch(testType) {
                 case 'Channel Test':
-                    echo "=== Running Channel Test with dedicated JSON generation ==="
+                    echo "=== Running Channel Test - Generating dedicated JSON files ==="
                     sh 'rm -f *_HT*.json custom_results.json || true'
 
                     def countries = params.Countries.split(',')
@@ -55,20 +55,20 @@ def runTestList(tests, iteration, localIP, remoteIP) {
                                 --radio '${radio}' --bandwidth '${bandwidth}' --country '${country}' --extra '1' 2>&1 | tee ${logFile}
                             """
 
-                            def parseScript = """
+                            def parseScript = '''
 import json
 try:
     with open('custom_results.json') as f:
         data = json.load(f)
-    new_tests = [t for t in data.get('iterations', []) if t.get('Country') == '${country}' and t.get('Bandwidth') == '${normBW}']
+    new_tests = [t for t in data.get('iterations', []) if t.get('Country') == ''' + "'${country}'" + ''' and t.get('Bandwidth') == ''' + "'${normBW}'" + ''']
     if new_tests:
         for i, t in enumerate(new_tests):
             t['iteration'] = i + 1
-        with open('${filename}', 'w') as f:
+        with open(''' + "'${filename}'" + ''', 'w') as f:
             json.dump({'iterations': new_tests}, f, indent=4)
 except Exception as e:
     print("Parse error: " + str(e))
-"""
+'''
                             sh "python3 -c \"${parseScript}\""
                         }
                     }
@@ -76,7 +76,7 @@ except Exception as e:
                     break
 
                 case 'Throughput':
-                    echo "=== Running Throughput Test with dedicated JSON generation ==="
+                    echo "=== Running Throughput Test - Generating dedicated JSON files ==="
                     sh 'rm -f Throughput_*.json custom_results.json || true'
 
                     def rPCIP = ""
@@ -119,7 +119,11 @@ except Exception as e:
                                     --remote-pc-ip '${rPCIP}' --bandwidth '${bw}' --sleep '${params['Throughput Test Time'] ?: '10'}' 2>&1 | tee ${logFile}
                                 """
 
-                                sh "if [ -f custom_results.json ] && [ \\$(stat -c%s custom_results.json) -gt 20 ]; then mv custom_results.json '${filename}'; fi"
+                                sh """
+                                    if [ -f custom_results.json ] && [ \$(stat -c%s custom_results.json 2>/dev/null || echo 0) -gt 20 ]; then
+                                        mv custom_results.json '${filename}'
+                                    fi
+                                """
                             }
                         }
                     }
@@ -127,7 +131,7 @@ except Exception as e:
                     break
 
                 case 'Firmware Upgrade':
-                    cmd = "export FW_PATH=\\\"${env.FIRMWARE_FILE ?: 'fw.tgz'}\\\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade --local-ip '${localIP}' --remote-ip '${remoteIP}' --serialPort '${params['Serial Logging Port'] ?: '/dev/ttyUSB0'}' --iter ${iteration} 2>&1 | tee ${logFile}"
+                    cmd = "export FW_PATH=\"${env.FIRMWARE_FILE ?: 'fw.tgz'}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade --local-ip '${localIP}' --remote-ip '${remoteIP}' --serialPort '${params['Serial Logging Port'] ?: '/dev/ttyUSB0'}' --iter ${iteration} 2>&1 | tee ${logFile}"
                     break
                 case 'Ethernet Speed Duplex':
                     cmd = "python3 testCases/test_SNMPEthernetDuplex.py --su-ip '${localIP}' --iter ${iteration} 2>&1 | tee ${logFile}"
@@ -142,10 +146,10 @@ except Exception as e:
                     cmd = "pytest -v -s testCases/test_SSHReboot.py::test_reboot --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${iteration} 2>&1 | tee ${logFile}"
                     break
                 case 'VLAN':
-                    // Your VLAN code here
+                    // Add your VLAN command here if needed
                     break
                 case 'QOS':
-                    // Your QOS code here
+                    // Add your QOS command here if needed
                     break
                 case 'Factory Reset':
                     cmd = "pytest -v -s testCases/test_SSHFactoryReset.py::test_factory_reset --local-ip '${localIP}' --iter ${iteration} 2>&1 | tee ${logFile}"
@@ -308,6 +312,7 @@ pipeline {
                         if (params['Traffic Type']) buildParams["Traffic Type"] = params['Traffic Type']
                         if (params.Direction) buildParams["Direction"] = params.Direction
                         if (params['Throughput Test Time']) buildParams["Throughput Test Time (s)"] = params['Throughput Test Time']
+                        if (params.Bandwidth) buildParams["Bandwidth"] = params.Bandwidth
                     }
 
                     def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
@@ -352,90 +357,60 @@ pipeline {
                         if (testName == 'Channel Test') {
                             def reportFiles = findFiles(glob: '*_HT*.json').findAll { it.length > 20 }
                             if (reportFiles.size() == 0) {
-                                htmlContent += "<h2>Channel Test</h2><p>No results generated.</p>"
+                                htmlContent += "<h2>Channel Test</h2><p>No channel test results found.</p>"
                             } else {
-                                def allResults = []
                                 reportFiles.each { file ->
                                     def data = readJSON file: file.name
-                                    if (data?.iterations) allResults << [filename: file.name, content: data.iterations]
-                                }
-
-                                allResults.each { resultFile ->
-                                    def parts = resultFile.filename.replace('.json','').split('_')
+                                    def parts = file.name.replace('.json','').split('_')
                                     def country = parts[0..-2].join(' ')
-                                    def bandwidth = parts[-1]
-                                    def statuses = resultFile.content.collect { it['Tested Channels']*.status }.flatten()
+                                    def bandwidth = parts[-1].toUpperCase()
+                                    def statuses = data.iterations.collect { it['Tested Channels']*.status }.flatten()
                                     def iterationStatus = statuses.every { it == "PASS" } ? "PASS" : (statuses.every { it == "FAIL" } ? "FAIL" : "PARTIAL")
-                                    def statusColor = iterationStatus == "PASS" ? "#d4edda" : (iterationStatus == "FAIL" ? "#f8d7da" : "#fff3cd")
-                                    def statusTextColor = iterationStatus == "PASS" ? "green" : (iterationStatus == "FAIL" ? "red" : "orange")
+                                    def statusBg = iterationStatus == "PASS" ? "#d4edda" : (iterationStatus == "FAIL" ? "#f8d7da" : "#fff3cd")
+                                    def statusColor = iterationStatus == "PASS" ? "green" : (iterationStatus == "FAIL" ? "red" : "orange")
 
                                     htmlContent += """
                                         <h2>
-                                            Country: <i><span style="background-color:#ffff99; padding:2px 6px; border-radius:4px;"><b>${country}</b></span></i> |
-                                            Bandwidth: <i><span style="background-color:#d0ebff; padding:2px 6px; border-radius:4px;"><b>${bandwidth} MHz</b></span></i> |
-                                            Status: <span style="background-color:${statusColor}; color:${statusTextColor}; padding:2px 8px; border-radius:5px;"><b>${iterationStatus}</b></span>
+                                            Country: <span style="background:#ffff99;padding:2px 6px;border-radius:4px;"><b>${country}</b></span> |
+                                            Bandwidth: <span style="background:#d0ebff;padding:2px 6px;border-radius:4px;"><b>${bandwidth} MHz</b></span> |
+                                            Status: <span style="background:${statusBg};color:${statusColor};padding:2px 8px;border-radius:5px;"><b>${iterationStatus}</b></span>
                                         </h2>
                                         <table>
-                                          <tr>
-                                            <th rowspan="2">Channel</th>
-                                            <th rowspan="2">Status</th>
-                                            <th colspan="2">Active Channel</th>
-                                            <th rowspan="2">Device Uptime</th>
-                                            <th rowspan="2">Remote IP</th>
-                                            <th rowspan="2">Link Uptime</th>
-                                            <th colspan="2">Local SNR</th>
-                                            <th colspan="2">Remote SNR</th>
-                                            <th colspan="2">Noise Floor</th>
-                                            <th colspan="2">Rate</th>
-                                            <th colspan="3">HT Mode</th>
-                                          </tr>
-                                          <tr>
-                                            <th>Local</th>
-                                            <th>Remote</th>
-                                            <th>A1</th>
-                                            <th>A2</th>
-                                            <th>A1</th>
-                                            <th>A2</th>
-                                            <th>Local</th>
-                                            <th>Remote</th>
-                                            <th>Tx</th>
-                                            <th>Rx</th>
-                                            <th>Configured Local</th>
-                                            <th>Active Local</th>
-                                            <th>Active Remote</th>
-                                          </tr>
+                                            <tr>
+                                                <th rowspan="2">Channel</th><th rowspan="2">Status</th>
+                                                <th colspan="2">Active Channel</th><th rowspan="2">Device Uptime</th><th rowspan="2">Remote IP</th><th rowspan="2">Link Uptime</th>
+                                                <th colspan="2">Local SNR</th><th colspan="2">Remote SNR</th><th colspan="2">Noise Floor</th><th colspan="2">Rate</th><th colspan="3">HT Mode</th>
+                                            </tr>
+                                            <tr><th>Local</th><th>Remote</th><th>A1</th><th>A2</th><th>A1</th><th>A2</th><th>Local</th><th>Remote</th><th>Tx</th><th>Rx</th><th>Configured Local</th><th>Active Local</th><th>Active Remote</th></tr>
                                     """
 
-                                    resultFile.content.each { iteration ->
-                                        iteration["Tested Channels"].each { channel ->
-                                            def stats = channel["link_stats"] ?: [:]
-                                            def status = channel["status"] == "PASS" ? "<span style='color:green;font-weight:bold;'>PASS</span>" : "<span style='color:red;font-weight:bold;'>FAIL</span>"
-                                            def localHT = channel.local_htmode ?: "-"
-                                            def remoteHT = channel.remote_htmode ?: "-"
-                                            def modeMismatch = localHT != remoteHT
-                                            def localStyle = modeMismatch ? "style='color:red;font-weight:bold;'" : ""
-                                            def remoteStyle = modeMismatch ? "style='color:red;font-weight:bold;'" : ""
-
+                                    data.iterations.each { iter ->
+                                        iter["Tested Channels"].each { ch ->
+                                            def stats = ch.link_stats ?: [:]
+                                            def statusCls = ch.status == "PASS" ? "status-pass" : "status-fail"
+                                            def localHT = ch.local_htmode ?: "-"
+                                            def remoteHT = ch.remote_htmode ?: "-"
+                                            def mismatch = localHT != remoteHT
                                             htmlContent += """
                                                 <tr>
-                                                  <td>${channel.channel}</td>
-                                                  <td>${status}</td>
-                                                  <td>${channel.local_active ?: '-'}</td>
-                                                  <td>${channel.remote_active ?: '-'}</td>
-                                                  <td>${channel.device_uptime ?: '-'}</td>
-                                                  <td>${stats.ip_address ?: 'N/A'}</td>
-                                                  <td>${stats.link_uptime ?: '-'}</td>
-                                                  <td>${stats.local_SNR_A1 ?: '-'}</td>
-                                                  <td>${stats.local_SNR_A2 ?: '-'}</td>
-                                                  <td>${stats.remote_SNR_A1 ?: '-'}</td>
-                                                  <td>${stats.remote_SNR_A2 ?: '-'}</td>
-                                                  <td>${stats.local_noise ?: '-'}</td>
-                                                  <td>${stats.remote_noise ?: '-'}</td>
-                                                  <td>${stats.tx_rate ?: '-'}</td>
-                                                  <td>${stats.rx_rate ?: '-'}</td>
-                                                  <td>${channel.conf_htmode ?: '-'}</td>
-                                                  <td ${localStyle}>${localHT}</td>
-                                                  <td ${remoteStyle}>${remoteHT}</td>
+                                                    <td>${ch.channel}</td>
+                                                    <td><span class="${statusCls}">${ch.status}</span></td>
+                                                    <td>${ch.local_active ?: '-'}</td>
+                                                    <td>${ch.remote_active ?: '-'}</td>
+                                                    <td>${ch.device_uptime ?: '-'}</td>
+                                                    <td>${stats.ip_address ?: 'N/A'}</td>
+                                                    <td>${stats.link_uptime ?: '-'}</td>
+                                                    <td>${stats.local_SNR_A1 ?: '-'}</td>
+                                                    <td>${stats.local_SNR_A2 ?: '-'}</td>
+                                                    <td>${stats.remote_SNR_A1 ?: '-'}</td>
+                                                    <td>${stats.remote_SNR_A2 ?: '-'}</td>
+                                                    <td>${stats.local_noise ?: '-'}</td>
+                                                    <td>${stats.remote_noise ?: '-'}</td>
+                                                    <td>${stats.tx_rate ?: '-'}</td>
+                                                    <td>${stats.rx_rate ?: '-'}</td>
+                                                    <td>${ch.conf_htmode ?: '-'}</td>
+                                                    <td ${mismatch ? 'style="color:red;font-weight:bold;"' : ''}>${localHT}</td>
+                                                    <td ${mismatch ? 'style="color:red;font-weight:bold;"' : ''}>${remoteHT}</td>
                                                 </tr>
                                             """
                                         }
@@ -447,7 +422,7 @@ pipeline {
                         } else if (testName == 'Throughput') {
                             def reportFiles = findFiles(glob: 'Throughput_*.json').findAll { it.length > 20 }
                             if (reportFiles.size() == 0) {
-                                htmlContent += "<h2>Throughput Test</h2><p>No results generated.</p>"
+                                htmlContent += "<h2>Throughput Test</h2><p>No throughput results found.</p>"
                             } else {
                                 def allResults = []
                                 reportFiles.each { file ->
@@ -497,6 +472,7 @@ pipeline {
                                         def rateRxStyle = tx != rx ? "style='color:red;font-weight:bold;'" : ""
 
                                         htmlContent += "<tr><td>${mcs}</td><td ${rateTxStyle}>${tx.intValue()}</td><td ${rateRxStyle}>${rx.intValue()}</td>"
+
                                         trafficTypes.each { t ->
                                             directions.each { d ->
                                                 def key = "${t.toLowerCase()}_${d.toLowerCase()}"
@@ -504,9 +480,10 @@ pipeline {
                                                 def percent = tx > 0 ? Math.round((val == "-" ? 0 : (val as double)) / tx * 100) : 0
                                                 def pColor = percent < 40 ? "red" : (percent < 65 ? "orange" : "green")
                                                 def extra = d.toLowerCase() == "bi-di" ? " (${data["${key}_tx"] ?: 0}+${data["${key}_rx"] ?: 0})" : ""
-                                                htmlContent += "<td><b>${val}</b>${extra} <span style='color:${pColor}'>(~${percent}%)</span></td>"
+                                                htmlContent += "<td><b>${val}</b>${extra} <span style='color:${pColor};font-weight:bold;'>(~${percent}%)</span></td>"
                                             }
                                         }
+
                                         htmlContent += "<td>${stats.local_SNR_A1 ?: '-'}</td><td>${stats.local_SNR_A2 ?: '-'}</td>"
                                         htmlContent += "<td>${stats.remote_SNR_A1 ?: '-'}</td><td>${stats.remote_SNR_A2 ?: '-'}</td>"
                                         htmlContent += "<td>${stats.local_noise ?: '-'}</td><td>${stats.remote_noise ?: '-'}</td></tr>"
