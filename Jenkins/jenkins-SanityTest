@@ -472,18 +472,7 @@ except: pass
 
                 // --- Email Notification ---
                 def buildUserId = currentBuild.getBuildCauses().find { it._class == 'hudson.model.Cause$UserIdCause' }?.userId ?: "unknown"
-                def userEmails = [
-                    "puneet": "puneet.sharma@senao.com"
-                    "harman": "harmanjot.singh@senao.com",
-                    "mahesh": "mahesh.battala@senao.com",
-                    "sandeep": "sandeep.manchikanti@senao.com",
-                    "sampath": "sampath.marella@senao.com",
-                    "jayanth": "jayanth.munnaluru@senao.com",
-                    "srilatha": "srilatha.tadiboina@senao.com",
-                    "phani": "phani.darla@senao.com",
-                    "dinesh": "dinesh.redddy@senao.com"
-                ]
-
+                def userEmails = ["puneet": "puneet.sharma@senao.com", "harman": "harmanjot.singh@senao.com"]
                 def emailTo = userEmails.get(buildUserId, "puneet.sharma@senao.com")
 
                 def subject = "Sanity Result: ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}"
