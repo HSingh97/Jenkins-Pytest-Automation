@@ -55,7 +55,6 @@ def runTestList(tests, iteration, localIP, remoteIP) {
                                 --radio '${radio}' --bandwidth '${bandwidth}' --country '${country}' --extra '1' 2>&1 | tee ${logFile}
                             """
 
-                            // FIXED: Use GString with proper escaping
                             def parseScript = """
 import json
 try:
@@ -131,7 +130,6 @@ except Exception as e:
                     status = "PASS"
                     break
 
-                // Other tests (same as before)
                 case 'Firmware Upgrade':
                     cmd = "export FW_PATH=\"${env.FIRMWARE_FILE ?: 'fw.tgz'}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade --local-ip '${localIP}' --remote-ip '${remoteIP}' --serialPort '${params['Serial Logging Port'] ?: '/dev/ttyUSB0'}' --iter ${iteration} 2>&1 | tee ${logFile}"
                     break
@@ -146,6 +144,26 @@ except Exception as e:
                     break
                 case 'Reboot':
                     cmd = "pytest -v -s testCases/test_SSHReboot.py::test_reboot --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${iteration} 2>&1 | tee ${logFile}"
+                    break
+                case 'VLAN':
+                    def r_IP, r_If, r_Mgmt, l_IP, l_If, l_Mgmt
+                    node(params['Remote PC']) {
+                        r_IP = sh(script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$4}' | cut -d'/' -f1 | head -n1", returnStdout: true).trim()
+                        r_If = sh(script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$2}' | head -n1", returnStdout: true).trim()
+                        r_Mgmt = sh(script: "ip -4 -o addr show | awk '\$4 ~ /^10\\.0\\.150\\./ {print \$4}' | cut -d'/' -f1 | head -n1", returnStdout: true).trim()
+                    }
+                    node(params.TARGET_STAND) {
+                        l_IP = sh(script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$4}' | cut -d'/' -f1 | head -n1", returnStdout: true).trim()
+                        l_If = sh(script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$2}' | head -n1", returnStdout: true).trim()
+                        l_Mgmt = sh(script: "ip -4 -o addr show | awk '\$4 ~ /^10\\.0\\.150\\./ {print \$4}' | cut -d'/' -f1 | head -n1", returnStdout: true).trim()
+                    }
+                    cmd = "python3.10 -m pytest -v -s testCases/test_vlantesting.py::test_vlan --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${params.Radio}' --vlan '${params.VLAN}' --local-interface '${l_If}' --remote-interface '${r_If}' --local-pc-ip '${l_IP}' --remote-pc-ip '${r_IP}' --local-pc-mgmt-ip '${l_Mgmt}' --remote-pc-mgmt-ip '${r_Mgmt}' 2>&1 | tee ${logFile}"
+                    break
+                case 'QOS':
+                    def q_l_Mgmt, q_r_Mgmt
+                    node(params['Remote PC']) { q_r_Mgmt = sh(script: "ip -4 -o addr show | awk '\$4 ~ /^10\\.0\\.150\\./ {print \$4}' | cut -d'/' -f1 | head -n1", returnStdout: true).trim() }
+                    node(params.TARGET_STAND) { q_l_Mgmt = sh(script: "ip -4 -o addr show | awk '\$4 ~ /^10\\.0\\.150\\./ {print \$4}' | cut -d'/' -f1 | head -n1", returnStdout: true).trim() }
+                    cmd = "python3.10 -m pytest -v -s testCases/test_qos.py::test_qosTest --local-ip '${localIP}' --remote-ip '${remoteIP}' --qosPIR '${params['QOS PIR']}' --local-pc-mgmt-ip '${q_l_Mgmt}' --remote-pc-mgmt-ip '${q_r_Mgmt}' 2>&1 | tee ${logFile}"
                     break
                 case 'Factory Reset':
                     cmd = "pytest -v -s testCases/test_SSHFactoryReset.py::test_factory_reset --local-ip '${localIP}' --iter ${iteration} 2>&1 | tee ${logFile}"
@@ -178,8 +196,6 @@ with open('iteration_results.json', 'w') as f:
         sleep 10
     }
 }
-
-
 
 pipeline {
     agent { node { label "${params.TARGET_STAND}" } }
