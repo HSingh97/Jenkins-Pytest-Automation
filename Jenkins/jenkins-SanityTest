@@ -13,7 +13,26 @@ def runTestList(tests, iteration, localIP, remoteIP) {
         try {
             switch(testType) {
                 case 'Channel Test':
-                    cmd = "python3.10 -m pytest -v -s testCases/test_channelTest.py --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${params.Radio}' --country '${params.Countries}' --bandwidth '${params.Bandwidth}' 2>&1 | tee ${logFile}"
+                    // Configure country first
+                    sh """
+                        pytest -v -s testCases/test_channelTest.py::test_changecountry \
+                        --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                        --radio '${params.Radio}' --country '${params.Countries}' 2>&1
+                    """
+                    sleep 10
+
+                    // Configure bandwidth
+                    sh """
+                        python3.10 -m pytest -v -s testCases/test_Throughput.py::test_changebandwidth \
+                        --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                        --radio '${params.Radio}' --bandwidth '${params.Bandwidth}' 2>&1
+                    """
+                    sleep 15
+
+                    // Run channel connectivity test
+                    cmd = "python3.10 -m pytest -v -s testCases/test_channelTest.py::test_channelconnectivity \
+                        --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                        --radio '${params.Radio}' --bandwidth '${params.Bandwidth}' --country '${params.Countries}' --extra '1' 2>&1 | tee ${logFile}"
                     break
                 case 'Firmware Upgrade':
                     cmd = "export FW_PATH=\"${env.FIRMWARE_FILE ?: 'fw.tgz'}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade --local-ip '${localIP}' --remote-ip '${remoteIP}' --serialPort '${params['Serial Logging Port'] ?: '/dev/ttyUSB0'}' --iter ${iteration} 2>&1 | tee ${logFile}"
@@ -82,6 +101,7 @@ except Exception as e: print(e)
         sleep 10
     }
 }
+
 pipeline {
     agent { node { label "${params.TARGET_STAND}" } }
     options {
@@ -101,7 +121,7 @@ pipeline {
                     echo "TESTS SELECTED : ${params.TEST_TYPES}"
                     echo "========================================"
                     if (!params['Local IP Address']) {
-                        error "❌ Missing required parameter: Local IP Address"
+                        error "Missing required parameter: Local IP Address"
                     }
                     env.REPORT_FILE = "Sanity_Report_${env.BUILD_NUMBER}.html"
                     sh 'rm -f *.json *.html *.log *.zip'
@@ -151,10 +171,10 @@ pipeline {
                             env.FIRMWARE_FILE = "fw.tgz"
                             archiveArtifacts('fw.img.enc, fw.tgz')
                         } else {
-                            error "❌ FIRMWARE URL NOT FOUND (404): ${WGET_URL}"
+                            error "FIRMWARE URL NOT FOUND (404): ${WGET_URL}"
                         }
                     } else {
-                        echo "⚠️ No valid Bonsai URL provided. Assuming local file availability."
+                        echo "No valid Bonsai URL provided. Assuming local file availability."
                     }
                 }
             }
@@ -201,12 +221,10 @@ pipeline {
 
                     def selectedTests = params.TEST_TYPES.split(',').collect { it.trim().replaceAll('&amp;', '&') }
 
-                    // Dynamically build parameters based on selected tests
                     def buildParams = [:]
                     buildParams["Local IP Address"] = localIP
                     buildParams["Remote IP Address"] = remoteIP
                     buildParams["Firmware (Local / Remote)"] = "${local_fw} / ${remote_fw}"
-                    buildParams["Iteration Count"] = params.ITERATION_COUNT ?: '2'
 
                     if (selectedTests.any { it in ['Channel Test', 'Throughput', 'VLAN', 'Disconnect Connect'] }) {
                         if (params.Radio) buildParams["Radio"] = params.Radio
@@ -239,7 +257,6 @@ pipeline {
                     def currentDateTime = Calendar.getInstance(istZone).getTime().format("dd MMM yyyy, HH:mm:ss z", istZone)
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
-                    def hiddenLogDivs = ""
                     def htmlContent = """
                     <html>
                     <head>
@@ -248,39 +265,22 @@ pipeline {
                             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f9fafb; color: #1f2937; }
                             .container { max-width: 1400px; margin: 24px auto; padding: 24px; }
                             .header { display: flex; justify-content: space-between; align-items: center; background: #ffffff; padding: 28px 36px; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 32px; }
-                            .header img { height: 70px; transition: transform 0.2s; }
-                            .header img:hover { transform: scale(1.05); }
+                            .header img { height: 70px; }
                             .header-info { text-align: right; }
                             .header-info h1 { margin: 0; font-size: 32px; font-weight: 700; color: #0a2540; }
                             .header-info p { margin: 6px 0; font-size: 16px; color: #4b5563; }
                             h2 { margin-top: 40px; font-size: 26px; font-weight: 600; color: #111827; border-bottom: 3px solid #3b82f6; padding-bottom: 10px; }
                             table { width: 100%; border-collapse: collapse; margin-top: 16px; background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
                             th, td { padding: 14px 18px; border-bottom: 1px solid #e5e7eb; text-align: center; }
-                            th { background-color: #1e40af; color: white; font-weight: 600; font-size: 14px; text-transform: uppercase; letter-spacing: 0.6px; }
-                            tr:hover { background-color: #f8fafc; }
-                            .status-pass { background: #d1fae5; color: #065f46; padding: 6px 12px; border-radius: 999px; font-weight: 600; }
-                            .status-fail { background: #fee2e2; color: #991b1b; padding: 6px 12px; border-radius: 999px; font-weight: 600; }
-                            .log-button { background: #2563eb; color: white; padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: background 0.2s; }
-                            .log-button:hover { background: #1d4ed8; }
-                            .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); }
-                            .modal-content { background: white; margin: 5% auto; width: 90%; max-width: 1100px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
-                            .modal-header { padding: 20px 32px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border-radius: 12px 12px 0 0; }
-                            .modal-close { font-size: 30px; cursor: pointer; color: #6b7280; }
-                            .modal-close:hover { color: #1f2937; }
-                            pre { background: #1e293b; color: #e2e8f0; padding: 24px; margin: 0; max-height: 70vh; overflow: auto; border-radius: 0 0 12px 12px; white-space: pre-wrap; font-size: 14px; }
+                            th { background-color: #1e40af; color: white; font-weight: 600; font-size: 14px; text-transform: uppercase; }
+                            .status-pass { background: #d1fae5; color: #065f46; padding: 8px 16px; border-radius: 999px; font-weight: 600; }
+                            .status-fail { background: #fee2e2; color: #991b1b; padding: 8px 16px; border-radius: 999px; font-weight: 600; }
+                            .simple-table th { background: #1e40af; }
                             .mismatch { color: red; font-weight: bold; }
-                            .percent-green { color: green; }
-                            .percent-orange { color: orange; }
-                            .percent-red { color: red; }
+                            .percent-green { color: green; font-weight: bold; }
+                            .percent-orange { color: orange; font-weight: bold; }
+                            .percent-red { color: red; font-weight: bold; }
                         </style>
-                        <script>
-                            function showLog(id) {
-                                document.getElementById('log-content').innerText = document.getElementById(id).innerText;
-                                document.getElementById('logModal').style.display = 'block';
-                            }
-                            function closeModal() { document.getElementById('logModal').style.display = 'none'; }
-                            window.onclick = function(e) { if (e.target == document.getElementById('logModal')) closeModal(); }
-                        </script>
                     </head>
                     <body>
                         <div class="container">
@@ -303,172 +303,145 @@ pipeline {
                     selectedTests.each { testName ->
                         if (testName == 'Channel Test') {
                             def channelFiles = findFiles(glob: '*_HT*.json').findAll { it.length > 20 }
-                            channelFiles.each { file ->
-                                def data = readJSON file: file.name
-                                if (!data?.iterations || data.iterations.isEmpty()) return
-                                def parts = file.name.replace('.json','').split('_')
-                                def country = parts[0..-2].join(' ')
-                                def bandwidth = parts[-1].toUpperCase()
-                                def statuses = data.iterations.collect { it['Tested Channels']*.status }.flatten()
-                                def iterationStatus = statuses.every { it == "PASS" } ? "PASS" : (statuses.contains("PASS") ? "PARTIAL" : "FAIL")
-                                def statusBg = iterationStatus == "PASS" ? "#d4edda" : (iterationStatus == "FAIL" ? "#f8d7da" : "#fff3cd")
-                                def statusColor = iterationStatus == "PASS" ? "green" : (iterationStatus == "FAIL" ? "red" : "orange")
+                            if (channelFiles.isEmpty()) {
+                                htmlContent += "<h2>Channel Test</h2><p>No channel test results found.</p>"
+                            } else {
+                                channelFiles.each { file ->
+                                    def data = readJSON file: file.name
+                                    if (!data?.iterations) return
+                                    def parts = file.name.replace('.json','').split('_')
+                                    def country = parts[0..-2].join(' ')
+                                    def bandwidth = parts[-1].toUpperCase()
+                                    def statuses = data.iterations.collect { it['Tested Channels']*.status }.flatten()
+                                    def overall = statuses.every { it == "PASS" } ? "PASS" : (statuses.contains("PASS") ? "PARTIAL" : "FAIL")
+                                    def bg = overall == "PASS" ? "#d1fae5" : (overall == "FAIL" ? "#fee2e2" : "#fffbeb")
+                                    def color = overall == "PASS" ? "#065f46" : (overall == "FAIL" ? "#991b1b" : "#92400e")
 
-                                htmlContent += """
-                                <h2>
-                                    Country: <span style="background:#ffff99;padding:2px 6px;border-radius:4px;"><b>${country}</b></span> |
-                                    Bandwidth: <span style="background:#d0ebff;padding:2px 6px;border-radius:4px;"><b>${bandwidth} MHz</b></span> |
-                                    Status: <span style="background:${statusBg};color:${statusColor};padding:2px 8px;border-radius:5px;"><b>${iterationStatus}</b></span>
-                                </h2>
-                                <table>
-                                    <tr>
-                                        <th rowspan="2">Channel</th>
-                                        <th rowspan="2">Status</th>
-                                        <th colspan="2">Active Channel</th>
-                                        <th rowspan="2">Device Uptime</th>
-                                        <th rowspan="2">Remote IP</th>
-                                        <th rowspan="2">Link Uptime</th>
-                                        <th colspan="2">Local SNR</th>
-                                        <th colspan="2">Remote SNR</th>
-                                        <th colspan="2">Noise Floor</th>
-                                        <th colspan="2">Rate</th>
-                                        <th colspan="3">HT Mode</th>
-                                    </tr>
-                                    <tr>
-                                        <th>Local</th><th>Remote</th>
-                                        <th>A1</th><th>A2</th>
-                                        <th>A1</th><th>A2</th>
-                                        <th>Local</th><th>Remote</th>
-                                        <th>Tx</th><th>Rx</th>
-                                        <th>Configured Local</th><th>Active Local</th><th>Active Remote</th>
-                                    </tr>
-                                """
-                                data.iterations.each { iter ->
-                                    iter['Tested Channels'].each { ch ->
-                                        def stats = ch.link_stats ?: [:]
-                                        def statusClass = ch.status == "PASS" ? "status-pass" : "status-fail"
-                                        def localHT = ch.local_htmode ?: "-"
-                                        def remoteHT = ch.remote_htmode ?: "-"
-                                        def modeMismatch = localHT != remoteHT
-                                        def localStyle = modeMismatch ? "class='mismatch'" : ""
-                                        def remoteStyle = modeMismatch ? "class='mismatch'" : ""
-                                        htmlContent += """
+                                    htmlContent += """
+                                    <h2>
+                                        Channel Test — Country: <span style="background:#ffff99;padding:4px 8px;border-radius:4px;">${country}</span> |
+                                        Bandwidth: <span style="background:#d0ebff;padding:4px 8px;border-radius:4px;">${bandwidth} MHz</span> |
+                                        Overall: <span style="background:${bg};color:${color};padding:6px 12px;border-radius:999px;font-weight:600;">${overall}</span>
+                                    </h2>
+                                    <table>
                                         <tr>
-                                            <td>${ch.channel}</td>
-                                            <td><span class="${statusClass}">${ch.status}</span></td>
-                                            <td>${ch.local_active ?: '-'}</td>
-                                            <td>${ch.remote_active ?: '-'}</td>
-                                            <td>${ch.device_uptime ?: '-'}</td>
-                                            <td>${stats.ip_address ?: 'N/A'}</td>
-                                            <td>${stats.link_uptime ?: '-'}</td>
-                                            <td>${stats.local_SNR_A1 ?: '-'}</td>
-                                            <td>${stats.local_SNR_A2 ?: '-'}</td>
-                                            <td>${stats.remote_SNR_A1 ?: '-'}</td>
-                                            <td>${stats.remote_SNR_A2 ?: '-'}</td>
-                                            <td>${stats.local_noise ?: '-'}</td>
-                                            <td>${stats.remote_noise ?: '-'}</td>
-                                            <td>${stats.tx_rate ?: '-'}</td>
-                                            <td>${stats.rx_rate ?: '-'}</td>
-                                            <td>${ch.conf_htmode ?: '-'}</td>
-                                            <td ${localStyle}>${localHT}</td>
-                                            <td ${remoteStyle}>${remoteHT}</td>
+                                            <th rowspan="2">Channel</th><th rowspan="2">Status</th>
+                                            <th colspan="2">Active Channel</th>
+                                            <th rowspan="2">Device Uptime</th><th rowspan="2">Link Uptime</th>
+                                            <th colspan="2">Local SNR</th><th colspan="2">Remote SNR</th>
+                                            <th colspan="2">Noise Floor</th>
+                                            <th colspan="2">Rate</th>
+                                            <th colspan="3">HT Mode</th>
                                         </tr>
-                                        """
+                                        <tr>
+                                            <th>Local</th><th>Remote</th>
+                                            <th>A1</th><th>A2</th>
+                                            <th>A1</th><th>A2</th>
+                                            <th>Local</th><th>Remote</th>
+                                            <th>Tx</th><th>Rx</th>
+                                            <th>Conf</th><th>Local</th><th>Remote</th>
+                                        </tr>
+                                    """
+                                    data.iterations.each { iter ->
+                                        iter['Tested Channels'].each { ch ->
+                                            def stats = ch.link_stats ?: [:]
+                                            def statusClass = ch.status == "PASS" ? "status-pass" : "status-fail"
+                                            def localHT = ch.local_htmode ?: "-"
+                                            def remoteHT = ch.remote_htmode ?: "-"
+                                            def htStyle = localHT != remoteHT ? "class='mismatch'" : ""
+                                            htmlContent += """
+                                            <tr>
+                                                <td>${ch.channel}</td>
+                                                <td><span class="${statusClass}">${ch.status}</span></td>
+                                                <td>${ch.local_active ?: '-'}</td>
+                                                <td>${ch.remote_active ?: '-'}</td>
+                                                <td>${ch.device_uptime ?: '-'}</td>
+                                                <td>${stats.link_uptime ?: '-'}</td>
+                                                <td>${stats.local_SNR_A1 ?: '-'}</td><td>${stats.local_SNR_A2 ?: '-'}</td>
+                                                <td>${stats.remote_SNR_A1 ?: '-'}</td><td>${stats.remote_SNR_A2 ?: '-'}</td>
+                                                <td>${stats.local_noise ?: '-'}</td><td>${stats.remote_noise ?: '-'}</td>
+                                                <td>${stats.tx_rate ?: '-'}</td><td>${stats.rx_rate ?: '-'}</td>
+                                                <td>${ch.conf_htmode ?: '-'}</td>
+                                                <td ${htStyle}>${localHT}</td>
+                                                <td ${htStyle}>${remoteHT}</td>
+                                            </tr>
+                                            """
+                                        }
                                     }
+                                    htmlContent += "</table>"
                                 }
-                                htmlContent += "</table>"
                             }
 
                         } else if (testName == 'Throughput') {
                             def tpFiles = findFiles(glob: 'Throughput_*.json').findAll { it.length > 20 }
-                            def bandwidthOrder = ["HT20", "HT40", "HT80", "HT160"]
-                            def mcsOrder = (0..23).collect { "MCS${it}".toUpperCase() }
+                            if (tpFiles.isEmpty()) {
+                                htmlContent += "<h2>Throughput Test</h2><p>No throughput results found.</p>"
+                            } else {
+                                def bandwidthOrder = ["HT20", "HT40", "HT80", "HT160"]
+                                def mcsOrder = (0..23).collect { "MCS${it}".toUpperCase() }
+                                def trafficTypes = params['Traffic Type']?.split(',')?.collect { it.trim().toUpperCase() } ?: []
+                                def directions = params.Direction?.split(',')?.collect { it.trim().capitalize() } ?: []
 
-                            def trafficTypes = params['Traffic Type']?.split(',')?.collect { it.trim().toUpperCase() } ?: []
-                            def directions = params.Direction?.split(',')?.collect { it.trim().capitalize() } ?: []
+                                bandwidthOrder.each { bw ->
+                                    def relevant = tpFiles.findAll { it.name.contains("_${bw}_") }
+                                    if (relevant.isEmpty()) return
 
-                            bandwidthOrder.each { bw ->
-                                def relevant = tpFiles.findAll { it.name.contains("_${bw}_") }
-                                if (relevant.isEmpty()) return
-
-                                def mcsMap = [:]
-                                relevant.each { file ->
-                                    def data = readJSON file: file.name
-                                    def parts = file.name.replace('.json','').split('_')
-                                    def mcs = parts.find { it.startsWith('MCS') }?.toUpperCase() ?: "UNKNOWN"
-                                    mcsMap[mcs] = data.iterations
-                                }
-
-                                htmlContent += "<h2>Throughput Results – Bandwidth: ${bw}</h2><table>"
-                                htmlContent += "<tr><th rowspan='2'>MCS</th><th colspan='2'>Rate (Mbps)</th>"
-                                trafficTypes.each { type -> htmlContent += "<th colspan='${directions.size()}'>Throughput (${type}) (Mbps)</th>" }
-                                htmlContent += "<th colspan='2'>Local SNR (dB)</th><th colspan='2'>Remote SNR (dB)</th><th colspan='2'>Noise (dBm)</th></tr><tr>"
-                                htmlContent += "<th>Tx</th><th>Rx</th>"
-                                trafficTypes.each { directions.each { htmlContent += "<th>${it}</th>" } }
-                                htmlContent += "<th>A1</th><th>A2</th><th>A1</th><th>A2</th><th>Local</th><th>Remote</th></tr>"
-
-                                mcsOrder.each { mcs ->
-                                    def iterations = mcsMap[mcs]
-                                    if (!iterations) return
-                                    def firstIter = iterations[0]
-                                    def stats = firstIter.results_direction[0]?.link_stats ?: [:]
-                                    def tx = (stats.tx_rate ?: 0) as double
-                                    def rx = (stats.rx_rate ?: 0) as double
-                                    def rateStyle = tx != rx ? "class='mismatch'" : ""
-                                    htmlContent += "<tr><td>${mcs}</td><td ${rateStyle}>${tx.intValue()}</td><td ${rateStyle}>${rx.intValue()}</td>"
-                                    firstIter.results_direction.each { res ->
-                                        def percent = tx > 0 ? Math.round((res.throughput as double) / tx * 100) : 0
-                                        def pClass = percent < 40 ? "percent-red" : (percent < 65 ? "percent-orange" : "percent-green")
-                                        def extra = ""
-                                        if (res.Direction.toLowerCase() == "bi-di") {
-                                            extra = " (${res.tx_value ?: 0}+${res.rx_value ?: 0})"
-                                        }
-                                        htmlContent += "<td><b>${res.throughput}</b>${extra} <span class='${pClass}'>(~${percent}%)</span></td>"
+                                    def mcsMap = [:]
+                                    relevant.each { file ->
+                                        def data = readJSON file: file.name
+                                        def mcs = file.name.split('_')[2].replace('.json','').toUpperCase()
+                                        if (data.iterations) mcsMap[mcs] = data.iterations[0]
                                     }
-                                    htmlContent += "<td>${stats.local_SNR_A1 ?: '-'}</td><td>${stats.local_SNR_A2 ?: '-'}</td>"
-                                    htmlContent += "<td>${stats.remote_SNR_A1 ?: '-'}</td><td>${stats.remote_SNR_A2 ?: '-'}</td>"
-                                    htmlContent += "<td>${stats.local_noise ?: '-'}</td><td>${stats.remote_noise ?: '-'}</td></tr>"
+
+                                    htmlContent += "<h2>Throughput Test — Bandwidth: ${bw}</h2><table>"
+                                    htmlContent += "<tr><th rowspan='2'>MCS</th><th colspan='2'>Rate (Mbps)</th>"
+                                    trafficTypes.each { type -> directions.each { dir -> htmlContent += "<th>${type}<br>${dir}</th>" } }
+                                    htmlContent += "<th colspan='2'>Local SNR</th><th colspan='2'>Remote SNR</th><th colspan='2'>Noise</th></tr>"
+                                    htmlContent += "<tr><th>Tx</th><th>Rx</th>" + "<th>Mbps</th>" * (trafficTypes.size() * directions.size()) + "<th>A1</th><th>A2</th><th>A1</th><th>A2</th><th>Local</th><th>Remote</th></tr>"
+
+                                    mcsOrder.each { mcs ->
+                                        def iter = mcsMap[mcs]
+                                        if (!iter) return
+                                        def stats = iter.results_direction[0]?.link_stats ?: [:]
+                                        def tx = (stats.tx_rate ?: 0) as double
+                                        def rx = (stats.rx_rate ?: 0) as double
+                                        def rateStyle = tx != rx ? "class='mismatch'" : ""
+                                        htmlContent += "<tr><td>${mcs}</td><td ${rateStyle}>${tx.intValue()}</td><td ${rateStyle}>${rx.intValue()}</td>"
+                                        iter.results_direction.each { res ->
+                                            def percent = tx > 0 ? Math.round((res.throughput as double) / tx * 100) : 0
+                                            def pClass = percent < 40 ? "percent-red" : (percent < 65 ? "percent-orange" : "percent-green")
+                                            def extra = res.Direction.toLowerCase() == "bi-di" ? " (${res.tx_value ?: 0}+${res.rx_value ?: 0})" : ""
+                                            htmlContent += "<td><b>${res.throughput}</b>${extra} <span class='${pClass}'>(~${percent}%)</span></td>"
+                                        }
+                                        htmlContent += "<td>${stats.local_SNR_A1 ?: '-'}</td><td>${stats.local_SNR_A2 ?: '-'}</td>"
+                                        htmlContent += "<td>${stats.remote_SNR_A1 ?: '-'}</td><td>${stats.remote_SNR_A2 ?: '-'}</td>"
+                                        htmlContent += "<td>${stats.local_noise ?: '-'}</td><td>${stats.remote_noise ?: '-'}</td></tr>"
+                                    }
+                                    htmlContent += "</table>"
                                 }
-                                htmlContent += "</table>"
                             }
 
                         } else {
+                            // Simple PASS/FAIL only for other tests
                             def safeName = testName.replaceAll(' ', '_').toLowerCase()
                             def results = readJSON(file: 'iteration_results.json').iterations.findAll { it.test == safeName }
                             if (results.isEmpty()) return
-                            htmlContent += "<h2>${testName} Results</h2><table>"
-                            htmlContent += "<tr><th>Iteration</th><th>Status</th><th>Log</th></tr>"
-                            results.each { res ->
-                                def statusClass = res.status == 'PASS' ? 'status-pass' : 'status-fail'
-                                def logId = "log_${safeName}_${res.iteration}"
-                                def logText = ""
-                                try {
-                                    logText = readFile(file: res.logFile).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                                } catch(e) { logText = "Log file missing or unreadable." }
-                                hiddenLogDivs += "<div id='${logId}' style='display:none'>${logText}</div>"
-                                htmlContent += """
-                                <tr>
-                                    <td>${res.iteration}</td>
-                                    <td><span class="${statusClass}">${res.status}</span></td>
-                                    <td><button class="log-button" onclick="showLog('${logId}')">View Log</button></td>
-                                </tr>
-                                """
-                            }
-                            htmlContent += "</table>"
+
+                            def allPass = results.every { it.status == 'PASS' }
+                            def statusClass = allPass ? 'status-pass' : 'status-fail'
+                            def statusText = allPass ? 'PASS' : 'FAIL'
+
+                            htmlContent += """
+                            <h2>${testName} Results</h2>
+                            <table class="simple-table">
+                                <tr><th>Overall Status</th></tr>
+                                <tr><td><span class="${statusClass}">${statusText}</span></td></tr>
+                            </table>
+                            """
                         }
                     }
 
                     htmlContent += """
-                            ${hiddenLogDivs}
-                            <div id="logModal" class="modal">
-                                <div class="modal-content">
-                                    <div class="modal-header">
-                                        <h2>Test Log Output</h2>
-                                        <span class="modal-close" onclick="closeModal()">&times;</span>
-                                    </div>
-                                    <pre id="log-content"></pre>
-                                </div>
-                            </div>
                         </div>
                     </body>
                     </html>
@@ -488,7 +461,7 @@ pipeline {
                     ])
                     archiveArtifacts("*.html, *.json, *.log")
                 } else {
-                    echo "⚠️ Report file ${env.REPORT_FILE} not found. Skipping publish."
+                    echo "Report file ${env.REPORT_FILE} not found. Skipping publish."
                 }
                 sh 'rm -f log_*.log || true'
                 def buildCauses = currentBuild.getBuildCauses()
