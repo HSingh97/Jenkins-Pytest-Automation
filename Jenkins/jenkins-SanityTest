@@ -55,16 +55,19 @@ def runTestList(tests, iteration, localIP, remoteIP) {
                                 --radio '${radio}' --bandwidth '${bandwidth}' --country '${country}' --extra '1' 2>&1 | tee ${logFile}
                             """
 
-                            def parseScript = '''
-import json
+                            // Fixed Python parsing script with triple single quotes
+                            def parseScript = '''import json
 try:
     with open('custom_results.json') as f:
         data = json.load(f)
-    new_tests = [t for t in data.get('iterations', []) if t.get('Country') == ''' + "'${country}'" + ''' and t.get('Bandwidth') == ''' + "'${normBW}'" + ''']
+    new_tests = []
+    for t in data.get('iterations', []):
+        if t.get('Country') == ''' + "'${country}'" + ''' and t.get('Bandwidth') == ''' + "'${normBW}'" + ''':
+            new_tests.append(t)
     if new_tests:
         for i, t in enumerate(new_tests):
             t['iteration'] = i + 1
-        with open(''' + "'${filename}'" + ''', 'w') as f:
+        with open('''' + "${filename}" + '''', 'w') as f:
             json.dump({'iterations': new_tests}, f, indent=4)
 except Exception as e:
     print("Parse error: " + str(e))
@@ -145,15 +148,10 @@ except Exception as e:
                 case 'Reboot':
                     cmd = "pytest -v -s testCases/test_SSHReboot.py::test_reboot --local-ip '${localIP}' --remote-ip '${remoteIP}' --iter ${iteration} 2>&1 | tee ${logFile}"
                     break
-                case 'VLAN':
-                    // Add your VLAN command here if needed
-                    break
-                case 'QOS':
-                    // Add your QOS command here if needed
-                    break
                 case 'Factory Reset':
                     cmd = "pytest -v -s testCases/test_SSHFactoryReset.py::test_factory_reset --local-ip '${localIP}' --iter ${iteration} 2>&1 | tee ${logFile}"
                     break
+                // Add other cases if needed
             }
 
             if (cmd && !['Channel Test', 'Throughput'].contains(testType)) {
@@ -520,8 +518,6 @@ pipeline {
                         reportDir: '.', reportFiles: env.REPORT_FILE, reportName: 'Sanity Report'
                     ])
                     archiveArtifacts("*.html, *.json, *.log")
-                } else {
-                    echo "Report file ${env.REPORT_FILE} not found. Skipping publish."
                 }
                 sh 'rm -f log_*.log || true'
                 def buildCauses = currentBuild.getBuildCauses()
