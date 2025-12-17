@@ -1,43 +1,34 @@
 import jenkins.model.Jenkins
 import groovy.json.JsonSlurper
-
 pipeline {
     agent { node { label "${params.TARGET_STAND}" } }
-
     options {
         timestamps()
         timeout(time: 6, unit: 'HOURS')
         buildDiscarder(logRotator(numToKeepStr: '20'))
     }
-
     stages {
         stage('Preparation') {
             steps {
                 script {
                     echo "========================================"
-                    echo "      SANITY AUTOMATION SUITE           "
+                    echo " SANITY AUTOMATION SUITE "
                     echo "========================================"
                     echo "TARGET STAND : ${params.TARGET_STAND}"
-                    echo "REMOTE NODE  : ${params['Remote PC']}"
-
+                    echo "REMOTE NODE : ${params['Remote PC']}"
                     if (!params['Local IP Address']) {
-                        error "❌ Error: 'Local IP Address' parameter is missing!"
+                        error "Error: 'Local IP Address' parameter is missing!"
                     }
-
                     env.REPORT_FILE = "Sanity_Report_${env.BUILD_NUMBER}.html"
-
                     // Clean workspace safely
                     sh 'rm -f *.json *.html *.log *.zip || true'
                     sh 'rm -rf artifacts debug_tables || true'
                     sh 'mkdir -p artifacts debug_tables'
-
                     // Initialize generic result file
                     writeFile file: 'iteration_results.json', text: '{"iterations": []}'
-
-                    // --- HELPER 1: Python Script to Update Channel Results ---
+                    // Python Script to Update Channel Results ---
                     writeFile file: 'update_channel.py', text: '''
 import json, sys, os
-
 try:
     country = sys.argv[1]
     bandwidth = sys.argv[2]
@@ -45,18 +36,14 @@ try:
     # Normalize BW name for matching
     norm_bw = bandwidth if bandwidth != "HT40" else "HT40+"
     target_file = f"{country.replace(' ', '_')}_{bandwidth}.json"
-
     if os.path.exists('custom_results.json'):
         with open('custom_results.json') as f:
             data = json.load(f)
-
         # Find results matching current criteria
         new_tests = [t for t in data.get('iterations', []) if t.get('Country') == country and t.get('Bandwidth') == norm_bw]
-
         if new_tests:
             for t in new_tests:
                 t['iteration'] = iteration
-
             final_data = {'iterations': []}
             # Append to existing file if it exists (for multi-iteration)
             if os.path.exists(target_file):
@@ -64,65 +51,52 @@ try:
                     with open(target_file) as tf:
                         final_data = json.load(tf)
                 except: pass
-
             final_data['iterations'].extend(new_tests)
-
             with open(target_file, 'w') as f:
                 json.dump(final_data, f, indent=4)
             print(f"Successfully updated {target_file}")
 except Exception as e:
     print(f"Error updating channel JSON: {str(e)}")
 '''
-
-                    // --- HELPER 2: Python Script to Update Throughput Results (Append Mode) ---
+                    // python Script to Update Throughput Results (Append Mode) ---
                     writeFile file: 'update_throughput.py', text: '''
 import json, sys, os
-
 try:
     filename = sys.argv[1]
     iteration = int(sys.argv[2])
-
     if os.path.exists('custom_results.json') and os.path.getsize('custom_results.json') > 10:
         with open('custom_results.json') as f:
             new_data = json.load(f)
-
         final_data = {'iterations': []}
-
         # Load existing if available to append
         if os.path.exists(filename):
             try:
                 with open(filename) as tf:
                     final_data = json.load(tf)
             except: pass
-
         if new_data.get('iterations'):
             for it in new_data['iterations']:
                 it['iteration'] = iteration
                 final_data['iterations'].append(it)
-
         with open(filename, 'w') as f:
             json.dump(final_data, f, indent=4)
         print(f"Successfully updated {filename}")
 except Exception as e:
     print(f"Error updating throughput JSON: {str(e)}")
 '''
-
-                    // --- HELPER 3: Python Script to Append Simple Test Results ---
+                    // Python Script to Append Simple Test Results ---
                     writeFile file: 'append_simple.py', text: '''
 import json, sys, os
 try:
     test_name = sys.argv[1]
     iteration = int(sys.argv[2])
     status = sys.argv[3]
-
     data = {'iterations': []}
     if os.path.exists('iteration_results.json'):
         with open('iteration_results.json') as f:
             try: data = json.load(f)
             except: pass
-
     data['iterations'].append({'test': test_name, 'iteration': iteration, 'status': status})
-
     with open('iteration_results.json', 'w') as f:
         json.dump(data, f, indent=4)
 except Exception as e:
@@ -131,7 +105,6 @@ except Exception as e:
                 }
             }
         }
-
         stage('Install Dependencies') {
             steps {
                 script {
@@ -149,7 +122,6 @@ except Exception as e:
                 }
             }
         }
-
         stage('Execute Tests') {
             steps {
                 script {
@@ -158,15 +130,13 @@ except Exception as e:
                     def remoteIP = params['Remote IP Address']
                     def iterCount = params.ITERATION_COUNT.isInteger() ? params.ITERATION_COUNT.toInteger() : 1
 
-                    // ==========================
                     // 1. CHANNEL TEST EXECUTION
-                    // ==========================
+
                     if (tests.contains('Channel Test')) {
                         echo ">>> STARTING CHANNEL TEST <<<"
                         def countries = params.Countries.split(',')
                         def bandwidths = params.Bandwidth.split(',')
                         def radio = params.Radio
-
                         for (int i = 1; i <= iterCount; i++) {
                             echo "--- Channel Test Iteration ${i} ---"
                             for (country in countries) {
@@ -174,28 +144,22 @@ except Exception as e:
                                 // Change Country
                                 sh "pytest -v -s testCases/test_channelTest.py::test_changecountry --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${radio}' --country '${country}' 2>&1"
                                 sleep 5
-
                                 for (bandwidth in bandwidths) {
                                     bandwidth = bandwidth.trim()
-
                                     // Change BW (using Throughput script logic as requested)
                                     sh "python3.10 -m pytest -v -s testCases/test_Throughput.py::test_changebandwidth --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${radio}' --bandwidth '${bandwidth}' 2>&1"
                                     sleep 10
-
                                     if ((country == "Canada" || country == "US 5GHz Non-DFS") && bandwidth == "HT160") {
                                         echo "Skipping HT160 for ${country}"
                                         continue
                                     }
-
                                     sh "echo '{\"iterations\": []}' > custom_results.json"
-
                                     // Run Channel Test
                                     sh """
                                         python3.10 -m pytest -v -s testCases/test_channelTest.py::test_channelconnectivity \
                                         --local-ip '${localIP}' --remote-ip '${remoteIP}' \
                                         --radio '${radio}' --bandwidth '${bandwidth}' --country '${country}' --extra '1' 2>&1
                                     """
-
                                     // Parse and Save
                                     sh "python3 update_channel.py '${country}' '${bandwidth}' ${i}"
                                 }
@@ -203,9 +167,8 @@ except Exception as e:
                         }
                     }
 
-                    // ============================
                     // 2. THROUGHPUT TEST EXECUTION
-                    // ============================
+
                     if (tests.contains('Throughput')) {
                         echo ">>> STARTING THROUGHPUT TEST <<<"
                         def linktypes = params['Link Type']?.split(',') ?: ['ptp']
@@ -213,34 +176,27 @@ except Exception as e:
                         def mcsList = params.MCS.split(',')
                         def trafficTypes = params['Traffic Type'].split(',')
                         def directions = params.Direction.split(',')
-
                         def rPCIP = ""
                         try {
                             node(params['Remote PC']) {
                                 rPCIP = sh(script: "ip -4 -o addr show | awk '\\\$4 ~ /^192\\\\.168\\\\.1\\\\./ {print \\\$4}' | cut -d'/' -f1 | head -n1", returnStdout: true).trim()
                             }
-                        } catch(e) { echo "⚠️ Warning: Could not get Remote PC IP. Using placeholder."; rPCIP = "192.168.1.x" }
-
+                        } catch(e) { echo "Warning: Could not get Remote PC IP. Using placeholder."; rPCIP = "192.168.1.x" }
                         for (int i = 1; i <= iterCount; i++) {
                             echo "--- Throughput Iteration ${i} ---"
                             for (linktype in linktypes) {
                                 linktype = linktype.trim()
                                 sh "python3.10 -m pytest -v -s testCases/test_Throughput.py::test_changelinktype --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${params.Radio}' --link-type '${linktype}' 2>&1"
-
                                 for (bw in bandwidths) {
                                     bw = bw.trim()
                                     sh "python3.10 -m pytest -v -s testCases/test_Throughput.py::test_changebandwidth --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${params.Radio}' --bandwidth '${bw}' 2>&1"
-
                                     for (mcs in mcsList) {
                                         mcs = mcs.trim()
                                         sh "python3.10 -m pytest -v -s testCases/test_Throughput.py::test_changemcs --local-ip '${localIP}' --remote-ip '${remoteIP}' --radio '${params.Radio}' --mcs-rate '${mcs}' 2>&1"
-
                                         for (trafficType in trafficTypes) {
                                             trafficType = trafficType.trim()
                                             def filename = "Throughput_${linktype}_${bw}_${mcs}.json"
-
                                             sh "echo '{\"iterations\": []}' > custom_results.json"
-
                                             // Run Throughput Test
                                             sh """
                                                 python3.10 -m pytest -v -s testCases/test_Throughput.py::test_throughputtest \
@@ -249,7 +205,6 @@ except Exception as e:
                                                 --remote-pc-ip '${rPCIP}' --bandwidth '${bw}' \
                                                 --sleep '${params['Throughput Test Time'] ?: '10'}' 2>&1
                                             """
-
                                             // Append Result
                                             sh "python3 update_throughput.py '${filename}' ${i}"
                                         }
@@ -259,9 +214,8 @@ except Exception as e:
                         }
                     }
 
-                    // ============================
                     // 3. OTHER SANITY TESTS
-                    // ============================
+
                     def simpleTests = tests.findAll { !['Channel Test', 'Throughput'].contains(it) }
                     if (simpleTests) {
                         for (int i = 1; i <= iterCount; i++) {
@@ -269,7 +223,6 @@ except Exception as e:
                                 def logFile = "log_${testType.replaceAll(' ', '_')}_iter${i}.log"
                                 def cmd = ""
                                 def status = "FAIL"
-
                                 try {
                                     switch(testType) {
                                         case 'Firmware Upgrade':
@@ -295,13 +248,11 @@ except Exception as e:
                                             cmd = "pytest -v -s testCases/test_SSHFactoryReset.py::test_factory_reset --local-ip '${localIP}' --iter ${i} 2>&1"
                                             break
                                     }
-
                                     if (cmd) {
                                         def exitCode = sh(script: "${cmd} | tee ${logFile}", returnStatus: true)
                                         status = (exitCode == 0) ? "PASS" : "FAIL"
                                     }
                                 } catch (e) { echo "Error in ${testType}: ${e.message}" }
-
                                 // Save Simple Result
                                 def safeName = testType.replaceAll(' ', '_').toLowerCase()
                                 sh "python3 append_simple.py '${safeName}' ${i} '${status}'"
@@ -311,12 +262,10 @@ except Exception as e:
                 }
             }
         }
-
         stage('Generate Report') {
             steps {
                 script {
                     echo "Generating HTML Report..."
-
                     // -- CSS & Styles (Beautiful Format) --
                     def css = """
                         body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; color: #333; margin:0; padding:20px; }
@@ -337,10 +286,8 @@ except Exception as e:
                         .warn { background: #fff3cd; color: #856404; }
                         .footer { background: #eee; text-align: center; padding: 10px; font-size: 12px; color: #777; }
                     """
-
                     def dateStr = new Date().format("dd MMM yyyy, HH:mm z", TimeZone.getTimeZone("Asia/Kolkata"))
                     def html = "<html><head><style>${css}</style></head><body><div class='container'>"
-
                     html += """
                         <div class="header">
                             <img src="https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png" alt="Senao">
@@ -351,11 +298,9 @@ except Exception as e:
                         </div>
                         <div class="content">
                     """
-
                     def localIP = params['Local IP Address']
                     def local_fw = "N/A"
                     try { local_fw = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version' || echo 'N/A'", returnStdout: true).trim() } catch(e){}
-
                     html += """
                         <h2>Test Environment</h2>
                         <table style="text-align:left;">
@@ -365,7 +310,6 @@ except Exception as e:
                             <tr><th style="text-align:left;">Tests Executed</th><td style="text-align:left;">${params.TEST_TYPES}</td></tr>
                         </table>
                     """
-
                     // --- Report: Channel Test ---
                     if (params.TEST_TYPES.contains('Channel Test')) {
                         def reportFiles = findFiles(glob: '*_HT*.json').findAll { it.length > 20 }
@@ -375,10 +319,8 @@ except Exception as e:
                                 def nameParts = f.name.replace('.json', '').split('_')
                                 def bw = nameParts[-1]
                                 def country = nameParts[0..-2].join(' ')
-
                                 html += "<h3>Channel Test: ${country} (${bw})</h3>"
                                 html += "<table><tr><th>Ch</th><th>Status</th><th>Link Time</th><th>SNR (L/R)</th><th>HT Mode (L/R)</th></tr>"
-
                                 data.iterations.each { iter ->
                                     iter['Tested Channels'].each { ch ->
                                         def cls = ch.status == 'PASS' ? 'pass' : 'fail'
@@ -393,7 +335,6 @@ except Exception as e:
                             }
                         }
                     }
-
                     // --- Report: Throughput Test ---
                     if (params.TEST_TYPES.contains('Throughput')) {
                         def reportFiles = findFiles(glob: 'Throughput_*.json').findAll { it.length > 20 }
@@ -403,30 +344,23 @@ except Exception as e:
                                 def d = readJSON file: f.name
                                 if (d?.iterations) allResults << [name: f.name, data: d.iterations]
                             }
-
-                            def grouped = allResults.groupBy { it.name.split('_')[2] } // Group by Bandwidth
-
+                            // FIXED: Use explicit Closure to avoid CPS GroovyCategorySupport error
+                            def grouped = allResults.groupBy({ it.name.split('_')[2] } as Closure)
                             grouped.each { bw, items ->
                                 html += "<h3>Throughput Performance: ${bw}</h3>"
                                 html += "<table><tr><th rowspan='2'>MCS</th><th colspan='2'>Phy Rate</th><th colspan='2'>Throughput (Mbps)</th><th colspan='2'>SNR</th></tr>"
                                 html += "<tr><th>Tx</th><th>Rx</th><th>TCP</th><th>UDP</th><th>Local</th><th>Remote</th></tr>"
 
-                                // Group items by MCS for matrix rows
-                                def mcsGroups = items.groupBy { it.name.split('_')[3].replace('.json','') }
-                                def sortedKeys = mcsGroups.keySet().sort { a,b -> (a =~ /\d+/)[0].toInteger() <=> (b =~ /\d+/)[0].toInteger() }
+                                def mcsGroups = items.groupBy({ it.name.split('_')[3].replace('.json','') } as Closure)
 
+                                def sortedKeys = mcsGroups.keySet().sort({ a, b -> (a =~ /\d+/)[0].toInteger() <=> (b =~ /\d+/)[0].toInteger() } as Closure)
                                 sortedKeys.each { mcs ->
                                     def rowItems = mcsGroups[mcs]
-                                    // Safety: check if data exists before accessing index 0
                                     def firstItem = rowItems.find { it.data && it.data.size() > 0 && it.data[0].results_direction }
                                     def stats = firstItem ? (firstItem.data[0].results_direction[0].link_stats ?: [:]) : [:]
-
                                     def tx = (stats.tx_rate ?: 0) as int
                                     def rx = (stats.rx_rate ?: 0) as int
-
                                     def tcpVal = "-", udpVal = "-"
-
-                                    // FIX: Using 'iterData' instead of 'it' to avoid Groovy conflict
                                     rowItems.each { item ->
                                         item.data.each { iterData ->
                                             iterData.results_direction.each { r ->
@@ -435,10 +369,7 @@ except Exception as e:
                                             }
                                         }
                                     }
-
                                     html += "<tr><td><b>${mcs}</b></td><td>${tx}</td><td>${rx}</td>"
-
-                                    // Color Logic for Percentages
                                     [tcpVal, udpVal].each { val ->
                                         def cell = val
                                         if (val != "-" && tx > 0) {
@@ -454,7 +385,6 @@ except Exception as e:
                             }
                         }
                     }
-
                     // --- Report: Simple Tests ---
                     def jsonFile = new File("${workspace}/iteration_results.json")
                     if (jsonFile.exists()) {
@@ -464,19 +394,17 @@ except Exception as e:
                             html += "<h3>Sanity Checks</h3><table><tr><th>Test Case</th><th>Iteration</th><th>Status</th></tr>"
                             others.each {
                                 def c = it.status == 'PASS' ? 'pass' : 'fail'
-                                html += "<tr><td>${it.test}</td><td>${it.iteration}</td><td><span class='badge ${c}'>${it.status}</span></td></tr>"
+                                html += "<tr><td>${it.test.replaceAll('_', ' ')}</td><td>${it.iteration}</td><td><span class='badge ${c}'>${it.status}</span></td></tr>"
                             }
                             html += "</table>"
                         }
                     }
-
                     html += "</div><div class='footer'>Generated by Jenkins Auto-Report System</div></div></body></html>"
                     writeFile file: env.REPORT_FILE, text: html
                 }
             }
         }
     }
-
     post {
         always {
             script {
@@ -487,9 +415,7 @@ except Exception as e:
                     ])
                     archiveArtifacts("*.html, *.json, *.log")
                 }
-
                 sh 'rm -f log_*.log || true'
-
                 // --- RESTORED EXACT EMAIL LOGIC FROM MAIN SCRIPT ---
                 def buildCauses = currentBuild.getBuildCauses()
                 def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
@@ -508,7 +434,6 @@ except Exception as e:
                 ]
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
                 def attachments = fileExists(env.REPORT_FILE) ? env.REPORT_FILE : ""
-
                 emailext(
                     subject: "Sanity Result: ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                     body: """
