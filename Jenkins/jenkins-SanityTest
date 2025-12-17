@@ -17,7 +17,7 @@ pipeline {
                     echo "TARGET STAND : ${params.TARGET_STAND}"
                     echo "REMOTE NODE : ${params['Remote PC']}"
                     if (!params['Local IP Address']) {
-                        error "Error: 'Local IP Address' parameter is missing!"
+                        error "❌ Error: 'Local IP Address' parameter is missing!"
                     }
                     env.REPORT_FILE = "Sanity_Report_${env.BUILD_NUMBER}.html"
                     // Clean workspace safely
@@ -26,7 +26,7 @@ pipeline {
                     sh 'mkdir -p artifacts debug_tables'
                     // Initialize generic result file
                     writeFile file: 'iteration_results.json', text: '{"iterations": []}'
-                    // Python Script to Update Channel Results ---
+                    // --- HELPER 1: Python Script to Update Channel Results ---
                     writeFile file: 'update_channel.py', text: '''
 import json, sys, os
 try:
@@ -58,7 +58,7 @@ try:
 except Exception as e:
     print(f"Error updating channel JSON: {str(e)}")
 '''
-                    // python Script to Update Throughput Results (Append Mode) ---
+                    // --- HELPER 2: Python Script to Update Throughput Results (Append Mode) ---
                     writeFile file: 'update_throughput.py', text: '''
 import json, sys, os
 try:
@@ -84,7 +84,7 @@ try:
 except Exception as e:
     print(f"Error updating throughput JSON: {str(e)}")
 '''
-                    // Python Script to Append Simple Test Results ---
+                    // --- HELPER 3: Python Script to Append Simple Test Results ---
                     writeFile file: 'append_simple.py', text: '''
 import json, sys, os
 try:
@@ -129,9 +129,9 @@ except Exception as e:
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
                     def iterCount = params.ITERATION_COUNT.isInteger() ? params.ITERATION_COUNT.toInteger() : 1
-
+                    // ==========================
                     // 1. CHANNEL TEST EXECUTION
-
+                    // ==========================
                     if (tests.contains('Channel Test')) {
                         echo ">>> STARTING CHANNEL TEST <<<"
                         def countries = params.Countries.split(',')
@@ -166,9 +166,9 @@ except Exception as e:
                             }
                         }
                     }
-
+                    // ============================
                     // 2. THROUGHPUT TEST EXECUTION
-
+                    // ============================
                     if (tests.contains('Throughput')) {
                         echo ">>> STARTING THROUGHPUT TEST <<<"
                         def linktypes = params['Link Type']?.split(',') ?: ['ptp']
@@ -181,7 +181,7 @@ except Exception as e:
                             node(params['Remote PC']) {
                                 rPCIP = sh(script: "ip -4 -o addr show | awk '\\\$4 ~ /^192\\\\.168\\\\.1\\\\./ {print \\\$4}' | cut -d'/' -f1 | head -n1", returnStdout: true).trim()
                             }
-                        } catch(e) { echo "Warning: Could not get Remote PC IP. Using placeholder."; rPCIP = "192.168.1.x" }
+                        } catch(e) { echo "⚠️ Warning: Could not get Remote PC IP. Using placeholder."; rPCIP = "192.168.1.x" }
                         for (int i = 1; i <= iterCount; i++) {
                             echo "--- Throughput Iteration ${i} ---"
                             for (linktype in linktypes) {
@@ -213,9 +213,9 @@ except Exception as e:
                             }
                         }
                     }
-
+                    // ============================
                     // 3. OTHER SANITY TESTS
-
+                    // ============================
                     def simpleTests = tests.findAll { !['Channel Test', 'Throughput'].contains(it) }
                     if (simpleTests) {
                         for (int i = 1; i <= iterCount; i++) {
@@ -344,15 +344,12 @@ except Exception as e:
                                 def d = readJSON file: f.name
                                 if (d?.iterations) allResults << [name: f.name, data: d.iterations]
                             }
-                            // FIXED: Use explicit Closure to avoid CPS GroovyCategorySupport error
                             def grouped = allResults.groupBy({ it.name.split('_')[2] } as Closure)
                             grouped.each { bw, items ->
                                 html += "<h3>Throughput Performance: ${bw}</h3>"
                                 html += "<table><tr><th rowspan='2'>MCS</th><th colspan='2'>Phy Rate</th><th colspan='2'>Throughput (Mbps)</th><th colspan='2'>SNR</th></tr>"
                                 html += "<tr><th>Tx</th><th>Rx</th><th>TCP</th><th>UDP</th><th>Local</th><th>Remote</th></tr>"
-
                                 def mcsGroups = items.groupBy({ it.name.split('_')[3].replace('.json','') } as Closure)
-
                                 def sortedKeys = mcsGroups.keySet().sort({ a, b -> (a =~ /\d+/)[0].toInteger() <=> (b =~ /\d+/)[0].toInteger() } as Closure)
                                 sortedKeys.each { mcs ->
                                     def rowItems = mcsGroups[mcs]
@@ -385,16 +382,16 @@ except Exception as e:
                             }
                         }
                     }
-                    // --- Report: Simple Tests ---
-                    def jsonFile = new File("${workspace}/iteration_results.json")
-                    if (jsonFile.exists()) {
+                    // --- Report: Simple Tests --- (FIXED: Use fileExists instead of java.io.File)
+                    if (fileExists('iteration_results.json')) {
                         def master = readJSON file: 'iteration_results.json'
                         def others = master.iterations.findAll { !['channel_test', 'throughput'].contains(it.test) }
                         if (others) {
                             html += "<h3>Sanity Checks</h3><table><tr><th>Test Case</th><th>Iteration</th><th>Status</th></tr>"
                             others.each {
+                                def displayName = it.test.replaceAll('_', ' ').replaceAll('\\b\\w') { it.toUpperCase() }
                                 def c = it.status == 'PASS' ? 'pass' : 'fail'
-                                html += "<tr><td>${it.test.replaceAll('_', ' ')}</td><td>${it.iteration}</td><td><span class='badge ${c}'>${it.status}</span></td></tr>"
+                                html += "<tr><td>${displayName}</td><td>${it.iteration}</td><td><span class='badge ${c}'>${it.status}</span></td></tr>"
                             }
                             html += "</table>"
                         }
