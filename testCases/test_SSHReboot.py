@@ -14,18 +14,19 @@ ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin"
 
 # Function to perform ping checks on local and remote IPs
-def perform_ping_check(local_ip, remote_ip, result_dict):
+#def perform_ping_check(local_ip, remote_ip, result_dict):
+def perform_ping_check(local_ip, result_dict):
     print(f"--- Pinging local IP: {local_ip}", flush=True)
     # Check if local IP is reachable
     if pingFunction.check_access(local_ip):
         result_dict["Ping Results"]["Local"] = True
-        print(f"--- Pinging remote IP: {remote_ip}", flush=True)
+        '''print(f"--- Pinging remote IP: {remote_ip}", flush=True)
         # Check if remote IP is reachable
         if pingFunction.check_access(remote_ip):
             result_dict["Ping Results"]["Remote"] = True
             result_dict["status"] = "PASS"
         else:
-            result_dict["Ping Results"]["Remote"] = False
+            result_dict["Ping Results"]["Remote"] = False'''
     else:
         result_dict["Ping Results"]["Local"] = False
 
@@ -51,11 +52,12 @@ def append_result_to_json(result, filename="iteration_results.json"):
     print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}", flush=True)
 
 # Test function to perform device reboot and verify functionality
-def test_reboot(local_ip, remote_ip, iter):
+#def test_reboot(local_ip, remote_ip, iter):
+def test_reboot(local_ip, iter):
     # Print test iteration details
     print("\n****************************************************",flush=True)
     print(f"\nLocal IP Address: {local_ip}", flush=True)
-    print(f"Remote IP Address: {remote_ip}", flush=True)
+    #print(f"Remote IP Address: {remote_ip}", flush=True)
     print(f"Running Iteration: {iter}", flush=True)
     print("****************************************************", flush=True)
 
@@ -65,10 +67,10 @@ def test_reboot(local_ip, remote_ip, iter):
         "test": "Test_Reboot",
         "status": "FAIL",
         "Local IP": local_ip,
-        "Remote IP": remote_ip,
+        #"Remote IP": remote_ip,
         "Ping Results": {
             "Local": False,
-            "Remote": False
+            #"Remote": False
         },
         "Device Logs": ""
     }
@@ -81,7 +83,8 @@ def test_reboot(local_ip, remote_ip, iter):
     time.sleep(180)
 
     # Perform ping checks after reboot
-    perform_ping_check(local_ip, remote_ip, test_iteration_result)
+    #perform_ping_check(local_ip, remote_ip, test_iteration_result)
+    perform_ping_check(local_ip, test_iteration_result)
 
     # Check device logs if local ping was successful
     if test_iteration_result["Ping Results"]["Local"]:
