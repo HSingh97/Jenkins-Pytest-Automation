@@ -74,11 +74,11 @@ def test_reboot(local_ip, remote_ip, iter):
     }
 
     # Trigger device reboot using root credentials
-    #ssh_netmiko.runcommand(local_ip, "reboot &")
+    ssh_netmiko.runcommand(local_ip, "reboot &")
 
     # Wait for device to complete reboot
     print("Waiting for device to reboot...",flush=True)
-    #time.sleep(180)
+    time.sleep(180)
 
     # Perform ping checks after reboot
     perform_ping_check(local_ip, remote_ip, test_iteration_result)
