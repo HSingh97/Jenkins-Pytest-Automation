@@ -48,14 +48,14 @@ def get_temperature_via_snmp(ip):
         if result.returncode == 0:
             output = result.stdout.strip()
             print(f"{output}", flush=True)
-        #     if "=" in output:
-        #         value = output.split("=")[-1].strip()
-        #         return value
-        #     else:
-        #         return "No value returned"
-        # else:
-        #     error = result.stderr.strip()
-        #     return f"SNMP Error: {error or 'Command failed'}"
+            if "=" in output:
+                value = output.split("=")[-1].strip()
+                return value
+            else:
+                return "No value returned"
+        else:
+            error = result.stderr.strip()
+            return f"SNMP Error: {error or 'Command failed'}"
     except subprocess.TimeoutExpired:
         return "SNMP Timeout"
     except Exception as e:
