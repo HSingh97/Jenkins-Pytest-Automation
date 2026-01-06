@@ -9,6 +9,7 @@ import pytest
 from datetime import datetime
 from openpyxl.styles import PatternFill
 
+
 def append_result_to_json(result, filename="iteration_results.json"):
     try:
         with open(filename, "r") as f:
@@ -23,15 +24,18 @@ def append_result_to_json(result, filename="iteration_results.json"):
         json.dump(data, f, indent=4)
     print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}", flush=True)
 
+
 def init_excel(excel_filename):
     if not os.path.exists(excel_filename):
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Test Results"
-        headers = ["Power (dBm)", "Channel", "Remote IP",
-                   "Local SNR A1", "Local SNR A2",
-                   "Remote SNR A1", "Remote SNR A2",
-                   "Tx Rate", "Rx Rate", "Status Check"]
+        headers = [
+            "Power (dBm)", "Channel", "Remote IP",
+            "Local SNR A1", "Local SNR A2",
+            "Remote SNR A1", "Remote SNR A2",
+            "Tx Rate", "Rx Rate", "Status Check"
+        ]
         ws.append(headers)
         wb.save(excel_filename)
         return wb, ws
@@ -40,16 +44,20 @@ def init_excel(excel_filename):
         ws = wb.active
         return wb, ws
 
+
 def get_channel(host, radio_oid):
     oid = f".1.3.6.1.4.1.52619.1.1.1.1.1.23.{radio_oid}"
     cmd = f"snmpget -v 2c -c private {host} {oid}"
     try:
         output = subprocess.check_output(cmd, shell=True, timeout=15).decode("utf-8")
         match = re.search(r'INTEGER:\s*(\d+)', output)
-        return match.group(1) if match else "-"
+        val = match.group(1) if match else "-"
+        print(f"{oid} = INTEGER: {val}", flush=True)
+        return val
     except Exception as e:
-        print(f"Error fetching channel: {e}")
+        print(f"Error fetching channel: {e}", flush=True)
         return "-"
+
 
 def get_linkstats(host, radio_oid):
     i = 1
@@ -71,11 +79,13 @@ def get_linkstats(host, radio_oid):
             try:
                 out = subprocess.check_output(cmd, shell=True, timeout=10).decode("utf-8")
                 match = re.search(r'INTEGER:\s*(\d+)', out)
-                return match.group(1) if match else "-"
+                val = match.group(1) if match else "-"
+                print(f"{cmd.split('snmpget')[1].strip()} = INTEGER: {val}", flush=True)
+                return val
             except:
                 return "-"
 
-        return {
+        stats = {
             "IP": ip_address,
             "Local SNR A1": get_oid_value("13"),
             "Local SNR A2": get_oid_value("14"),
@@ -84,29 +94,44 @@ def get_linkstats(host, radio_oid):
             "Tx Rate": get_oid_value("10"),
             "Rx Rate": get_oid_value("9")
         }
+
+        print("\n" + "-" * 64, flush=True)
+        print(f"Stats for {ip_address}", flush=True)
+        print(f"Local SNR: A1={stats['Local SNR A1']}, A2={stats['Local SNR A2']}", flush=True)
+        print(f"Remote SNR: A1={stats['Remote SNR A1']}, A2={stats['Remote SNR A2']}", flush=True)
+        print("-" * 64 + "\n", flush=True)
+
+        return stats
     return None
 
+
 def set_power(ip, power, radio_oid):
-    print(f"Setting power on {ip} to {power} dBm")
+    print(f"Setting power on {ip} to {power} dBm", flush=True)
     os.system(f"snmpset -v 2c -c private {ip} .1.3.6.1.4.1.52619.1.1.1.2.1.12.{radio_oid}.1 i {power}")
     time.sleep(1)
     os.system(f"snmpset -v 2c -c private {ip} .1.3.6.1.4.1.52619.1.2.1.1.0 i 1")
     time.sleep(10)
 
+
 def set_channel(ip, chan, radio_oid):
-    print(f"Setting Channel on {ip} to {chan}")
+    print(f"Setting Channel on {ip} to {chan}", flush=True)
     os.system(f"snmpset -v 2c -c private {ip} .1.3.6.1.4.1.52619.1.1.1.1.1.9.{radio_oid} i {chan}")
     time.sleep(1)
     os.system(f"snmpset -v 2c -c private {ip} .1.3.6.1.4.1.52619.1.2.1.1.0 i 1")
     time.sleep(10)
 
+
 def ping(host):
     param = '-n' if platform.system().lower() == 'windows' else '-c'
     with open(os.devnull, 'w') as DEVNULL:
         try:
-            return subprocess.call(['ping', param, '3', host], stdout=DEVNULL, stderr=DEVNULL, timeout=10) == 0
+            result = subprocess.call(['ping', param, '3', host], stdout=DEVNULL, stderr=DEVNULL, timeout=10) == 0
+            print(f"{host} is {'Reachable' if result else 'Not Reachable'}", flush=True)
+            return result
         except:
+            print(f"{host} ping timeout", flush=True)
             return False
+
 
 def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers, iter):
     radio_oid = "2" if radio == "radio1" else "3"
@@ -128,35 +153,37 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers, iter):
     }
 
     print("\n" + "=" * 80, flush=True)
-    print(f"STARTING SNR vs TX POWER TEST - ITERATION {iter}")
-    print(f"Local IP : {local_ip} | Remote IP: {remote_ip}")
-    print(f"Radio    : {radio}")
-    print(f"Channels : {channels}")
-    print(f"Powers   : {powers}")
+    print(f"STARTING SNR vs TX POWER TEST - ITERATION {iter}", flush=True)
+    print(f"Local IP : {local_ip} | Remote IP: {remote_ip}", flush=True)
+    print(f"Radio    : {radio}", flush=True)
+    print(f"Channels : {channels}", flush=True)
+    print(f"Powers   : {powers}", flush=True)
     print("=" * 80, flush=True)
 
     try:
         wb, ws = init_excel(excel_filename)
-        print(f"Results will be saved to: {excel_filename}")
+        print(f"Results will be saved to: {excel_filename}", flush=True)
 
         test_channels = channels if channels else [None]
 
         for channel in test_channels:
             if channel is not None:
-                print(f"\n\n====== SWITCHING TO CHANNEL: {channel} ======")
+                print(f"\n\n====== SWITCHING TO CHANNEL: {channel} ======", flush=True)
                 if not (ping(local_ip) and ping(remote_ip)):
                     raise Exception("Devices not reachable before channel change")
                 set_channel(local_ip, channel, radio_oid)
+                print(f"Channel set to {channel}. Waiting 60s for DFS/Link establishment...", flush=True)
                 time.sleep(60)
 
             for power in powers:
-                print(f"\n--- Testing Power: {power} dBm | Channel: {channel or 'Current'} ---")
+                print(f"\n--- Testing Channel {channel or 'Current'} | Power Level: {power} dBm ---", flush=True)
                 if not (ping(local_ip) and ping(remote_ip)):
-                    raise Exception(f"Link lost at power {power} dBm")
+                    raise Exception(f"Link lost at Power {power}dBm on Channel {channel}")
 
                 set_power(remote_ip, power, radio_oid)
                 time.sleep(2)
                 set_power(local_ip, power, radio_oid)
+                print("Waiting 30s for link to stabilize...", flush=True)
                 time.sleep(30)
 
                 stats = get_linkstats(local_ip, radio_oid)
@@ -171,8 +198,9 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers, iter):
                     ]
                     ws.append(row_data)
                     wb.save(excel_filename)
+                    print(f"DATA SAVED → Channel: {current_channel_read} | Power: {power} dBm | Status: OK", flush=True)
                 else:
-                    print("No link stats retrieved")
+                    print("No link stats retrieved", flush=True)
 
         result["status"] = "PASS"
         result["details"] = "Iteration completed successfully"
@@ -184,7 +212,7 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers, iter):
     finally:
         append_result_to_json(result)
 
-# warnings
+
 def warn(*args, **kwargs):
     pass
 import warnings
