@@ -7,7 +7,7 @@ def archiveArtifacts(pattern) {
 
 pipeline {
     agent { node { label "${params.TARGET_STAND}" } }
-    }
+
 
     stages {
         stage('Prepare tests') {
