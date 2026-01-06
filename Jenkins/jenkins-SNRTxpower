@@ -291,7 +291,7 @@ pipeline {
                     "dinesh": "dinesh.redddy@senao.com"
                 ]
 
-                def userEmail = userEmails.get(buildUserId, "puneetsharmaworld@gmail.com"")
+                def userEmail = userEmails.get(buildUserId, "puneetsharmaworld@gmail.com")
 
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
