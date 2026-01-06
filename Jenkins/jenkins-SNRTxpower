@@ -1,12 +1,8 @@
 import jenkins.model.Jenkins
 
-// Functions
-def archiveArtifacts(pattern) {
-    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
-}
-
 pipeline {
     agent { node { label "${params.TARGET_STAND}" } }
+
     options {
         timestamps()
         timeout(time: 6, unit: 'HOURS')
@@ -18,7 +14,7 @@ pipeline {
             steps {
                 script {
                     echo "----------------------------------------"
-                    echo "--- TARGET STAND: ${TARGET_STAND}"
+                    echo "--- TARGET STAND: ${params.TARGET_STAND}"
                     echo "--- Local IP     : ${params['Local IP Address']}"
                     echo "--- Remote IP    : ${params['Remote IP Address']}"
                     echo "--- Radio        : ${params.Radio}"
@@ -60,14 +56,15 @@ pipeline {
                     echo "Testing SNR vs Tx Power"
                     echo "----------------------------------------"
 
-                    // Initialize results
+                    // Initialize JSON results
                     sh "echo '{\"iterations\": []}' > iteration_results.json"
 
                     for (int i = 1; i <= iterCount.toInteger(); i++) {
-                        echo "Running iteration ${i} of ${iterCount}"
+                        echo "=== Running Iteration ${i} of ${iterCount} ==="
                         try {
+                            // Critical: python3 -u ensures FULL unbuffered output (all prints visible)
                             sh """
-                                pytest -v -s testCases/test_SNRTxpower.py::test_snr_tx_power \
+                                python3 -u -m pytest -v -s testCases/test_SNRTxpower.py::test_snr_tx_power \
                                 --local-ip '${localIP}' \
                                 --remote-ip '${remoteIP}' \
                                 --radio '${radio}' \
@@ -126,10 +123,7 @@ pipeline {
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
-                    def istZone = TimeZone.getTimeZone("Asia/Kolkata")
-                    def istDate = Calendar.getInstance(istZone).getTime()
-                    def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
-
+                    def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
 
@@ -138,146 +132,33 @@ pipeline {
                     <head>
                         <title>SNR Tx Power Test Report</title>
                         <style>
-                            body {
-                                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                                margin: 0;
-                                padding: 0;
-                                background-color: #f9fafb;
-                                color: #1f2937;
-                            }
-                            .container {
-                                max-width: 1200px;
-                                margin: 24px auto;
-                                padding: 24px;
-                            }
-                            .header {
-                                display: flex;
-                                justify-content: space-between;
-                                align-items: center;
-                                background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%);
-                                padding: 28px 36px;
-                                border: 1px solid #e5e7eb;
-                                border-radius: 12px;
-                                box-shadow: 0 4px 6px rgba(0,0,0,0.04);
-                            }
-                            .header img {
-                                height: 65px;
-                                transition: transform 0.2s ease-in-out;
-                            }
-                            .header img:hover {
-                                transform: scale(1.03);
-                            }
-                            .header-info { text-align: right; }
-                            .header-info h1 {
-                                margin: 0;
-                                font-size: 30px;
-                                font-weight: 700;
-                                color: #0a2540;
-                            }
-                            .header-info p {
-                                margin: 5px 0;
-                                font-size: 15px;
-                                color: #4a5568;
-                            }
-                            h2 {
-                                margin-top: 32px;
-                                font-size: 24px;
-                                font-weight: 600;
-                                color: #111827;
-                                border-bottom: 2px solid #e5e7eb;
-                                padding-bottom: 12px;
-                            }
-                            .summary-container {
-                                display: grid;
-                                grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-                                gap: 24px;
-                                margin-top: 24px;
-                            }
-                            .summary-card {
-                                background-color: #fff;
-                                border: 1px solid #e5e7eb;
-                                border-radius: 12px;
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.04);
-                                display: flex;
-                                padding: 24px;
-                                align-items: center;
-                                border-top-width: 4px;
-                                border-top-style: solid;
-                            }
-                            .card-icon {
-                                font-size: 32px;
-                                margin-right: 20px;
-                                padding: 12px;
-                                border-radius: 50%;
-                                display: flex;
-                                align-items: center;
-                                justify-content: center;
-                            }
-                            .card-info {
-                                text-align: left;
-                            }
-                            .card-info-title {
-                                font-size: 16px;
-                                color: #6b7280;
-                                margin: 0 0 4px 0;
-                            }
-                            .card-info-value {
-                                font-size: 32px;
-                                font-weight: 700;
-                                color: #111827;
-                                margin: 0;
-                            }
-                            .percent .percent-sign { font-size: 20px; font-weight: 600; }
-                            .card-percent { border-color: #6b7280; }
-                            .card-percent .card-icon { background-color: #f3f4f6; color: #6b7280; }
-                            .card-total { border-color: #3b82f6; }
-                            .card-total .card-icon { background-color: #dbeafe; color: #3b82f6; }
-                            .card-pass { border-color: #10b981; }
-                            .card-pass .card-icon { background-color: #d1fae5; color: #10b981; }
-                            .card-fail { border-color: #ef4444; }
-                            .card-fail .card-icon { background-color: #fee2e2; color: #ef4444; }
-                            table {
-                                width: 100%;
-                                border-collapse: collapse;
-                                margin-top: 24px;
-                                background-color: #fff;
-                                border: 1px solid #e5e7eb;
-                                border-radius: 12px;
-                                overflow: hidden;
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.04);
-                            }
-                            th, td {
-                                padding: 16px 20px;
-                                border-bottom: 1px solid #e5e7eb;
-                                text-align: left;
-                                vertical-align: middle;
-                            }
-                            th {
-                                background-color: #f9fafb;
-                                font-weight: 600;
-                                color: #6b7280;
-                                font-size: 13px;
-                                text-transform: uppercase;
-                                letter-spacing: 0.5px;
-                            }
-                            tr:last-child td { border-bottom: none; }
-                            tr:hover { background-color: #f9fafb; }
-                            .status-pass {
-                                color: #059669;
-                                font-weight: 600;
-                                background-color: #d1fae5;
-                                padding: 5px 10px;
-                                border-radius: 99px;
-                                display: inline-block;
-                            }
-                            .status-fail {
-                                color: #dc2626;
-                                font-weight: 600;
-                                background-color: #fee2e2;
-                                padding: 5px 10px;
-                                border-radius: 99px;
-                                display: inline-block;
-                            }
+                            body {font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f9fafb; color: #1f2937;}
+                            .container {max-width: 1200px; margin: 24px auto; padding: 24px;}
+                            .header {display: flex; justify-content: space-between; align-items: center; background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%); padding: 28px 36px; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04);}
+                            .header img {height: 65px; transition: transform 0.2s ease-in-out;}
+                            .header img:hover {transform: scale(1.03);}
+                            .header-info {text-align: right;}
+                            .header-info h1 {margin: 0; font-size: 30px; font-weight: 700; color: #0a2540;}
+                            .header-info p {margin: 5px 0; font-size: 15px; color: #4a5568;}
+                            h2 {margin-top: 32px; font-size: 24px; font-weight: 600; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px;}
+                            .summary-container {display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-top: 24px;}
+                            .summary-card {background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.04); display: flex; padding: 24px; align-items: center; border-top-width: 4px; border-top-style: solid;}
+                            .card-icon {font-size: 32px; margin-right: 20px; padding: 12px; border-radius: 50%; display: flex; align-items: center; justify-content: center;}
+                            .card-info {text-align: left;}
+                            .card-info-title {font-size: 16px; color: #6b7280; margin: 0 0 4px 0;}
+                            .card-info-value {font-size: 32px; font-weight: 700; color: #111827; margin: 0;}
+                            .percent .percent-sign {font-size: 20px; font-weight: 600;}
+                            .card-percent {border-color: #6b7280;} .card-percent .card-icon {background-color: #f3f4f6; color: #6b7280;}
+                            .card-total {border-color: #3b82f6;} .card-total .card-icon {background-color: #dbeafe; color: #3b82f6;}
+                            .card-pass {border-color: #10b981;} .card-pass .card-icon {background-color: #d1fae5; color: #10b981;}
+                            .card-fail {border-color: #ef4444;} .card-fail .card-icon {background-color: #fee2e2; color: #ef4444;}
+                            table {width: 100%; border-collapse: collapse; margin-top: 24px; background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04);}
+                            th, td {padding: 16px 20px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle;}
+                            th {background-color: #f9fafb; font-weight: 600; color: #6b7280; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;}
+                            tr:last-child td {border-bottom: none;}
+                            tr:hover {background-color: #f9fafb;}
+                            .status-pass {color: #059669; font-weight: 600; background-color: #d1fae5; padding: 5px 10px; border-radius: 99px; display: inline-block;}
+                            .status-fail {color: #dc2626; font-weight: 600; background-color: #fee2e2; padding: 5px 10px; border-radius: 99px; display: inline-block;}
                         </style>
                     </head>
                     <body>
@@ -384,7 +265,8 @@ pipeline {
                 reportName: 'SNR Tx Power Test Report'
             ])
 
-            archiveArtifacts artifacts: 'snr_test_*.xlsx, iteration_results.json, snr_test_report.html', allowEmptyArchive: true
+            // Fixed: no spaces after commas
+            archiveArtifacts artifacts: 'snr_test_*.xlsx,iteration_results.json,snr_test_report.html', allowEmptyArchive: true
 
             echo "-----------------------------------------"
             echo 'Script Done!'
@@ -421,7 +303,7 @@ pipeline {
                                 ${currentBuild.currentResult}</span></p>
                             <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
                             <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
-                            <p><strong>Report:</strong> <a href="${env.BUILD_URL}SNR_20Tx_20Power_20Test_20Report">View Report</a></p>
+                            <p><strong>Report:</strong> <a href="${env.BUILD_URL}SNR_20Tx_20Power_20Test_20Report">View SNR Tx Power Report</a></p>
                             <br/>
                             <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
                         </body>
@@ -435,17 +317,12 @@ pipeline {
         }
         success {
             echo "-----------------------------------------"
-            echo 'SNR Tx Power Test - All Iterations PASSED'
+            echo 'Script Success'
             echo "-----------------------------------------"
         }
         failure {
             echo "-----------------------------------------"
-            echo 'SNR Tx Power Test - Critical Failure'
-            echo "-----------------------------------------"
-        }
-        unstable {
-            echo "-----------------------------------------"
-            echo 'SNR Tx Power Test - Some Iterations Failed'
+            echo 'Script Failure'
             echo "-----------------------------------------"
         }
     }
