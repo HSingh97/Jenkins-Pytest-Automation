@@ -501,7 +501,7 @@ pipeline {
                 reportName: 'SNR Tx Power Test Report'
             ])
 
-            archiveArtifacts artifacts: 'snr_test_report.html,test-*.log', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'snr_test_*.xlsx,iteration_results.json,snr_test_report.html,test-*.log', allowEmptyArchive: true
 
             echo "-----------------------------------------"
             echo 'Script Done!'
@@ -546,7 +546,6 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    // Attach HTML + JSON + ALL Excel files from current build
                     attachmentsPattern: 'snr_test_report.html,iteration_results.json,snr_test_*.xlsx'
                 )
             }
