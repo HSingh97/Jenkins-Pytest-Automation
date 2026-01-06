@@ -24,7 +24,7 @@ pipeline {
                     echo "----------------------------------------"
 
                     if (!params['Local IP Address'] || !params['Remote IP Address']) {
-                        error "Missing required IP parameters: Local or Remote IP Address"
+                        error "Missing required IP parameters"
                     }
                 }
             }
@@ -32,12 +32,7 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                script {
-                    echo "----------------------------------------"
-                    echo "Installing Dependencies"
-                    echo "----------------------------------------"
-                    sh 'python3 -m pip install openpyxl pytest || true'
-                }
+                sh 'python3 -m pip install openpyxl pytest || true'
             }
         }
 
@@ -51,18 +46,15 @@ pipeline {
                     def powers = params.Powers
                     def iterCount = params.ITERATION_COUNT ?: "1"
 
-                    echo "Number of iterations: ${iterCount}"
-                    echo "----------------------------------------"
-                    echo "Testing SNR vs Tx Power"
-                    echo "----------------------------------------"
+                    echo "Running ${iterCount} iteration(s)"
 
-                    // Initialize JSON results
                     sh "echo '{\"iterations\": []}' > iteration_results.json"
+                    sh 'rm -f test-*.log'  // Clean old logs
 
                     for (int i = 1; i <= iterCount.toInteger(); i++) {
-                        echo "=== Running Iteration ${i} of ${iterCount} ==="
+                        echo "=== Running Iteration ${i}/${iterCount} ==="
                         try {
-                            // Critical: python3 -u ensures FULL unbuffered output (all prints visible)
+                            // Save full output to log file + show in console
                             sh """
                                 python3 -u -m pytest -v -s testCases/test_SNRTxpower.py::test_snr_tx_power \
                                 --local-ip '${localIP}' \
@@ -70,7 +62,7 @@ pipeline {
                                 --radio '${radio}' \
                                 --channels '${channels}' \
                                 --powers '${powers}' \
-                                --iter ${i}
+                                --iter ${i} 2>&1 | tee test-${i}.log
                             """
                         } catch (Exception e) {
                             echo "Iteration ${i} failed: ${e.message}"
@@ -92,26 +84,19 @@ pipeline {
 
                     def local_fw_version = "N/A"
                     def remote_fw_version = "N/A"
-
                     try {
                         local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (Exception e) {
-                        echo "⚠️ Failed to get local FW version: ${e.message}"
-                    }
-
+                    } catch (e) {}
                     try {
                         remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (Exception e) {
-                        echo "⚠️ Failed to get remote FW version: ${e.message}"
-                    }
+                    } catch (e) {}
 
                     def jsonReport = readJSON file: 'iteration_results.json'
 
                     def totalTests = jsonReport.iterations ? jsonReport.iterations.size() : 0
                     def passCount = jsonReport.iterations ? jsonReport.iterations.count { it.status == 'PASS' } : 0
                     def failCount = totalTests - passCount
-                    def successPercentage = totalTests > 0 ? (passCount / (double)totalTests) * 100 : 0
-                    def successPercentageStr = String.format("%.1f", successPercentage)
+                    def successPercentageStr = totalTests > 0 ? String.format("%.1f", (passCount / (double)totalTests) * 100) : "0.0"
 
                     def buildParams = [
                         "Local IP Address": params['Local IP Address'],
@@ -125,7 +110,6 @@ pipeline {
 
                     def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
-                    def pipelineName = env.JOB_NAME
 
                     def htmlContent = """
                     <html>
@@ -135,79 +119,62 @@ pipeline {
                             body {font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f9fafb; color: #1f2937;}
                             .container {max-width: 1200px; margin: 24px auto; padding: 24px;}
                             .header {display: flex; justify-content: space-between; align-items: center; background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%); padding: 28px 36px; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04);}
-                            .header img {height: 65px; transition: transform 0.2s ease-in-out;}
-                            .header img:hover {transform: scale(1.03);}
-                            .header-info {text-align: right;}
+                            .header img {height: 65px;}
                             .header-info h1 {margin: 0; font-size: 30px; font-weight: 700; color: #0a2540;}
-                            .header-info p {margin: 5px 0; font-size: 15px; color: #4a5568;}
                             h2 {margin-top: 32px; font-size: 24px; font-weight: 600; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px;}
                             .summary-container {display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-top: 24px;}
-                            .summary-card {background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.04); display: flex; padding: 24px; align-items: center; border-top-width: 4px; border-top-style: solid;}
-                            .card-icon {font-size: 32px; margin-right: 20px; padding: 12px; border-radius: 50%; display: flex; align-items: center; justify-content: center;}
-                            .card-info {text-align: left;}
-                            .card-info-title {font-size: 16px; color: #6b7280; margin: 0 0 4px 0;}
-                            .card-info-value {font-size: 32px; font-weight: 700; color: #111827; margin: 0;}
-                            .percent .percent-sign {font-size: 20px; font-weight: 600;}
-                            .card-percent {border-color: #6b7280;} .card-percent .card-icon {background-color: #f3f4f6; color: #6b7280;}
-                            .card-total {border-color: #3b82f6;} .card-total .card-icon {background-color: #dbeafe; color: #3b82f6;}
-                            .card-pass {border-color: #10b981;} .card-pass .card-icon {background-color: #d1fae5; color: #10b981;}
-                            .card-fail {border-color: #ef4444;} .card-fail .card-icon {background-color: #fee2e2; color: #ef4444;}
-                            table {width: 100%; border-collapse: collapse; margin-top: 24px; background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04);}
-                            th, td {padding: 16px 20px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle;}
-                            th {background-color: #f9fafb; font-weight: 600; color: #6b7280; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;}
-                            tr:last-child td {border-bottom: none;}
-                            tr:hover {background-color: #f9fafb;}
-                            .status-pass {color: #059669; font-weight: 600; background-color: #d1fae5; padding: 5px 10px; border-radius: 99px; display: inline-block;}
-                            .status-fail {color: #dc2626; font-weight: 600; background-color: #fee2e2; padding: 5px 10px; border-radius: 99px; display: inline-block;}
+                            .summary-card {background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; display: flex; align-items: center; border-top: 4px solid;}
+                            .card-icon {font-size: 32px; margin-right: 20px;}
+                            .card-info-title {font-size: 16px; color: #6b7280;}
+                            .card-info-value {font-size: 32px; font-weight: 700;}
+                            .card-percent {border-color: #6b7280;}
+                            .card-total {border-color: #3b82f6;}
+                            .card-pass {border-color: #10b981;}
+                            .card-fail {border-color: #ef4444;}
+                            table {width: 100%; border-collapse: collapse; margin-top: 24px; background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;}
+                            th, td {padding: 16px 20px; border-bottom: 1px solid #e5e7eb;}
+                            th {background-color: #f9fafb; color: #6b7280; font-weight: 600;}
+                            .status-pass {background-color: #d1fae5; color: #059669; padding: 5px 10px; border-radius: 99px;}
+                            .status-fail {background-color: #fee2e2; color: #dc2626; padding: 5px 10px; border-radius: 99px;}
+                            .log-button {background-color: #3b82f6; color: white; padding: 8px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none;}
+                            .log-button:hover {background-color: #2563eb;}
+                            .modal {display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6);}
+                            .modal-content {background-color: #fff; margin: 5% auto; border-radius: 12px; width: 80%; max-width: 900px;}
+                            .modal-header {padding: 20px 32px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between;}
+                            .modal-close {font-size: 28px; cursor: pointer;}
+                            #log-content-pre {background-color: #1f2937; color: #e5e7eb; padding: 24px 32px; max-height: 60vh; overflow: auto; white-space: pre-wrap; font-family: monospace;}
                         </style>
+                        <script>
+                            function showLog(id) {
+                                document.getElementById('log-content-pre').innerHTML = document.getElementById(id).innerHTML;
+                                document.getElementById('logModal').style.display = 'block';
+                            }
+                            function closeModal() { document.getElementById('logModal').style.display = 'none'; }
+                            window.onclick = function(e) { if (e.target == document.getElementById('logModal')) closeModal(); }
+                        </script>
                     </head>
                     <body>
                         <div class="container">
                             <div class="header">
-                                <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
+                                <img src="${companyLogoUrl}" alt="Senao Networks"/>
                                 <div class="header-info">
                                     <h1>SNR Tx Power Test Report</h1>
-                                    <p><strong>Pipeline:</strong> ${pipelineName}</p>
+                                    <p><strong>Pipeline:</strong> ${env.JOB_NAME}</p>
                                     <p><strong>Date & Time:</strong> ${currentDateTime}</p>
                                 </div>
                             </div>
 
                             <h2>Build Parameters</h2>
-                            <table>
-                                <tr><th>Parameter</th><th>Value</th></tr>
-                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
+                            <table><tr><th>Parameter</th><th>Value</th></tr>
+                            ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('')}
                             </table>
 
                             <h2>Test Summary</h2>
                             <div class="summary-container">
-                                <div class="summary-card card-percent">
-                                    <div class="card-icon">🎯</div>
-                                    <div class="card-info">
-                                        <p class="card-info-title">Success Rate</p>
-                                        <p class="card-info-value percent">${successPercentageStr}<span class="percent-sign">%</span></p>
-                                    </div>
-                                </div>
-                                <div class="summary-card card-total">
-                                    <div class="card-icon">📦</div>
-                                    <div class="card-info">
-                                        <p class="card-info-title">Total Iterations</p>
-                                        <p class="card-info-value">${totalTests}</p>
-                                    </div>
-                                </div>
-                                <div class="summary-card card-pass">
-                                    <div class="card-icon">✅</div>
-                                    <div class="card-info">
-                                        <p class="card-info-title">Passed</p>
-                                        <p class="card-info-value">${passCount}</p>
-                                    </div>
-                                </div>
-                                <div class="summary-card card-fail">
-                                    <div class="card-icon">❌</div>
-                                    <div class="card-info">
-                                        <p class="card-info-title">Failed</p>
-                                        <p class="card-info-value">${failCount}</p>
-                                    </div>
-                                </div>
+                                <div class="summary-card card-percent"><div class="card-icon">🎯</div><div class="card-info"><p class="card-info-title">Success Rate</p><p class="card-info-value">${successPercentageStr}%</p></div></div>
+                                <div class="summary-card card-total"><div class="card-icon">📦</div><div class="card-info"><p class="card-info-title">Total Iterations</p><p class="card-info-value">${totalTests}</p></div></div>
+                                <div class="summary-card card-pass"><div class="card-icon">✅</div><div class="card-info"><p class="card-info-title">Passed</p><p class="card-info-value">${passCount}</p></div></div>
+                                <div class="summary-card card-fail"><div class="card-icon">❌</div><div class="card-info"><p class="card-info-title">Failed</p><p class="card-info-value">${failCount}</p></div></div>
                             </div>
 
                             <h2>Test Results</h2>
@@ -216,34 +183,64 @@ pipeline {
                                     <th>Iteration</th>
                                     <th style="text-align: center;">Status</th>
                                     <th style="text-align: center;">Excel Report</th>
-                                    <th>Details</th>
+                                    <th style="text-align: center;">Logs</th>
                                 </tr>
                     """
 
+                    def tableRows = ""
+                    def logBlocks = ""
+
                     if (jsonReport.iterations) {
-                        jsonReport.iterations.each { result ->
-                            def status = result.status == "PASS" ?
+                        jsonReport.iterations.each { res ->
+                            def status = res.status == "PASS" ?
                                 "<span class='status-pass'>PASS</span>" :
                                 "<span class='status-fail'>FAIL</span>"
-                            def excelFile = result["Excel Report"] ?: "Not Generated"
-                            def details = result.details ?: ""
+                            def excel = res["Excel Report"] ?: "Not Generated"
+                            def iterNum = res.iteration
+                            def logId = "log-${iterNum}"
+                            def logFile = "test-${iterNum}.log"
+                            def logContent = fileExists(logFile) ?
+                                readFile(file: logFile)
+                                    .replace("&", "&amp;")
+                                    .replace("<", "&lt;")
+                                    .replace(">", "&gt;") :
+                                "Log not available"
 
-                            htmlContent += """
+                            tableRows += """
                                 <tr>
-                                    <td>${result.iteration}</td>
+                                    <td>${iterNum}</td>
                                     <td style="text-align: center;">${status}</td>
-                                    <td style="text-align: center;">${excelFile}</td>
-                                    <td>${details}</td>
+                                    <td style="text-align: center;">${excel}</td>
+                                    <td style="text-align: center;">
+                                        <button class="log-button" onclick="showLog('${logId}')">See Logs</button>
+                                    </td>
                                 </tr>
                             """
+                            logBlocks += "<div id='${logId}' style='display:none;'>${logContent}</div>"
                         }
                     } else {
-                        htmlContent += "<tr><td colspan='4' style='text-align:center;'>No iteration results found.</td></tr>"
+                        tableRows += "<tr><td colspan='4' style='text-align:center;'>No results</td></tr>"
                     }
 
+                    htmlContent += tableRows
                     htmlContent += """
                             </table>
                         </div>
+
+                        <!-- Modal -->
+                        <div id="logModal" class="modal">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h2>Iteration Log</h2>
+                                    <span class="modal-close" onclick="closeModal()">&times;</span>
+                                </div>
+                                <div class="modal-body">
+                                    <pre id="log-content-pre"></pre>
+                                </div>
+                            </div>
+                        </div>
+
+                        ${logBlocks}
                     </body>
                     </html>
                     """
