@@ -33,6 +33,24 @@ def pytest_addoption(parser):
     parser.addoption("--vlan", action="store", default="Transparent", help="Vlan ( Transparent/ Trunk/ Access/ QinQ )")
     parser.addoption("--qosPIR", action="store", default="None", help="QOS ( Protocol/ IP/ MAC/ PORT/ TOS Rule/ 802.1P/ DSCP )")
 
+    parser.addoption("--channels", action="store", default="36,50,62,100,120,149,161,167,171",
+                     help="Comma-separated list of channels to test")
+    parser.addoption("--powers", action="store", default="26",
+                     help="Comma-separated list of Tx power levels in dBm (e.g. 20,23,26)")
+
+@pytest.fixture
+def channels(request):
+    channels_str = request.config.getoption("--channels")
+    return [ch.strip() for ch in channels_str.split(",") if ch.strip()]
+
+@pytest.fixture
+def powers(request):
+    powers_str = request.config.getoption("--powers")
+    return [int(p.strip()) for p in powers_str.split(",") if p.strip()]
+
+@pytest.fixture
+def iter(request):
+    return request.config.getoption("--iter")
 
 @pytest.fixture
 def radio(request):
@@ -86,9 +104,7 @@ def pdu_ip(request):
 def pdu_port(request):
     return request.config.getoption("--pdu-port")
 
-@pytest.fixture
-def iter(request):
-    return request.config.getoption("--iter")
+
 
 @pytest.fixture
 def reset_type(request):
