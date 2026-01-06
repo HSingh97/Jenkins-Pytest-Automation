@@ -1,7 +1,17 @@
 import jenkins.model.Jenkins
 
+// Functions
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
 pipeline {
-    agent { node { label "${TARGET_STAND}" } }
+    agent { node { label "${params.TARGET_STAND}" } }
+    options {
+        timestamps()
+        timeout(time: 6, unit: 'HOURS')
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
 
     stages {
         stage('Prepare tests') {
