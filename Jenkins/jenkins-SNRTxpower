@@ -7,7 +7,11 @@ def archiveArtifacts(pattern) {
 
 pipeline {
     agent { node { label "${params.TARGET_STAND}" } }
-
+    options {
+        timestamps()
+        timeout(time: 6, unit: 'HOURS')
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
 
     stages {
         stage('Prepare tests') {
