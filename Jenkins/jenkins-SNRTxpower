@@ -279,7 +279,6 @@ pipeline {
                 def buildUserId = userCause?.userId ?: "unknown"
 
                 def userEmails = [
-                    "puneet": "puneetsharmaworld@gmail.com",
                     "puneet": "puneet.sharma@senao.com",
                     "harman": "harmanjot.singh@senao.com",
                     "mahesh": "mahesh.battala@senao.com",
@@ -291,7 +290,7 @@ pipeline {
                     "dinesh": "dinesh.redddy@senao.com"
                 ]
 
-                def userEmail = userEmails.get(buildUserId, "puneetsharmaworld@gmail.com")
+                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com"")
 
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
