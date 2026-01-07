@@ -10,7 +10,7 @@ pipeline {
     }
 
     environment {
-        SINGLE_EXCEL = "snr_test_all_iterations_${new Date().format('yyyyMMdd_HHmmss')}.xlsx"
+        SINGLE_EXCEL = "snr_test_${new Date().format('yyyyMMdd_HHmmss')}.xlsx"
     }
 
     stages {
