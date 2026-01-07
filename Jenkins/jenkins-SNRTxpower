@@ -9,6 +9,10 @@ pipeline {
         buildDiscarder(logRotator(numToKeepStr: '20'))
     }
 
+    environment {
+        SINGLE_EXCEL = "snr_test_all_iterations_${new Date().format('yyyyMMdd_HHmmss')}.xlsx"
+    }
+
     stages {
         stage('Prepare tests') {
             steps {
@@ -49,23 +53,26 @@ pipeline {
                     echo "Running ${iterCount} iteration(s)"
 
                     sh "echo '{\"iterations\": []}' > iteration_results.json"
-                    sh 'rm -f test-*.log'  // Clean old logs
+                    sh 'rm -f test-*.log'
 
-                    for (int i = 1; i <= iterCount.toInteger(); i++) {
-                        echo "=== Running Iteration ${i}/${iterCount} ==="
-                        try {
-                            sh """
-                                python3 -u -m pytest -v -s testCases/test_SNRTxpower.py::test_snr_tx_power \
-                                --local-ip '${localIP}' \
-                                --remote-ip '${remoteIP}' \
-                                --radio '${radio}' \
-                                --channels '${channels}' \
-                                --powers '${powers}' \
-                                --iter ${i} 2>&1 | tee test-${i}.log
-                            """
-                        } catch (Exception e) {
-                            echo "Iteration ${i} failed: ${e.message}"
-                            currentBuild.result = 'UNSTABLE'
+                    // Pass the single Excel filename to all iterations
+                    withEnv(["SINGLE_EXCEL=${env.SINGLE_EXCEL}"]) {
+                        for (int i = 1; i <= iterCount.toInteger(); i++) {
+                            echo "=== Running Iteration ${i}/${iterCount} ==="
+                            try {
+                                sh """
+                                    python3 -u -m pytest -v -s testCases/test_SNRTxpower.py::test_snr_tx_power \
+                                    --local-ip '${localIP}' \
+                                    --remote-ip '${remoteIP}' \
+                                    --radio '${radio}' \
+                                    --channels '${channels}' \
+                                    --powers '${powers}' \
+                                    --iter ${i} 2>&1 | tee test-${i}.log
+                                """
+                            } catch (Exception e) {
+                                echo "Iteration ${i} failed: ${e.message}"
+                                currentBuild.result = 'UNSTABLE'
+                            }
                         }
                     }
                 }
@@ -116,234 +123,34 @@ pipeline {
                     <head>
                         <title>SNR Tx Power Test Report</title>
                         <style>
-                            body {
-                                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                                margin: 0;
-                                padding: 0;
-                                background-color: #f9fafb;
-                                color: #1f2937;
-                            }
-                            .container {
-                                max-width: 1200px;
-                                margin: 24px auto;
-                                padding: 24px;
-                            }
-                            .header {
-                                display: flex;
-                                justify-content: space-between;
-                                align-items: center;
-                                background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%);
-                                padding: 28px 36px;
-                                border: 1px solid #e5e7eb;
-                                border-radius: 12px;
-                                box-shadow: 0 4px 6px rgba(0,0,0,0.04);
-                            }
-                            .header img {
-                                height: 65px;
-                                transition: transform 0.2s ease-in-out;
-                            }
-                            .header img:hover {
-                                transform: scale(1.03);
-                            }
-                            .header-info { text-align: right; }
-                            .header-info h1 {
-                                margin: 0;
-                                font-size: 30px;
-                                font-weight: 700;
-                                color: #0a2540;
-                            }
-                            .header-info p {
-                                margin: 5px 0;
-                                font-size: 15px;
-                                color: #4a5568;
-                            }
-                            h2 {
-                                margin-top: 32px;
-                                font-size: 24px;
-                                font-weight: 600;
-                                color: #111827;
-                                border-bottom: 2px solid #e5e7eb;
-                                padding-bottom: 12px;
-                            }
-                            .summary-container {
-                                display: grid;
-                                grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-                                gap: 24px;
-                                margin-top: 24px;
-                            }
-                            .summary-card {
-                                background-color: #fff;
-                                border: 1px solid #e5e7eb;
-                                border-radius: 12px;
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.04);
-                                display: flex;
-                                padding: 24px;
-                                align-items: center;
-                                border-top-width: 4px;
-                                border-top-style: solid;
-                            }
-                            .card-icon {
-                                font-size: 32px;
-                                margin-right: 20px;
-                                padding: 12px;
-                                border-radius: 50%;
-                                display: flex;
-                                align-items: center;
-                                justify-content: center;
-                            }
-                            .card-info {
-                                text-align: left;
-                            }
-                            .card-info-title {
-                                font-size: 16px;
-                                color: #6b7280;
-                                margin: 0 0 4px 0;
-                            }
-                            .card-info-value {
-                                font-size: 32px;
-                                font-weight: 700;
-                                color: #111827;
-                                margin: 0;
-                            }
-                            .percent .percent-sign { font-size: 20px; font-weight: 600; }
-                            .card-percent { border-color: #6b7280; }
-                            .card-percent .card-icon { background-color: #f3f4f6; color: #6b7280; }
-                            .card-total { border-color: #3b82f6; }
-                            .card-total .card-icon { background-color: #dbeafe; color: #3b82f6; }
-                            .card-pass { border-color: #10b981; }
-                            .card-pass .card-icon { background-color: #d1fae5; color: #10b981; }
-                            .card-fail { border-color: #ef4444; }
-                            .card-fail .card-icon { background-color: #fee2e2; color: #ef4444; }
-                            table {
-                                width: 100%;
-                                border-collapse: collapse;
-                                margin-top: 24px;
-                                background-color: #fff;
-                                border: 1px solid #e5e7eb;
-                                border-radius: 12px;
-                                overflow: hidden;
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.04);
-                            }
-                            th, td {
-                                padding: 16px 20px;
-                                border-bottom: 1px solid #e5e7eb;
-                                text-align: left;
-                                vertical-align: middle;
-                            }
-                            th {
-                                background-color: #f9fafb;
-                                font-weight: 600;
-                                color: #6b7280;
-                                font-size: 13px;
-                                text-transform: uppercase;
-                                letter-spacing: 0.5px;
-                            }
-                            tr:last-child td { border-bottom: none; }
-                            tr:hover { background-color: #f9fafb; }
-                            .status-pass {
-                                color: #059669;
-                                font-weight: 600;
-                                background-color: #d1fae5;
-                                padding: 5px 10px;
-                                border-radius: 99px;
-                                display: inline-block;
-                            }
-                            .status-fail {
-                                color: #dc2626;
-                                font-weight: 600;
-                                background-color: #fee2e2;
-                                padding: 5px 10px;
-                                border-radius: 99px;
-                                display: inline-block;
-                            }
-                            .log-button {
-                                background-color: #3b82f6;
-                                color: white;
-                                padding: 8px 16px;
-                                text-decoration: none;
-                                border-radius: 8px;
-                                font-weight: 600;
-                                font-size: 14px;
-                                transition: background-color 0.2s ease, box-shadow 0.2s ease;
-                                display: inline-block;
-                                border: none;
-                                cursor: pointer;
-                                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-                            }
-                            .log-button:hover {
-                                background-color: #2563eb;
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                            }
-                            .modal {
-                                display: none;
-                                position: fixed;
-                                z-index: 100;
-                                left: 0;
-                                top: 0;
-                                width: 100%;
-                                height: 100%;
-                                overflow: auto;
-                                background-color: rgba(0,0,0,0.6);
-                            }
-                            .modal-content {
-                                background-color: #ffffff;
-                                margin: 5% auto;
-                                border: 1px solid #e5e7eb;
-                                border-radius: 12px;
-                                width: 80%;
-                                max-width: 900px;
-                                box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-                                animation-name: animatetop;
-                                animation-duration: 0.4s;
-                                overflow: hidden;
-                            }
-                            .modal-header {
-                                padding: 20px 32px;
-                                border-bottom: 1px solid #e5e7eb;
-                                display: flex;
-                                justify-content: space-between;
-                                align-items: center;
-                            }
-                            .modal-header h2 {
-                                margin: 0;
-                                padding: 0;
-                                border: none;
-                                font-size: 20px;
-                            }
-                            .modal-close {
-                                color: #9ca3af;
-                                font-size: 28px;
-                                font-weight: bold;
-                                cursor: pointer;
-                                transition: color 0.2s ease;
-                            }
-                            .modal-close:hover,
-                            .modal-close:focus {
-                                color: #1f2937;
-                                text-decoration: none;
-                            }
-                            .modal-body {
-                                padding: 0;
-                            }
-                            #log-content-pre {
-                                background-color: #1f2937;
-                                color: #e5e7eb;
-                                padding: 24px 32px;
-                                max-height: 60vh;
-                                overflow: auto;
-                                white-space: pre-wrap;
-                                word-wrap: break-word;
-                                margin: 0;
-                                border-radius: 0 0 12px 12px;
-                                font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
-                                font-size: 14px;
-                            }
-                            @keyframes animatetop {
-                                from {transform: translateY(-50px); opacity: 0}
-                                to {transform: translateY(0); opacity: 1}
-                            }
+                            body {font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f9fafb; color: #1f2937;}
+                            .container {max-width: 1200px; margin: 24px auto; padding: 24px;}
+                            .header {display: flex; justify-content: space-between; align-items: center; background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%); padding: 28px 36px; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04);}
+                            .header img {height: 65px;}
+                            .header-info h1 {margin: 0; font-size: 30px; font-weight: 700; color: #0a2540;}
+                            h2 {margin-top: 32px; font-size: 24px; font-weight: 600; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px;}
+                            .summary-container {display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-top: 24px;}
+                            .summary-card {background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; display: flex; align-items: center; border-top: 4px solid;}
+                            .card-icon {font-size: 32px; margin-right: 20px;}
+                            .card-info-title {font-size: 16px; color: #6b7280;}
+                            .card-info-value {font-size: 32px; font-weight: 700;}
+                            .card-percent {border-color: #6b7280;}
+                            .card-total {border-color: #3b82f6;}
+                            .card-pass {border-color: #10b981;}
+                            .card-fail {border-color: #ef4444;}
+                            table {width: 100%; border-collapse: collapse; margin-top: 24px; background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;}
+                            th, td {padding: 16px 20px; border-bottom: 1px solid #e5e7eb;}
+                            th {background-color: #f9fafb; color: #6b7280; font-weight: 600;}
+                            .status-pass {background-color: #d1fae5; color: #059669; padding: 5px 10px; border-radius: 99px;}
+                            .status-fail {background-color: #fee2e2; color: #dc2626; padding: 5px 10px; border-radius: 99px;}
+                            .log-button {background-color: #3b82f6; color: white; padding: 8px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none;}
+                            .log-button:hover {background-color: #2563eb;}
+                            .modal {display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6);}
+                            .modal-content {background-color: #fff; margin: 5% auto; border-radius: 12px; width: 80%; max-width: 900px;}
+                            .modal-header {padding: 20px 32px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between;}
+                            .modal-close {font-size: 28px; cursor: pointer;}
+                            #log-content-pre {background-color: #1f2937; color: #e5e7eb; padding: 24px 32px; max-height: 60vh; overflow: auto; white-space: pre-wrap; font-family: monospace;}
                         </style>
-
                         <script>
                             function showLog(logDataId) {
                                 var logContent = document.getElementById(logDataId).innerHTML;
@@ -501,7 +308,9 @@ pipeline {
                 reportName: 'SNR Tx Power Test Report'
             ])
 
-            archiveArtifacts artifacts: 'snr_test_*.xlsx,iteration_results.json,snr_test_report.html,test-*.log', allowEmptyArchive: true
+            archiveArtifacts artifacts: "${env.SINGLE_EXCEL},iteration_results.json,snr_test_report.html,test-*.log", allowEmptyArchive: true
+
+            sh 'rm -f test-*.log || true'
 
             echo "-----------------------------------------"
             echo 'Script Done!'
@@ -546,7 +355,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'snr_test_report.html,iteration_results.json,snr_test_*.xlsx'
+                    attachmentsPattern: "snr_test_report.html,iteration_results.json,${env.SINGLE_EXCEL}"
                 )
             }
         }

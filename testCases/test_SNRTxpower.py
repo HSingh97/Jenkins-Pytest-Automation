@@ -9,6 +9,7 @@ import pytest
 from datetime import datetime
 from openpyxl.styles import PatternFill
 
+
 def append_result_to_json(result, filename="iteration_results.json"):
     try:
         with open(filename, "r") as f:
@@ -29,13 +30,8 @@ def init_excel(excel_filename):
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Test Results"
-        headers = [
-            "Power (dBm)", "Channel", "Remote IP",
-            "Local SNR A1", "Local SNR A2",
-            "Remote SNR A1", "Remote SNR A2",
-            "Tx Rate", "Rx Rate", "Status Check"
-        ]
-        ws.append(headers)
+        ws.append(["SNR Tx Power Test Results"])
+        ws.append([])
         wb.save(excel_filename)
         return wb, ws
     else:
@@ -141,11 +137,10 @@ def ping(host):
 def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers, iter):
     radio_oid = "2" if radio == "radio1" else "3"
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    excel_filename = f"snr_test_iter{iter}_{timestamp}.xlsx"
+    excel_filename = os.getenv("SINGLE_EXCEL", f"snr_test_iter{iter}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
 
     result = {
-        "iteration": iter,
+        "iteration": str(iter),
         "test": "SNR_TxPower_Test",
         "status": "FAIL",
         "Local IP": local_ip,
@@ -167,9 +162,18 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers, iter):
 
     try:
         wb, ws = init_excel(excel_filename)
-        print(f"Test started. Saving results to: {excel_filename}", flush=True)
+        print(f"All iterations saved to: {excel_filename}", flush=True)
 
         test_channels = channels if channels else [None]
+
+        ws.append([])
+        ws.append([f"ITERATION {iter}"])
+        ws.append([
+            "Power (dBm)", "Channel", "Remote IP",
+            "Local SNR A1", "Local SNR A2",
+            "Remote SNR A1", "Remote SNR A2",
+            "Tx Rate", "Rx Rate", "Status Check"
+        ])
 
         for channel in test_channels:
             if channel is not None:
@@ -224,6 +228,8 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers, iter):
     finally:
         append_result_to_json(result)
 
+
+# Suppress warnings
 def warn(*args, **kwargs):
     pass
 import warnings
