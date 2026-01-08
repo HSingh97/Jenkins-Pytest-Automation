@@ -12,6 +12,7 @@ pipeline {
     environment {
         EXCEL_FILE = "snr_test_report_${new Date().format('yyyyMMdd_HHmmss')}.xlsx"
         LOG_FILE   = "test_run.log"
+        TABLE_HTML = "results_table.html"
     }
 
     stages {
@@ -51,7 +52,7 @@ pipeline {
 
                     echo "Running SNR Tx Power Test"
 
-                    withEnv(["EXCEL_FILE=${env.EXCEL_FILE}"]) {
+                    withEnv(["EXCEL_FILE=${env.EXCEL_FILE}", "TABLE_HTML=${env.TABLE_HTML}"]) {
                         sh """
                             python3 -u -m pytest -v -s testCases/test_SNRTxpower.py::test_snr_tx_power \
                             --local-ip '${localIP}' \
@@ -95,13 +96,16 @@ pipeline {
                     def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
-                    // Read log for "See Full Logs"
                     def logContent = fileExists(env.LOG_FILE) ?
                         readFile(file: env.LOG_FILE)
                             .replace("&", "&amp;")
                             .replace("<", "&lt;")
                             .replace(">", "&gt;") :
                         "No log available"
+
+                    def tableContent = fileExists(env.TABLE_HTML) ?
+                        readFile(file: env.TABLE_HTML) :
+                        "<p style='color:red; text-align:center; margin-top:30px;'>No test results table generated</p>"
 
                     def htmlContent = """
                     <html>
@@ -118,12 +122,6 @@ pipeline {
                             table.params {width:100%; border-collapse:collapse; background:#fff; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; box-shadow:0 2px 4px rgba(0,0,0,0.04);}
                             table.params th, table.params td {padding:16px 20px; border-bottom:1px solid #e5e7eb;}
                             table.params th {background:#f9fafb; font-weight:600; color:#6b7280;}
-                            table.results {width:100%; border-collapse:collapse; margin-top:24px; background:#fff; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; box-shadow:0 2px 4px rgba(0,0,0,0.04);}
-                            table.results th {background:#e0f2fe; color:#0369a1; font-weight:700; padding:16px; text-align:center;}
-                            table.results td {padding:12px 20px; text-align:center; border-bottom:1px solid #e5e7eb;}
-                            table.results tr:hover {background:#f0f9ff;}
-                            .channel-header {background:#bae6fd; font-weight:bold; font-size:18px; color:#0c4a6e; text-align:left; padding-left:40px;}
-                            .power-cell {padding-left:80px; text-align:left; font-weight:500;}
                             .log-button {background:#3b82f6; color:white; padding:14px 28px; border-radius:8px; font-weight:600; cursor:pointer; border:none; font-size:16px; margin-top:50px; box-shadow:0 4px 6px rgba(0,0,0,0.1);}
                             .log-button:hover {background:#2563eb; box-shadow:0 6px 8px rgba(0,0,0,0.15);}
                             .modal {display:none; position:fixed; z-index:100; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6);}
@@ -159,66 +157,7 @@ pipeline {
                                 ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('')}
                             </table>
 
-                            <h2>SNR vs Tx Power Results</h2>
-                            <table class="results">
-                                <tr>
-                                    <th>Channel</th>
-                                    <th>Power (dBm)</th>
-                                    <th>Remote IP</th>
-                                    <th>Local SNR A1</th>
-                                    <th>Local SNR A2</th>
-                                    <th>Remote SNR A1</th>
-                                    <th>Remote SNR A2</th>
-                                    <th>Tx Rate</th>
-                                    <th>Rx Rate</th>
-                                    <th>Status Check</th>
-                                </tr>
-                    """
-
-                    // Embed the table from Excel
-                    if (fileExists(env.EXCEL_FILE)) {
-                        def wb = openpyxl.load_workbook(env.EXCEL_FILE)
-                        def ws = wb.active
-
-                        def currentChannel = ""
-                        for (row in ws.iter_rows(min_row=2, values_only=true)) {
-                            def channel = row[1] ?: ""
-                            def power = row[0] ?: ""
-                            def remoteIp = row[2] ?: ""
-                            def localA1 = row[3] ?: ""
-                            def localA2 = row[4] ?: ""
-                            def remoteA1 = row[5] ?: ""
-                            def remoteA2 = row[6] ?: ""
-                            def txRate = row[7] ?: ""
-                            def rxRate = row[8] ?: ""
-                            def status = row[9] ?: ""
-
-                            if (channel != currentChannel && channel != "") {
-                                htmlContent += "<tr class='channel-header'><td colspan='10'><strong>Channel ${channel}</strong></td></tr>"
-                                currentChannel = channel
-                            }
-
-                            htmlContent += """
-                                <tr>
-                                    <td></td>
-                                    <td class="power-cell">${power}</td>
-                                    <td>${remoteIp}</td>
-                                    <td>${localA1}</td>
-                                    <td>${localA2}</td>
-                                    <td>${remoteA1}</td>
-                                    <td>${remoteA2}</td>
-                                    <td>${txRate}</td>
-                                    <td>${rxRate}</td>
-                                    <td>${status}</td>
-                                </tr>
-                            """
-                        }
-                    } else {
-                        htmlContent += "<tr><td colspan='10' style='text-align:center; color:red;'>No test data generated</td></tr>"
-                    }
-
-                    htmlContent += """
-                            </table>
+                            ${tableContent}
 
                             <div style="text-align:center;">
                                 <button class="log-button" onclick="showLog()">See Full Logs</button>
