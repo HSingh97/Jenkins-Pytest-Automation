@@ -200,7 +200,6 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers):
                     current_channel_read = get_channel(local_ip, radio_oid)
 
                     if stats:
-                        # Excel: Add channel header when changed
                         if current_channel_read != current_channel_in_excel:
                             ws.append([])  # Spacing
                             channel_row = ws.max_row
@@ -212,10 +211,8 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers):
                             cell.alignment = Alignment(horizontal="left", indent=2)
                             current_channel_in_excel = current_channel_read
 
-                            # HTML: Add channel header
                             html_table += f'<tr style="background:#bae6fd; font-weight:bold; font-size:18px; color:#0c4a6e;"><td colspan="10" style="padding-left:40px; text-align:left;">Channel {current_channel_read}</td></tr>'
 
-                        # Excel data row
                         row_data = [
                             "", power, stats['IP'],
                             stats['Local SNR A1'], stats['Local SNR A2'],
@@ -229,7 +226,6 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers):
                             cell.border = thin_border
                         ws.cell(row=data_row_num, column=2).alignment = Alignment(horizontal="left", indent=5)
 
-                        # HTML data row
                         html_table += f'''
                         <tr>
                             <td></td>
