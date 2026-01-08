@@ -6,46 +6,18 @@ import re
 import openpyxl
 import pytest
 from datetime import datetime
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
 
 def init_excel(excel_filename):
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "SNR Tx Power Results"
+    ws.title = "Results"
 
-    # Title
-    ws['A1'] = "SNR Tx Power Test Results"
-    ws.merge_cells('A1:J1')
-    ws['A1'].font = Font(size=16, bold=True, color="00008B")
-    ws['A1'].alignment = Alignment(horizontal="center")
-
-    ws.append([])  # Empty row
-
-    # Headers
-    headers = ["Channel", "Power (dBm)", "Remote IP",
+    # Simple headers
+    ws.append(["Channel", "Power (dBm)", "Remote IP",
                "Local SNR A1", "Local SNR A2",
                "Remote SNR A1", "Remote SNR A2",
-               "Tx Rate", "Rx Rate", "Status Check"]
-    ws.append(headers)
-
-    # Style headers
-    header_fill = PatternFill(start_color="E0F2FE", end_color="E0F2FE", fill_type="solid")
-    header_font = Font(bold=True, color="0369A1")
-    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'),
-                         top=Side(style='thin'), bottom=Side(style='thin'))
-
-    for cell in ws[3]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal="center")
-        cell.border = thin_border
-
-    # Column widths
-    widths = {'A':20, 'B':15, 'C':15, 'D':14, 'E':14, 'F':14, 'G':14, 'H':12, 'I':12, 'J':15}
-    for col, w in widths.items():
-        ws.column_dimensions[col].width = w
-
+               "Tx Rate", "Rx Rate", "Status Check"])
     wb.save(excel_filename)
     return wb, ws
 
@@ -140,7 +112,6 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers):
     radio_oid = "2" if radio == "radio1" else "3"
 
     excel_filename = os.getenv("EXCEL_FILE", f"snr_test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
-    table_html_file = os.getenv("TABLE_HTML", "results_table.html")
 
     print("\n" + "=" * 80, flush=True)
     print("STARTING SNR vs TX POWER TEST", flush=True)
@@ -155,32 +126,11 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers):
         print(f"Results saved to: {excel_filename}", flush=True)
 
         test_channels = channels if channels else [None]
-        current_channel_in_excel = ""
-
-        thin_border = Border(left=Side(style='thin'), right=Side(style='thin'),
-                             top=Side(style='thin'), bottom=Side(style='thin'))
-
-        html_table = '''
-<h2>SNR vs Tx Power Results</h2>
-<table style="width:100%; border-collapse:collapse; margin-top:24px; background:#fff; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; box-shadow:0 2px 4px rgba(0,0,0,0.04);">
-    <tr style="background:#e0f2fe; color:#0369a1; font-weight:700;">
-        <th style="padding:16px; text-align:center;">Channel</th>
-        <th style="padding:16px; text-align:center;">Power (dBm)</th>
-        <th style="padding:16px; text-align:center;">Remote IP</th>
-        <th style="padding:16px; text-align:center;">Local SNR A1</th>
-        <th style="padding:16px; text-align:center;">Local SNR A2</th>
-        <th style="padding:16px; text-align:center;">Remote SNR A1</th>
-        <th style="padding:16px; text-align:center;">Remote SNR A2</th>
-        <th style="padding:16px; text-align:center;">Tx Rate</th>
-        <th style="padding:16px; text-align:center;">Rx Rate</th>
-        <th style="padding:16px; text-align:center;">Status Check</th>
-    </tr>
-'''
+        current_channel = ""
 
         for channel in test_channels:
             if channel is not None:
                 print(f"\n\n====== SWITCHING TO CHANNEL: {channel} ======", flush=True)
-
                 if ping(local_ip) and ping(remote_ip):
                     set_channel(local_ip, channel, radio_oid)
                     time.sleep(60)
@@ -200,61 +150,19 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers):
                     current_channel_read = get_channel(local_ip, radio_oid)
 
                     if stats:
-                        if current_channel_read != current_channel_in_excel:
-                            ws.append([])  # Spacing
-                            channel_row = ws.max_row
-                            ws.append([f"Channel {current_channel_read}"])
-                            ws.merge_cells(f'A{channel_row}:J{channel_row}')
-                            cell = ws[f'A{channel_row}']
-                            cell.font = Font(bold=True, size=14, color="0C4A6E")
-                            cell.fill = PatternFill(start_color="BAE6FD", end_color="BAE6FD", fill_type="solid")
-                            cell.alignment = Alignment(horizontal="left", indent=2)
-                            current_channel_in_excel = current_channel_read
+                        # Write channel only when it changes
+                        if current_channel_read != current_channel:
+                            ws.append([f"Channel {current_channel_read}", "", "", "", "", "", "", "", "", ""])
+                            current_channel = current_channel_read
 
-                            html_table += f'<tr style="background:#bae6fd; font-weight:bold; font-size:18px; color:#0c4a6e;"><td colspan="10" style="padding-left:40px; text-align:left;">Channel {current_channel_read}</td></tr>'
-
-                        row_data = [
-                            "", power, stats['IP'],
-                            stats['Local SNR A1'], stats['Local SNR A2'],
-                            stats['Remote SNR A1'], stats['Remote SNR A2'],
-                            stats['Tx Rate'], stats['Rx Rate'], "OK"
-                        ]
-                        data_row_num = ws.max_row + 1
-                        ws.append(row_data)
-                        for cell in ws[data_row_num]:
-                            cell.alignment = Alignment(horizontal="center")
-                            cell.border = thin_border
-                        ws.cell(row=data_row_num, column=2).alignment = Alignment(horizontal="left", indent=5)
-
-                        html_table += f'''
-                        <tr>
-                            <td></td>
-                            <td style="padding-left:80px; text-align:left; font-weight:500;">{power}</td>
-                            <td>{stats['IP']}</td>
-                            <td>{stats['Local SNR A1']}</td>
-                            <td>{stats['Local SNR A2']}</td>
-                            <td>{stats['Remote SNR A1']}</td>
-                            <td>{stats['Remote SNR A2']}</td>
-                            <td>{stats['Tx Rate']}</td>
-                            <td>{stats['Rx Rate']}</td>
-                            <td>OK</td>
-                        </tr>
-                        '''
+                        ws.append(["", power, stats['IP'],
+                                   stats['Local SNR A1'], stats['Local SNR A2'],
+                                   stats['Remote SNR A1'], stats['Remote SNR A2'],
+                                   stats['Tx Rate'], stats['Rx Rate'], "OK"])
 
                         wb.save(excel_filename)
                         print(f"Data saved. Channel: {current_channel_read} | Power: {power} | Status: OK", flush=True)
 
-        html_table += '</table>'
-        with open(table_html_file, "w") as f:
-            f.write(html_table)
-        print(f"HTML table generated: {table_html_file}", flush=True)
-
     except Exception as e:
         print(f"TEST FAILED: {str(e)}", flush=True)
         pytest.fail(f"Test failed: {e}")
-
-
-def warn(*args, **kwargs):
-    pass
-import warnings
-warnings.warn = warn

@@ -12,7 +12,6 @@ pipeline {
     environment {
         EXCEL_FILE = "snr_test_report_${new Date().format('yyyyMMdd_HHmmss')}.xlsx"
         LOG_FILE   = "test_run.log"
-        TABLE_HTML = "results_table.html"
     }
 
     stages {
@@ -52,7 +51,7 @@ pipeline {
 
                     echo "Running SNR Tx Power Test"
 
-                    withEnv(["EXCEL_FILE=${env.EXCEL_FILE}", "TABLE_HTML=${env.TABLE_HTML}"]) {
+                    withEnv(["EXCEL_FILE=${env.EXCEL_FILE}"]) {
                         sh """
                             python3 -u -m pytest -v -s testCases/test_SNRTxpower.py::test_snr_tx_power \
                             --local-ip '${localIP}' \
@@ -85,8 +84,8 @@ pipeline {
                     } catch (e) {}
 
                     def buildParams = [
-                        "Local IP Address": params['Local IP Address'],
-                        "Remote IP Address": params['Remote IP Address'],
+                        "Local IP Address": localIP,
+                        "Remote IP Address": remoteIP,
                         "Radio": params.Radio,
                         "Channels": params.Channels,
                         "Powers": params.Powers,
@@ -103,33 +102,33 @@ pipeline {
                             .replace(">", "&gt;") :
                         "No log available"
 
-                    def tableContent = fileExists(env.TABLE_HTML) ?
-                        readFile(file: env.TABLE_HTML) :
-                        "<p style='color:red; text-align:center; margin-top:30px;'>No test results table generated</p>"
-
                     def htmlContent = """
                     <html>
                     <head>
                         <title>SNR Tx Power Test Report</title>
                         <style>
-                            body {font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; margin:0; padding:0; background:#f9fafb; color:#1f2937;}
-                            .container {max-width:1200px; margin:24px auto; padding:24px;}
-                            .header {display:flex; justify-content:space-between; align-items:center; background:linear-gradient(to right,#fff 10%,#f9fafb 100%); padding:28px 36px; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 4px 6px rgba(0,0,0,0.04);}
-                            .header img {height:65px;}
-                            .header-info h1 {margin:0; font-size:30px; font-weight:700; color:#0a2540;}
-                            .header-info p {margin:5px 0; font-size:15px; color:#4a5568;}
-                            h2 {margin-top:32px; font-size:24px; font-weight:600; color:#111827; border-bottom:2px solid #e5e7eb; padding-bottom:12px;}
-                            table.params {width:100%; border-collapse:collapse; background:#fff; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; box-shadow:0 2px 4px rgba(0,0,0,0.04);}
-                            table.params th, table.params td {padding:16px 20px; border-bottom:1px solid #e5e7eb;}
-                            table.params th {background:#f9fafb; font-weight:600; color:#6b7280;}
-                            .log-button {background:#3b82f6; color:white; padding:14px 28px; border-radius:8px; font-weight:600; cursor:pointer; border:none; font-size:16px; margin-top:50px; box-shadow:0 4px 6px rgba(0,0,0,0.1);}
-                            .log-button:hover {background:#2563eb; box-shadow:0 6px 8px rgba(0,0,0,0.15);}
-                            .modal {display:none; position:fixed; z-index:100; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6);}
-                            .modal-content {background:#fff; margin:5% auto; border-radius:12px; width:90%; max-width:1100px; box-shadow:0 10px 30px rgba(0,0,0,0.2);}
-                            .modal-header {padding:20px 32px; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;}
-                            .modal-close {font-size:30px; cursor:pointer; color:#9ca3af;}
-                            .modal-close:hover {color:#1f2937;}
-                            #log-content-pre {background:#1f2937; color:#e5e7eb; padding:24px 32px; max-height:70vh; overflow:auto; white-space:pre-wrap; font-family:monospace; font-size:14px;}
+                            body {font-family: 'Segoe UI', sans-serif; background:#f9f9f9; color:#333; margin:0; padding:20px;}
+                            .header {display:flex; justify-content:space-between; align-items:center; background:#fff; padding:20px; border-bottom:3px solid #2c3e50; box-shadow:0 2px 5px rgba(0,0,0,0.1);}
+                            .header img {height:70px;}
+                            .header-info {text-align:right;}
+                            .header-info h1 {margin:0; font-size:32px; color:#2c3e50;}
+                            .header-info p {margin:5px 0; font-size:16px; color:#555;}
+                            h2 {margin:40px 0 20px; font-size:26px; color:#2c3e50; border-bottom:2px solid #3498db; padding-bottom:10px;}
+                            table {width:100%; border-collapse:collapse; margin:20px 0; background:#fff; box-shadow:0 4px 10px rgba(0,0,0,0.1);}
+                            th {background:#2c3e50; color:#fff; padding:14px; text-align:center; font-weight:600;}
+                            td {padding:12px 16px; text-align:center; border-bottom:1px solid #ddd;}
+                            tr:nth-child(even) {background:#f8f9fa;}
+                            tr:hover {background:#eaf4ff;}
+                            .channel-header {background:#3498db !important; color:white; font-weight:bold; font-size:18px;}
+                            .power-cell {text-align:left; padding-left:60px; font-weight:500;}
+                            .log-button {background:#3498db; color:white; padding:14px 30px; border-radius:8px; font-weight:600; cursor:pointer; border:none; font-size:16px; margin:40px auto; display:block; box-shadow:0 4px 8px rgba(0,0,0,0.2);}
+                            .log-button:hover {background:#2980b9;}
+                            .modal {display:none; position:fixed; z-index:100; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.7);}
+                            .modal-content {background:#fff; margin:5% auto; padding:20px; border-radius:12px; width:90%; max-width:1100px; box-shadow:0 10px 30px rgba(0,0,0,0.3);}
+                            .modal-header {display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:10px; margin-bottom:20px;}
+                            .modal-close {font-size:30px; cursor:pointer; color:#aaa;}
+                            .modal-close:hover {color:#000;}
+                            #log-content-pre {background:#2c3e50; color:#ecf0f1; padding:20px; max-height:70vh; overflow:auto; font-family:monospace; font-size:14px; border-radius:8px;}
                         </style>
                         <script>
                             function showLog() {
@@ -141,27 +140,83 @@ pipeline {
                         </script>
                     </head>
                     <body>
-                        <div class="container">
-                            <div class="header">
-                                <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
-                                <div class="header-info">
-                                    <h1>Automated Test Report</h1>
-                                    <p><strong>Pipeline:</strong> ${env.JOB_NAME}</p>
-                                    <p><strong>Date & Time:</strong> ${currentDateTime}</p>
-                                </div>
+                        <div class="header">
+                            <img src="${companyLogoUrl}" alt="Senao Networks"/>
+                            <div class="header-info">
+                                <h1>SNR Tx Power Test Report</h1>
+                                <p><strong>Pipeline:</strong> ${env.JOB_NAME}</p>
+                                <p><strong>Date & Time:</strong> ${currentDateTime}</p>
                             </div>
+                        </div>
 
-                            <h2>Build Parameters</h2>
-                            <table class="params">
-                                <tr><th>Parameter</th><th>Value</th></tr>
-                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('')}
-                            </table>
+                        <h2>Build Parameters</h2>
+                        <table>
+                            <tr><th>Parameter</th><th>Value</th></tr>
+                            ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('')}
+                        </table>
 
-                            ${tableContent}
+                        <h2>SNR vs Tx Power Results</h2>
+                        <table>
+                            <tr>
+                                <th>Channel</th>
+                                <th>Power (dBm)</th>
+                                <th>Remote IP</th>
+                                <th>Local SNR A1</th>
+                                <th>Local SNR A2</th>
+                                <th>Remote SNR A1</th>
+                                <th>Remote SNR A2</th>
+                                <th>Tx Rate</th>
+                                <th>Rx Rate</th>
+                                <th>Status Check</th>
+                            </tr>
+                    """
 
-                            <div style="text-align:center;">
-                                <button class="log-button" onclick="showLog()">See Full Logs</button>
-                            </div>
+                    if (fileExists(env.EXCEL_FILE)) {
+                        def wb = openpyxl.load_workbook(env.EXCEL_FILE)
+                        def ws = wb.active
+
+                        def currentChannel = ""
+                        for (row in ws.iter_rows(min_row=1, values_only=true)) {
+                            if (row[0] && row[0].toString().startsWith("Channel ")) {
+                                def channelText = row[0].toString()
+                                htmlContent += "<tr class='channel-header'><td colspan='10'><strong>${channelText}</strong></td></tr>"
+                                currentChannel = channelText
+                            } else if (row[1] != null) {  // Power row
+                                def power = row[1] ?: ""
+                                def remoteIp = row[2] ?: ""
+                                def localA1 = row[3] ?: ""
+                                def localA2 = row[4] ?: ""
+                                def remoteA1 = row[5] ?: ""
+                                def remoteA2 = row[6] ?: ""
+                                def txRate = row[7] ?: ""
+                                def rxRate = row[8] ?: ""
+                                def status = row[9] ?: ""
+
+                                htmlContent += """
+                                <tr>
+                                    <td></td>
+                                    <td class="power-cell">${power}</td>
+                                    <td>${remoteIp}</td>
+                                    <td>${localA1}</td>
+                                    <td>${localA2}</td>
+                                    <td>${remoteA1}</td>
+                                    <td>${remoteA2}</td>
+                                    <td>${txRate}</td>
+                                    <td>${rxRate}</td>
+                                    <td>${status}</td>
+                                </tr>
+                                """
+                            }
+                        }
+                    } else {
+                        htmlContent += "<tr><td colspan='10' style='color:red; padding:30px;'>No test data found</td></tr>"
+                    }
+
+                    htmlContent += """
+                        </table>
+
+                        <div style="text-align:center;">
+                            <button class="log-button" onclick="showLog()">See Full Logs</button>
                         </div>
 
                         <div id="logModal" class="modal">
@@ -170,7 +225,7 @@ pipeline {
                                     <h2>Test Run Log</h2>
                                     <span class="modal-close" onclick="closeModal()">&times;</span>
                                 </div>
-                                <div class="modal-body">
+                                <div style="padding:0;">
                                     <pre id="log-content-pre"></pre>
                                 </div>
                             </div>
@@ -226,12 +281,12 @@ pipeline {
                     subject: "SNR Tx Power Test #${BUILD_NUMBER} - ${currentBuild.currentResult}",
                     body: """
                         <html><body>
-                            <h2 style="color:blue;">Jenkins Build Notification</h2>
+                            <h2 style="color:#3498db;">Jenkins Build Notification</h2>
                             <p><strong>Build:</strong> ${currentBuild.fullDisplayName}</p>
                             <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">${currentBuild.currentResult}</span></p>
                             <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
                             <p><strong>Report:</strong> <a href="${env.BUILD_URL}SNR_20Tx_20Power_20Test_20Report">View Report</a></p>
-                            <br/><p style="color:gray;">-- Jenkins Automated Notification</p>
+                            <br/><p style="color:#777;">-- Jenkins Automated Notification</p>
                         </body></html>
                     """,
                     to: userEmail,
