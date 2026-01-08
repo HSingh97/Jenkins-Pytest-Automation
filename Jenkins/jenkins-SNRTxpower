@@ -10,7 +10,7 @@ pipeline {
     }
 
     environment {
-        EXCEL_FILE = "snr_test_${new Date().format('yyyyMMdd_HHmmss')}.xlsx"
+        EXCEL_FILE = "snr_test_report_${new Date().format('yyyyMMdd_HHmmss')}.xlsx"
         LOG_FILE   = "test_run.log"
     }
 
@@ -95,7 +95,7 @@ pipeline {
                     def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
-                    // Read full log for "See Full Logs"
+                    // Read log for "See Full Logs"
                     def logContent = fileExists(env.LOG_FILE) ?
                         readFile(file: env.LOG_FILE)
                             .replace("&", "&amp;")
@@ -175,7 +175,7 @@ pipeline {
                                 </tr>
                     """
 
-                    // Embed the Excel table exactly like your screenshot
+                    // Embed the table from Excel
                     if (fileExists(env.EXCEL_FILE)) {
                         def wb = openpyxl.load_workbook(env.EXCEL_FILE)
                         def ws = wb.active
@@ -214,7 +214,7 @@ pipeline {
                             """
                         }
                     } else {
-                        htmlContent += "<tr><td colspan='10' style='text-align:center; color:red;'>No test data found</td></tr>"
+                        htmlContent += "<tr><td colspan='10' style='text-align:center; color:red;'>No test data generated</td></tr>"
                     }
 
                     htmlContent += """
