@@ -10,7 +10,8 @@ pipeline {
     }
 
     environment {
-        SINGLE_EXCEL = "snr_test_${new Date().format('yyyyMMdd_HHmmss')}.xlsx"
+        EXCEL_FILE = "SNR_TxPower_Test_${new Date().format('yyyyMMdd_HHmmss')}.xlsx"
+        LOG_FILE   = "test_run.log"
     }
 
     stages {
@@ -24,7 +25,6 @@ pipeline {
                     echo "--- Radio        : ${params.Radio}"
                     echo "--- Channels     : ${params.Channels}"
                     echo "--- Powers       : ${params.Powers}"
-                    echo "--- Iterations   : ${params.ITERATION_COUNT}"
                     echo "----------------------------------------"
 
                     if (!params['Local IP Address'] || !params['Remote IP Address']) {
@@ -36,6 +36,11 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
+            	script{
+            	    echo "----------------------------------------"
+                    echo "Installing Dependencies"
+                    echo "----------------------------------------"
+            	}
                 sh 'python3 -m pip install openpyxl pytest || true'
             }
         }
@@ -48,32 +53,18 @@ pipeline {
                     def radio = params.Radio
                     def channels = params.Channels
                     def powers = params.Powers
-                    def iterCount = params.ITERATION_COUNT ?: "1"
 
-                    echo "Running ${iterCount} iteration(s)"
+                    echo "Running SNR Tx Power Test (Single Run)"
 
-                    sh "echo '{\"iterations\": []}' > iteration_results.json"
-                    sh 'rm -f test-*.log'
-
-                    // Pass the single Excel filename to all iterations
-                    withEnv(["SINGLE_EXCEL=${env.SINGLE_EXCEL}"]) {
-                        for (int i = 1; i <= iterCount.toInteger(); i++) {
-                            echo "=== Running Iteration ${i}/${iterCount} ==="
-                            try {
-                                sh """
-                                    python3 -u -m pytest -v -s testCases/test_SNRTxpower.py::test_snr_tx_power \
-                                    --local-ip '${localIP}' \
-                                    --remote-ip '${remoteIP}' \
-                                    --radio '${radio}' \
-                                    --channels '${channels}' \
-                                    --powers '${powers}' \
-                                    --iter ${i} 2>&1 | tee test-${i}.log
-                                """
-                            } catch (Exception e) {
-                                echo "Iteration ${i} failed: ${e.message}"
-                                currentBuild.result = 'UNSTABLE'
-                            }
-                        }
+                    withEnv(["EXCEL_FILE=${env.EXCEL_FILE}"]) {
+                        sh """
+                            python3 -u -m pytest -v -s testCases/test_SNRTxpower.py::test_snr_tx_power \
+                            --local-ip '${localIP}' \
+                            --remote-ip '${remoteIP}' \
+                            --radio '${radio}' \
+                            --channels '${channels}' \
+                            --powers '${powers}' 2>&1 | tee ${env.LOG_FILE}
+                        """
                     }
                 }
             }
@@ -97,413 +88,157 @@ pipeline {
                         remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
                     } catch (e) {}
 
-                    def jsonReport = readJSON file: 'iteration_results.json'
-
-                    def totalTests = jsonReport.iterations ? jsonReport.iterations.size() : 0
-                    def passCount = jsonReport.iterations ? jsonReport.iterations.count { it.status == 'PASS' } : 0
-                    def failCount = totalTests - passCount
-                    def successPercentageStr = totalTests > 0 ? String.format("%.1f", (passCount / (double)totalTests) * 100) : "0.0"
-
                     def buildParams = [
                         "Local IP Address": params['Local IP Address'],
                         "Remote IP Address": params['Remote IP Address'],
                         "Radio": params.Radio,
                         "Channels": params.Channels,
                         "Powers": params.Powers,
-                        "Iteration Count": params.ITERATION_COUNT,
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
                     def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
-                    def pipelineName = env.JOB_NAME
+
+                    // Read full log for "See Full Logs"
+                    def logContent = fileExists(env.LOG_FILE) ?
+                        readFile(file: env.LOG_FILE)
+                            .replace("&", "&amp;")
+                            .replace("<", "&lt;")
+                            .replace(">", "&gt;") :
+                        "Log not available"
 
                     def htmlContent = """
                     <html>
                     <head>
-                        <title>Test Report</title>
+                        <title>SNR Tx Power Test Report</title>
                         <style>
-                            body {
-                                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                                margin: 0;
-                                padding: 0;
-                                background-color: #f9fafb; /* Lighter gray background */
-                                color: #1f2937;
-                            }
-                            .container {
-                                max-width: 1200px;
-                                margin: 24px auto;
-                                padding: 24px;
-                            }
-                            .header {
-                                display: flex;
-                                justify-content: space-between;
-                                align-items: center;
-                                background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%); /* New gradient */
-                                padding: 28px 36px; /* Increased padding */
-                                border: 1px solid #e5e7eb;
-                                border-radius: 12px;
-                                box-shadow: 0 4px 6px rgba(0,0,0,0.04); /* Slightly stronger shadow */
-                            }
-                            .header img {
-                                height: 65px; /* Bigger logo */
-                                transition: transform 0.2s ease-in-out;
-                            }
-                            .header img:hover {
-                                transform: scale(1.03); /* Subtle hover effect */
-                            }
-                            .header-info { text-align: right; }
-                            .header-info h1 {
-                                margin: 0;
-                                font-size: 30px; /* Bigger title */
-                                font-weight: 700; /* Bolder */
-                                color: #0a2540; /* Darker, more corporate blue/black */
-                            }
-                            .header-info p {
-                                margin: 5px 0;
-                                font-size: 15px; /* Slightly larger sub-text */
-                                color: #4a5568; /* Darker gray */
-                            }
-                            /* ######## END: MODIFIED CSS (HEADER) ######## --> */
-
-                            h2 {
-                                margin-top: 32px;
-                                font-size: 24px;
-                                font-weight: 600;
-                                color: #111827;
-                                border-bottom: 2px solid #e5e7eb;
-                                padding-bottom: 12px;
-                            }
-
-                            /* --- Summary Cards --- */
-                            .summary-container {
-                                display: grid;
-                                grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-                                gap: 24px;
-                                margin-top: 24px;
-                            }
-                            .summary-card {
-                                background-color: #fff;
-                                border: 1px solid #e5e7eb;
-                                border-radius: 12px;
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.04);
-                                display: flex;
-                                padding: 24px;
-                                align-items: center;
-                                border-top-width: 4px;
-                                border-top-style: solid;
-                            }
-                            .card-icon {
-                                font-size: 32px;
-                                margin-right: 20px;
-                                padding: 12px;
-                                border-radius: 50%;
-                                display: flex;
-                                align-items: center;
-                                justify-content: center;
-                            }
-                            .card-info {
-                                text-align: left;
-                            }
-                            .card-info-title {
-                                font-size: 16px;
-                                color: #6b7280;
-                                margin: 0 0 4px 0;
-                            }
-                            .card-info-value {
-                                font-size: 32px;
-                                font-weight: 700;
-                                color: #111827;
-                                margin: 0;
-                            }
-                            .percent .percent-sign { font-size: 20px; font-weight: 600; }
-
-                            /* Card-specific Colors */
-                            .card-percent { border-color: #6b7280; }
-                            .card-percent .card-icon { background-color: #f3f4f6; color: #6b7280; }
-                            .card-total { border-color: #3b82f6; }
-                            .card-total .card-icon { background-color: #dbeafe; color: #3b82f6; }
-                            .card-pass { border-color: #10b981; }
-                            .card-pass .card-icon { background-color: #d1fae5; color: #10b981; }
-                            .card-fail { border-color: #ef4444; }
-                            .card-fail .card-icon { background-color: #fee2e2; color: #ef4444; }
-
-                            /* --- Table Style --- */
-                            table {
-                                width: 100%;
-                                border-collapse: collapse;
-                                margin-top: 24px;
-                                background-color: #fff;
-                                border: 1px solid #e5e7eb;
-                                border-radius: 12px;
-                                overflow: hidden;
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.04);
-                            }
-                            th, td {
-                                padding: 16px 20px;
-                                border-bottom: 1px solid #e5e7eb;
-                                text-align: left;
-                                vertical-align: middle;
-                            }
-                            th {
-                                background-color: #f9fafb;
-                                font-weight: 600;
-                                color: #6b7280;
-                                font-size: 13px;
-                                text-transform: uppercase;
-                                letter-spacing: 0.5px;
-                            }
-                            tr:last-child td { border-bottom: none; }
-                            tr:hover { background-color: #f9fafb; }
-
-                            .status-pass {
-                                color: #059669;
-                                font-weight: 600;
-                                background-color: #d1fae5;
-                                padding: 5px 10px;
-                                border-radius: 99px;
-                                display: inline-block;
-                            }
-                            .status-fail {
-                                color: #dc2626;
-                                font-weight: 600;
-                                background-color: #fee2e2;
-                                padding: 5px 10px;
-                                border-radius: 99px;
-                                display: inline-block;
-                            }
-
-                            /* --- Log Button --- */
-                            .log-button {
-                                background-color: #3b82f6;
-                                color: white;
-                                padding: 8px 16px;
-                                text-decoration: none;
-                                border-radius: 8px;
-                                font-weight: 600;
-                                font-size: 14px;
-                                transition: background-color 0.2s ease, box-shadow 0.2s ease;
-                                display: inline-block;
-                                border: none;
-                                cursor: pointer;
-                                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-                            }
-                            .log-button:hover {
-                                background-color: #2563eb;
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                            }
-
-                            /* --- Modal Styles --- */
-                            .modal {
-                                display: none;
-                                position: fixed;
-                                z-index: 100;
-                                left: 0;
-                                top: 0;
-                                width: 100%;
-                                height: 100%;
-                                overflow: auto;
-                                background-color: rgba(0,0,0,0.6);
-                            }
-                            .modal-content {
-                                background-color: #ffffff;
-                                margin: 5% auto;
-                                border: 1px solid #e5e7eb;
-                                border-radius: 12px;
-                                width: 80%;
-                                max-width: 900px;
-                                box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-                                animation-name: animatetop;
-                                animation-duration: 0.4s;
-                                overflow: hidden;
-                            }
-                            .modal-header {
-                                padding: 20px 32px;
-                                border-bottom: 1px solid #e5e7eb;
-                                display: flex;
-                                justify-content: space-between;
-                                align-items: center;
-                            }
-                            .modal-header h2 {
-                                margin: 0;
-                                padding: 0;
-                                border: none;
-                                font-size: 20px;
-                            }
-                            .modal-close {
-                                color: #9ca3af;
-                                font-size: 28px;
-                                font-weight: bold;
-                                cursor: pointer;
-                                transition: color 0.2s ease;
-                            }
-                            .modal-close:hover,
-                            .modal-close:focus {
-                                color: #1f2937;
-                                text-decoration: none;
-                            }
-                            .modal-body {
-                                padding: 0;
-                            }
-                            #log-content-pre {
-                                background-color: #1f2937; /* Dark background */
-                                color: #e5e7eb; /* Light text */
-                                padding: 24px 32px;
-                                max-height: 60vh;
-                                overflow: auto;
-                                white-space: pre-wrap;
-                                word-wrap: break-word;
-                                margin: 0;
-                                border-radius: 0 0 12px 12px;
-                                font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
-                                font-size: 14px;
-                            }
-                            @keyframes animatetop {
-                                from {transform: translateY(-50px); opacity: 0}
-                                to {transform: translateY(0); opacity: 1}
-                            }
+                            body {font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; margin:0; padding:0; background:#f9fafb; color:#1f2937;}
+                            .container {max-width:1200px; margin:24px auto; padding:24px;}
+                            .header {display:flex; justify-content:space-between; align-items:center; background:linear-gradient(to right,#fff 10%,#f9fafb 100%); padding:28px 36px; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 4px 6px rgba(0,0,0,0.04);}
+                            .header img {height:65px;}
+                            .header-info h1 {margin:0; font-size:30px; font-weight:700; color:#0a2540;}
+                            .header-info p {margin:5px 0; font-size:15px; color:#4a5568;}
+                            h2 {margin-top:32px; font-size:24px; font-weight:600; color:#111827; border-bottom:2px solid #e5e7eb; padding-bottom:12px;}
+                            table {width:100%; border-collapse:collapse; margin-top:24px; background:#fff; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; box-shadow:0 2px 4px rgba(0,0,0,0.04);}
+                            th {background:#e0f2fe; color:#0369a1; font-weight:700; padding:16px 20px; text-align:center;}
+                            td {padding:12px 20px; text-align:center; border-bottom:1px solid #e5e7eb;}
+                            tr:hover {background:#f0f9ff;}
+                            .channel-header {background:#bae6fd; font-weight:bold; font-size:18px; color:#0c4a6e; text-align:left; padding-left:40px;}
+                            .power-cell {padding-left:80px; text-align:left; font-weight:500;}
+                            .log-button {background:#3b82f6; color:white; padding:14px 28px; border-radius:8px; font-weight:600; cursor:pointer; border:none; font-size:16px; margin-top:50px; box-shadow:0 4px 6px rgba(0,0,0,0.1);}
+                            .log-button:hover {background:#2563eb; box-shadow:0 6px 8px rgba(0,0,0,0.15);}
+                            .modal {display:none; position:fixed; z-index:100; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6);}
+                            .modal-content {background:#fff; margin:5% auto; border-radius:12px; width:90%; max-width:1100px; box-shadow:0 10px 30px rgba(0,0,0,0.2);}
+                            .modal-header {padding:20px 32px; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;}
+                            .modal-close {font-size:30px; cursor:pointer; color:#9ca3af;}
+                            .modal-close:hover {color:#1f2937;}
+                            #log-content-pre {background:#1f2937; color:#e5e7eb; padding:24px 32px; max-height:70vh; overflow:auto; white-space:pre-wrap; font-family:monospace; font-size:14px;}
                         </style>
-
                         <script>
-                            function showLog(logDataId) {
-                                var logContent = document.getElementById(logDataId).innerHTML;
-                                document.getElementById('log-content-pre').innerHTML = logContent;
+                            function showLog() {
+                                document.getElementById('log-content-pre').innerHTML = document.getElementById('full-log').innerHTML;
                                 document.getElementById('logModal').style.display = 'block';
                             }
-                            function closeModal() {
-                                document.getElementById('logModal').style.display = 'none';
-                            }
-                            window.onclick = function(event) {
-                                var modal = document.getElementById('logModal');
-                                if (event.target == modal) {
-                                    modal.style.display = 'none';
-                                }
-                            }
+                            function closeModal() { document.getElementById('logModal').style.display = 'none'; }
+                            window.onclick = function(e) { if (e.target == document.getElementById('logModal')) closeModal(); }
                         </script>
                     </head>
                     <body>
                         <div class="container">
                             <div class="header">
-                                <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
+                                <img src="${companyLogoUrl}" alt="Senao Networks"/>
                                 <div class="header-info">
-                                    <h1>Automated Test Report</h1>
-                                    <p><strong>Pipeline:</strong> ${pipelineName}</p>
+                                    <h1>SNR Tx Power Test Report</h1>
+                                    <p><strong>Pipeline:</strong> ${env.JOB_NAME}</p>
                                     <p><strong>Date & Time:</strong> ${currentDateTime}</p>
                                 </div>
                             </div>
 
                             <h2>Build Parameters</h2>
                             <table>
-                                <tr>
-                                    <th>Parameter</th>
-                                    <th>Value</th>
-                                </tr>
-                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
+                                <tr><th>Parameter</th><th>Value</th></tr>
+                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('')}
                             </table>
 
-                            <h2>Test Summary</h2>
-                            <div class="summary-container">
-                                <div class="summary-card card-percent">
-                                    <div class="card-icon">🎯</div>
-                                    <div class="card-info">
-                                        <p class="card-info-title">Success Rate</p>
-                                        <p class="card-info-value percent">${successPercentageStr}<span class="percent-sign">%</span></p>
-                                    </div>
-                                </div>
-                                <div class="summary-card card-total">
-                                    <div class="card-icon">📦</div>
-                                    <div class="card-info">
-                                        <p class="card-info-title">Total Iterations</p>
-                                        <p class="card-info-value">${totalTests}</p>
-                                    </div>
-                                </div>
-                                <div class="summary-card card-pass">
-                                    <div class="card-icon">✅</div>
-                                    <div class="card-info">
-                                        <p class="card-info-title">Passed</p>
-                                        <p class="card-info-value">${passCount}</p>
-                                    </div>
-                                </div>
-                                <div class="summary-card card-fail">
-                                    <div class="card-icon">❌</div>
-                                    <div class="card-info">
-                                        <p class="card-info-title">Failed</p>
-                                        <p class="card-info-value">${failCount}</p>
-                                    </div>
-                                </div>
-                            </div>
-
-
-                            <h2>Test Results</h2>
+                            <h2>SNR vs Tx Power Results</h2>
                             <table>
                                 <tr>
-                                    <th>Iteration</th>
-                                    <th style="text-align: center;">Status</th>
-                                    <th style="text-align: center;">Logs</th>
+                                    <th>Channel</th>
+                                    <th>Power (dBm)</th>
+                                    <th>Remote IP</th>
+                                    <th>Local SNR A1</th>
+                                    <th>Local SNR A2</th>
+                                    <th>Remote SNR A1</th>
+                                    <th>Remote SNR A2</th>
+                                    <th>Tx Rate</th>
+                                    <th>Rx Rate</th>
+                                    <th>Status Check</th>
                                 </tr>
                     """
 
-                    // --- Read log files and build table rows + hidden log data ---
-                    def tableRows = ""
-                    def logDataBlocks = ""
+                    if (fileExists(env.EXCEL_FILE)) {
+                        def wb = openpyxl.load_workbook(env.EXCEL_FILE)
+                        def ws = wb.active
 
-                    if (jsonReport.iterations) {
-                        jsonReport.iterations.each { result ->
-                            def iteration = result.iteration ?: "-"
-                            def status = result.status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
+                        def currentChannel = ""
+                        for (row in ws.iter_rows(min_row=2, values_only=true)) {
+                            def channel = row[1] ?: ""
+                            def power = row[0] ?: ""
+                            def remoteIP = row[2] ?: ""
+                            def localA1 = row[3] ?: ""
+                            def localA2 = row[4] ?: ""
+                            def remoteA1 = row[5] ?: ""
+                            def remoteA2 = row[6] ?: ""
+                            def txRate = row[7] ?: ""
+                            def rxRate = row[8] ?: ""
+                            def status = row[9] ?: ""
 
-                            def logFile = "test-${iteration}.log"
-                            def logDataId = "log-data-${iteration}"
-                            def logContent = ""
-
-                            try {
-                                // Read the log file from the workspace
-                                logContent = readFile(file: logFile)
-                                // Manually escape HTML characters
-                                logContent = logContent.replace("&", "&amp;")
-                                                     .replace("<", "&lt;")
-                                                     .replace(">", "&gt;")
-                            } catch (e) {
-                                echo "Could not read log file ${logFile}: ${e.message}"
-                                logContent = "ERROR: Log file not found (${logFile}).\n${e.message}"
+                            if (channel != currentChannel && channel != "") {
+                                htmlContent += "<tr class='channel-header'><td colspan='10'><strong>Channel ${channel}</strong></td></tr>"
+                                currentChannel = channel
                             }
 
-                            def logButton = "<button class='log-button' onclick=\"showLog('${logDataId}')\">See Logs</button>"
-
-                            tableRows += """
+                            htmlContent += """
                                 <tr>
-                                    <td>${iteration}</td>
-                                    <td style="text-align: center;">${status}</td>
-                                    <td style="text-align: center;">${logButton}</td>
+                                    <td></td>
+                                    <td class="power-cell">${power}</td>
+                                    <td>${remoteIP}</td>
+                                    <td>${localA1}</td>
+                                    <td>${localA2}</td>
+                                    <td>${remoteA1}</td>
+                                    <td>${remoteA2}</td>
+                                    <td>${txRate}</td>
+                                    <td>${rxRate}</td>
+                                    <td>${status}</td>
                                 </tr>
                             """
-
-                            logDataBlocks += "<div id='${logDataId}' style='display:none;'>${logContent}</div>\n"
                         }
                     } else {
-                         tableRows += "<tr><td colspan='3' style='text-align:center;'>No iteration results found.</td></tr>"
+                        htmlContent += "<tr><td colspan='10' style='text-align:center; color:red;'>No test data generated</td></tr>"
                     }
-
-                    htmlContent += tableRows
 
                     htmlContent += """
                             </table>
+
+                            <div style="text-align:center;">
+                                <button class="log-button" onclick="showLog()">See Full Logs</button>
+                            </div>
                         </div>
 
                         <div id="logModal" class="modal">
-                          <div class="modal-content">
-                            <div class="modal-header">
-                                <h2>Iteration Log</h2>
-                                <span class="modal-close" onclick="closeModal()">&times;</span>
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h2>Test Run Log</h2>
+                                    <span class="modal-close" onclick="closeModal()">&times;</span>
+                                </div>
+                                <div class="modal-body">
+                                    <pre id="log-content-pre"></pre>
+                                </div>
                             </div>
-                            <div class="modal-body">
-                                <pre id="log-content-pre"></pre>
-                            </div>
-                          </div>
                         </div>
 
-                        ${logDataBlocks}
-
+                        <div id="full-log" style="display:none;">${logContent}</div>
                     </body>
                     </html>
                     """
@@ -525,20 +260,11 @@ pipeline {
                 reportName: 'SNR Tx Power Test Report'
             ])
 
-            archiveArtifacts artifacts: "${env.SINGLE_EXCEL},iteration_results.json,snr_test_report.html,test-*.log", allowEmptyArchive: true
+            archiveArtifacts artifacts: "${env.EXCEL_FILE},snr_test_report.html,${env.LOG_FILE}", allowEmptyArchive: true
 
-            sh 'rm -f test-*.log || true'
-
-            echo "-----------------------------------------"
-            echo 'Script Done!'
-            echo "-----------------------------------------"
+            sh "rm -f ${env.LOG_FILE} || true"
 
             script {
-                def buildCauses = currentBuild.getBuildCauses()
-                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
-                def buildUserName = userCause?.userName ?: "Unknown User"
-                def buildUserId = userCause?.userId ?: "unknown"
-
                 def userEmails = [
                     "puneet": "puneet.sharma@senao.com",
                     "harman": "harmanjot.singh@senao.com",
@@ -551,40 +277,26 @@ pipeline {
                     "dinesh": "dinesh.redddy@senao.com"
                 ]
 
+                def buildUserId = currentBuild.getBuildCauses().find { it._class == 'hudson.model.Cause$UserIdCause' }?.userId ?: "unknown"
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
 
                 emailext(
-                    subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    subject: "SNR Tx Power Test #${BUILD_NUMBER} - ${currentBuild.currentResult}",
                     body: """
-                        <html>
-                        <body>
+                        <html><body>
                             <h2 style="color:blue;">Jenkins Build Notification</h2>
-                            <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
-                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
-                                ${currentBuild.currentResult}</span></p>
-                            <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
+                            <p><strong>Build:</strong> ${currentBuild.fullDisplayName}</p>
+                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">${currentBuild.currentResult}</span></p>
                             <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
-                            <p><strong>Report:</strong> <a href="${env.BUILD_URL}SNR_20Tx_20Power_20Test_20Report">View SNR Tx Power Report</a></p>
-                            <br/>
-                            <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
-                        </body>
-                        </html>
+                            <p><strong>Report:</strong> <a href="${env.BUILD_URL}SNR_20Tx_20Power_20Test_20Report">View Report</a></p>
+                            <br/><p style="color:gray;">-- Jenkins Automated Notification</p>
+                        </body></html>
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: "snr_test_report.html,iteration_results.json,${env.SINGLE_EXCEL}"
+                    attachmentsPattern: "snr_test_report.html,${env.EXCEL_FILE}"
                 )
             }
-        }
-        success {
-            echo "-----------------------------------------"
-            echo 'Script Success'
-            echo "-----------------------------------------"
-        }
-        failure {
-            echo "-----------------------------------------"
-            echo 'Script Failure'
-            echo "-----------------------------------------"
         }
     }
 }

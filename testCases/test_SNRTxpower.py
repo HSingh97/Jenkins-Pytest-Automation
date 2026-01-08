@@ -4,34 +4,25 @@ import subprocess
 import platform
 import re
 import openpyxl
-import json
 import pytest
 from datetime import datetime
-from openpyxl.styles import PatternFill
-
-
-def append_result_to_json(result, filename="iteration_results.json"):
-    try:
-        with open(filename, "r") as f:
-            data = json.load(f)
-        if not isinstance(data, dict) or "iterations" not in data:
-            data = {"iterations": []}
-    except (FileNotFoundError, json.JSONDecodeError):
-        data = {"iterations": []}
-
-    data["iterations"].append(result)
-    with open(filename, "w") as f:
-        json.dump(data, f, indent=4)
-    print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}", flush=True)
 
 
 def init_excel(excel_filename):
     if not os.path.exists(excel_filename):
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws.title = "Test Results"
+        ws.title = "SNR Tx Power Results"
+        # Title
         ws.append(["SNR Tx Power Test Results"])
-        ws.append([])
+        ws.append([])  # Empty row for spacing
+        # Column headers
+        ws.append([
+            "Channel", "Power (dBm)", "Remote IP",
+            "Local SNR A1", "Local SNR A2",
+            "Remote SNR A1", "Remote SNR A2",
+            "Tx Rate", "Rx Rate", "Status Check"
+        ])
         wb.save(excel_filename)
         return wb, ws
     else:
@@ -134,26 +125,13 @@ def ping(host):
             return False
 
 
-def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers, iter):
+def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers):
     radio_oid = "2" if radio == "radio1" else "3"
 
-    excel_filename = os.getenv("SINGLE_EXCEL", f"snr_test_iter{iter}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
-
-    result = {
-        "iteration": str(iter),
-        "test": "SNR_TxPower_Test",
-        "status": "FAIL",
-        "Local IP": local_ip,
-        "Remote IP": remote_ip,
-        "Radio": radio,
-        "Channels Tested": channels,
-        "Powers Tested": powers,
-        "Excel Report": excel_filename,
-        "details": ""
-    }
+    excel_filename = os.getenv("EXCEL_FILE", f"snr_test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
 
     print("\n" + "=" * 80, flush=True)
-    print(f"STARTING SNR vs TX POWER TEST - ITERATION {iter}", flush=True)
+    print("STARTING SNR vs TX POWER TEST", flush=True)
     print(f"Local IP : {local_ip} | Remote IP: {remote_ip}", flush=True)
     print(f"Radio    : {radio}", flush=True)
     print(f"Channels : {channels}", flush=True)
@@ -162,18 +140,10 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers, iter):
 
     try:
         wb, ws = init_excel(excel_filename)
-        print(f"All iterations saved to: {excel_filename}", flush=True)
+        print(f"Results will be saved to: {excel_filename}", flush=True)
 
         test_channels = channels if channels else [None]
-
-        ws.append([])
-        ws.append([f"ITERATION {iter}"])
-        ws.append([
-            "Power (dBm)", "Channel", "Remote IP",
-            "Local SNR A1", "Local SNR A2",
-            "Remote SNR A1", "Remote SNR A2",
-            "Tx Rate", "Rx Rate", "Status Check"
-        ])
+        current_channel_in_excel = ""
 
         for channel in test_channels:
             if channel is not None:
@@ -202,11 +172,22 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers, iter):
                     if stats:
                         status_msg = "OK"
 
+                        if current_channel_read != current_channel_in_excel:
+                            ws.append([])
+                            ws.append([f"Channel {current_channel_read}"])  # Channel header
+                            current_channel_in_excel = current_channel_read
+
+
                         row_data = [
-                            power, current_channel_read, stats['IP'],
-                            stats['Local SNR A1'], stats['Local SNR A2'],
-                            stats['Remote SNR A1'], stats['Remote SNR A2'],
-                            stats['Tx Rate'], stats['Rx Rate'],
+                            "",
+                            power,
+                            stats['IP'],
+                            stats['Local SNR A1'],
+                            stats['Local SNR A2'],
+                            stats['Remote SNR A1'],
+                            stats['Remote SNR A2'],
+                            stats['Tx Rate'],
+                            stats['Rx Rate'],
                             status_msg
                         ]
                         ws.append(row_data)
@@ -218,15 +199,9 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers, iter):
                 else:
                     raise Exception(f"Link lost during test at power {power} dBm")
 
-        result["status"] = "PASS"
-        result["details"] = "Iteration completed successfully"
-
     except Exception as e:
-        result["details"] = f"Failed: {str(e)}"
-        pytest.fail(f"Iteration {iter} FAILED: {e}")
-
-    finally:
-        append_result_to_json(result)
+        print(f"TEST FAILED: {str(e)}", flush=True)
+        pytest.fail(f"Test failed: {e}")
 
 
 # Suppress warnings
