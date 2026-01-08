@@ -6,29 +6,48 @@ import re
 import openpyxl
 import pytest
 from datetime import datetime
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
 
 def init_excel(excel_filename):
-    if not os.path.exists(excel_filename):
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "SNR Tx Power Results"
-        # Title
-        ws.append(["SNR Tx Power Test Results"])
-        ws.append([])  # Empty row for spacing
-        # Column headers
-        ws.append([
-            "Channel", "Power (dBm)", "Remote IP",
-            "Local SNR A1", "Local SNR A2",
-            "Remote SNR A1", "Remote SNR A2",
-            "Tx Rate", "Rx Rate", "Status Check"
-        ])
-        wb.save(excel_filename)
-        return wb, ws
-    else:
-        wb = openpyxl.load_workbook(excel_filename)
-        ws = wb.active
-        return wb, ws
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "SNR Tx Power Results"
+
+    # Title
+    ws['A1'] = "SNR Tx Power Test Results"
+    ws.merge_cells('A1:J1')
+    ws['A1'].font = Font(size=16, bold=True, color="00008B")
+    ws['A1'].alignment = Alignment(horizontal="center")
+
+    ws.append([])  # Empty row
+
+    # Headers
+    headers = ["Channel", "Power (dBm)", "Remote IP",
+               "Local SNR A1", "Local SNR A2",
+               "Remote SNR A1", "Remote SNR A2",
+               "Tx Rate", "Rx Rate", "Status Check"]
+    ws.append(headers)
+
+    # Style headers
+    header_fill = PatternFill(start_color="E0F2FE", end_color="E0F2FE", fill_type="solid")
+    header_font = Font(bold=True, color="0369A1")
+    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'),
+                         top=Side(style='thin'), bottom=Side(style='thin'))
+
+    for cell in ws[3]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+        cell.border = thin_border
+
+    # Column widths
+    widths = {'A':20, 'B':15, 'C':15, 'D':14, 'E':14, 'F':14, 'G':14, 'H':12, 'I':12, 'J':15}
+    for col, w in widths.items():
+        ws.column_dimensions[col].width = w
+
+    wb.save(excel_filename)
+    return wb, ws
 
 
 def get_channel(host, radio_oid):
@@ -50,15 +69,15 @@ def get_linkstats(host, radio_oid):
     while i < 33:
         remoteip_cmd = f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.4.{radio_oid}.{i}"
         try:
-            remoteip_output = subprocess.check_output(remoteip_cmd, shell=True, timeout=10).decode("utf-8")
+            subprocess.check_output(remoteip_cmd, shell=True, timeout=10)
         except:
             i += 1
             continue
-        if "No Such Instance" in remoteip_output:
+        if "No Such Instance" in subprocess.check_output(remoteip_cmd, shell=True, timeout=10).decode("utf-8"):
             i += 1
             continue
 
-        match = re.search(r'IpAddress:\s*([\d.]+)', remoteip_output)
+        match = re.search(r'IpAddress:\s*([\d.]+)', subprocess.check_output(remoteip_cmd, shell=True, timeout=10).decode("utf-8"))
         ip_address = match.group(1) if match else "-"
 
         def get_oid_value(oid_suffix):
@@ -72,28 +91,23 @@ def get_linkstats(host, radio_oid):
             except:
                 return "-"
 
-        localSNRA1_val = get_oid_value("13")
-        localSNRA2_val = get_oid_value("14")
-        remoteSNRA1_val = get_oid_value("15")
-        remoteSNRA2_val = get_oid_value("16")
-        txrate_val = get_oid_value("10")
-        rxrate_val = get_oid_value("9")
+        stats = {
+            "IP": ip_address,
+            "Local SNR A1": get_oid_value("13"),
+            "Local SNR A2": get_oid_value("14"),
+            "Remote SNR A1": get_oid_value("15"),
+            "Remote SNR A2": get_oid_value("16"),
+            "Tx Rate": get_oid_value("10"),
+            "Rx Rate": get_oid_value("9")
+        }
 
         print("\n" + "-" * 64, flush=True)
         print(f"Stats for {ip_address}", flush=True)
-        print(f"Local SNR: A1={localSNRA1_val}, A2={localSNRA2_val}", flush=True)
-        print(f"Remote SNR: A1={remoteSNRA1_val}, A2={remoteSNRA2_val}", flush=True)
+        print(f"Local SNR: A1={stats['Local SNR A1']}, A2={stats['Local SNR A2']}", flush=True)
+        print(f"Remote SNR: A1={stats['Remote SNR A1']}, A2={stats['Remote SNR A2']}", flush=True)
         print("-" * 64 + "\n", flush=True)
 
-        return {
-            "IP": ip_address,
-            "Local SNR A1": localSNRA1_val,
-            "Local SNR A2": localSNRA2_val,
-            "Remote SNR A1": remoteSNRA1_val,
-            "Remote SNR A2": remoteSNRA2_val,
-            "Tx Rate": txrate_val,
-            "Rx Rate": rxrate_val
-        }
+        return stats
     return None
 
 
@@ -117,11 +131,8 @@ def ping(host):
     param = '-n' if platform.system().lower() == 'windows' else '-c'
     with open(os.devnull, 'w') as DEVNULL:
         try:
-            result = subprocess.call(['ping', param, '3', host], stdout=DEVNULL, stderr=DEVNULL, timeout=10) == 0
-            print(f"\n{host} is {'Reachable' if result else 'Not Reachable'}\n", flush=True)
-            return result
+            return subprocess.call(['ping', param, '3', host], stdout=DEVNULL, stderr=DEVNULL, timeout=10) == 0
         except:
-            print(f"\n{host} ping timeout\n", flush=True)
             return False
 
 
@@ -129,6 +140,7 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers):
     radio_oid = "2" if radio == "radio1" else "3"
 
     excel_filename = os.getenv("EXCEL_FILE", f"snr_test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+    table_html_file = os.getenv("TABLE_HTML", "results_table.html")
 
     print("\n" + "=" * 80, flush=True)
     print("STARTING SNR vs TX POWER TEST", flush=True)
@@ -140,10 +152,30 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers):
 
     try:
         wb, ws = init_excel(excel_filename)
-        print(f"Results will be saved to: {excel_filename}", flush=True)
+        print(f"Results saved to: {excel_filename}", flush=True)
 
         test_channels = channels if channels else [None]
         current_channel_in_excel = ""
+
+        thin_border = Border(left=Side(style='thin'), right=Side(style='thin'),
+                             top=Side(style='thin'), bottom=Side(style='thin'))
+
+        html_table = '''
+<h2>SNR vs Tx Power Results</h2>
+<table style="width:100%; border-collapse:collapse; margin-top:24px; background:#fff; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; box-shadow:0 2px 4px rgba(0,0,0,0.04);">
+    <tr style="background:#e0f2fe; color:#0369a1; font-weight:700;">
+        <th style="padding:16px; text-align:center;">Channel</th>
+        <th style="padding:16px; text-align:center;">Power (dBm)</th>
+        <th style="padding:16px; text-align:center;">Remote IP</th>
+        <th style="padding:16px; text-align:center;">Local SNR A1</th>
+        <th style="padding:16px; text-align:center;">Local SNR A2</th>
+        <th style="padding:16px; text-align:center;">Remote SNR A1</th>
+        <th style="padding:16px; text-align:center;">Remote SNR A2</th>
+        <th style="padding:16px; text-align:center;">Tx Rate</th>
+        <th style="padding:16px; text-align:center;">Rx Rate</th>
+        <th style="padding:16px; text-align:center;">Status Check</th>
+    </tr>
+'''
 
         for channel in test_channels:
             if channel is not None:
@@ -151,10 +183,9 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers):
 
                 if ping(local_ip) and ping(remote_ip):
                     set_channel(local_ip, channel, radio_oid)
-                    print(f"Channel set to {channel}. Waiting 60s for DFS/Link establishment...", flush=True)
                     time.sleep(60)
                 else:
-                    raise Exception("Devices not reachable before channel change")
+                    raise Exception("Devices not reachable")
 
             for power in powers:
                 print(f"\n--- Testing Channel {channel or 'Current'} | Power Level: {power} dBm ---", flush=True)
@@ -163,48 +194,70 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers):
                     set_power(remote_ip, power, radio_oid)
                     time.sleep(2)
                     set_power(local_ip, power, radio_oid)
-                    print("Waiting 30s for link to stabilize...", flush=True)
                     time.sleep(30)
 
                     stats = get_linkstats(local_ip, radio_oid)
                     current_channel_read = get_channel(local_ip, radio_oid)
 
                     if stats:
-                        status_msg = "OK"
-
+                        # Excel: Add channel header when changed
                         if current_channel_read != current_channel_in_excel:
-                            ws.append([])
-                            ws.append([f"Channel {current_channel_read}"])  # Channel header
+                            ws.append([])  # Spacing
+                            channel_row = ws.max_row
+                            ws.append([f"Channel {current_channel_read}"])
+                            ws.merge_cells(f'A{channel_row}:J{channel_row}')
+                            cell = ws[f'A{channel_row}']
+                            cell.font = Font(bold=True, size=14, color="0C4A6E")
+                            cell.fill = PatternFill(start_color="BAE6FD", end_color="BAE6FD", fill_type="solid")
+                            cell.alignment = Alignment(horizontal="left", indent=2)
                             current_channel_in_excel = current_channel_read
 
+                            # HTML: Add channel header
+                            html_table += f'<tr style="background:#bae6fd; font-weight:bold; font-size:18px; color:#0c4a6e;"><td colspan="10" style="padding-left:40px; text-align:left;">Channel {current_channel_read}</td></tr>'
 
+                        # Excel data row
                         row_data = [
-                            "",
-                            power,
-                            stats['IP'],
-                            stats['Local SNR A1'],
-                            stats['Local SNR A2'],
-                            stats['Remote SNR A1'],
-                            stats['Remote SNR A2'],
-                            stats['Tx Rate'],
-                            stats['Rx Rate'],
-                            status_msg
+                            "", power, stats['IP'],
+                            stats['Local SNR A1'], stats['Local SNR A2'],
+                            stats['Remote SNR A1'], stats['Remote SNR A2'],
+                            stats['Tx Rate'], stats['Rx Rate'], "OK"
                         ]
+                        data_row_num = ws.max_row + 1
                         ws.append(row_data)
-                        wb.save(excel_filename)
+                        for cell in ws[data_row_num]:
+                            cell.alignment = Alignment(horizontal="center")
+                            cell.border = thin_border
+                        ws.cell(row=data_row_num, column=2).alignment = Alignment(horizontal="left", indent=5)
 
-                        print(f"Data saved. Channel: {current_channel_read} | Power: {power} | Status: {status_msg}", flush=True)
-                    else:
-                        print("No link stats retrieved", flush=True)
-                else:
-                    raise Exception(f"Link lost during test at power {power} dBm")
+                        # HTML data row
+                        html_table += f'''
+                        <tr>
+                            <td></td>
+                            <td style="padding-left:80px; text-align:left; font-weight:500;">{power}</td>
+                            <td>{stats['IP']}</td>
+                            <td>{stats['Local SNR A1']}</td>
+                            <td>{stats['Local SNR A2']}</td>
+                            <td>{stats['Remote SNR A1']}</td>
+                            <td>{stats['Remote SNR A2']}</td>
+                            <td>{stats['Tx Rate']}</td>
+                            <td>{stats['Rx Rate']}</td>
+                            <td>OK</td>
+                        </tr>
+                        '''
+
+                        wb.save(excel_filename)
+                        print(f"Data saved. Channel: {current_channel_read} | Power: {power} | Status: OK", flush=True)
+
+        html_table += '</table>'
+        with open(table_html_file, "w") as f:
+            f.write(html_table)
+        print(f"HTML table generated: {table_html_file}", flush=True)
 
     except Exception as e:
         print(f"TEST FAILED: {str(e)}", flush=True)
         pytest.fail(f"Test failed: {e}")
 
 
-# Suppress warnings
 def warn(*args, **kwargs):
     pass
 import warnings
