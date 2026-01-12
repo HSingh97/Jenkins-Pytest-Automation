@@ -65,25 +65,12 @@ pipeline {
                         sh "mv -f '${customBuildFile}' ${targetTgzFile} 2>&1 | tee \"${logFile}\""
                         sh "echo 'Downloading .img.enc file...' | tee -a \"${logFile}\""
                         sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
-                        sh """
-                           #!/bin/bash
-                           imgfile=\$(ls -t *-apps.img.enc 2>/dev/null | head -n 1)
-                           if [ -n "\$imgfile" ]; then mv -f "\$imgfile" "${targetImgFile}"; fi
-                        """ + " 2>&1 | tee -a \"${logFile}\""
                     } else {
                         sh "echo 'No custom build found. Downloading from URL.' | tee \"${logFile}\""
-                        sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc,*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
+                        sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A *-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
 
                         // Rename the tgz file
                         sh "mv -f *-apps.tgz ${targetTgzFile} 2>&1 | tee -a \"${logFile}\""
-
-                        // Rename the img.enc file
-                        sh """
-                           #!/bin/bash
-                           imgfile=\$(ls -t *-apps.img.enc 2>/dev/null | head -n 1)
-                           echo "ERROR: No downloaded .img file matching '*-apps.img.enc' was found."
-                           exit 1
-                        """ + " 2>&1 | tee -a \"${logFile}\""
                     }
 
                     echo "Setting firmware for upgrade: ${targetTgzFile}"
