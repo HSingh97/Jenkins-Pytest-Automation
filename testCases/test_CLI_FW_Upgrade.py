@@ -45,7 +45,7 @@ def append_result_to_json(result, filename="iteration_results.json"):
     print("=======================================\n", flush=True)
 
 
-def test_Upgrade(driver, local_ip, remote_ip, serialPort, iter):
+def test_Upgrade(local_ip, remote_ip, serialPort, iter):
     print("\n" + "="*60, flush=True)
     print(f"      STARTING CLI FIRMWARE UPGRADE - ITERATION {iter}     ".center(60), flush=True)
     print(f"      Local IP  : {local_ip} ".center(60), flush=True)
@@ -97,8 +97,7 @@ def test_Upgrade(driver, local_ip, remote_ip, serialPort, iter):
         print(f"--- Stopping serial logger for iteration {iter} ---", flush=True)
         serial_logger.stop_logger(serialPort)
         append_result_to_json(result)
-        driver.quit()
-        print("Browser closed. Iteration finished.\n", flush=True)
+        print("Iteration finished.\n", flush=True)
 
 
 # Silence warnings
