@@ -78,7 +78,7 @@ pipeline {
                         "Radio": params.Radio,
                         "Channels": params.Channels,
                         "Powers": params.Powers,
-                        "Frequency Band": env.FREQUENCY_BAND,
+                        // "Frequency Band": env.FREQUENCY_BAND,
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
@@ -114,33 +114,38 @@ pipeline {
                     }
 
                     def html = '<html><head><title>SNR Tx Power Test Report</title>'
-                    html += '<style>body {font-family: "Segoe UI", sans-serif; background:#f9fafb; color:#1f2937; margin:0; padding:30px;}'
-                    html += '.container {max-width:1200px; margin:0 auto;}'
-                    html += '.header {display:flex; justify-content:space-between; align-items:center; background:#fff; padding:25px 40px; border-bottom:4px solid #2c3e50; box-shadow:0 4px 12px rgba(0,0,0,0.1);}'
-                    html += '.header img {height:70px;}'
-                    html += '.header-info h1 {margin:0; font-size:34px; color:#2c3e50;}'
-                    html += '.header-info p {margin:8px 0; font-size:17px; color:#555;}'
-                    html += 'h2 {margin:50px 0 25px; font-size:28px; color:#2c3e50; border-bottom:3px solid #3498db; padding-bottom:10px;}'
-                    html += 'table {width:100%; border-collapse:collapse; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,0.1); border-radius:12px; overflow:hidden;}'
-                    html += 'th {background:#2c3e50; color:#fff; padding:16px; text-align:center;}'
-                    html += 'td {padding:14px 20px; text-align:left; border-bottom:1px solid #eee;}'
-                    html += 'tr:nth-child(even) {background:#f8f9fa;}'
-                    html += 'tr:hover {background:#eaf4ff;}'
+                    html += '<style>'
+                    html += 'body {font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin:0; padding:0; background-color:#f9fafb; color:#1f2937;}'
+                    html += '.container {max-width:1280px; margin:60px auto; padding:48px 56px; background:white; border-radius:20px; box-shadow:0 12px 40px rgba(0,0,0,0.08);}'
+                    html += '.header {display:flex; justify-content:space-between; align-items:center; background:linear-gradient(to right, #ffffff 10%, #f9fafb 100%); padding:40px 56px; border-radius:16px; box-shadow:0 6px 16px rgba(0,0,0,0.05);}'
+                    html += '.header img {height:75px; transition:transform 0.2s ease-in-out;}'
+                    html += '.header img:hover {transform:scale(1.05);}'
+                    html += '.header-info {text-align:right;}'
+                    html += '.header-info h1 {margin:0; font-size:34px; font-weight:700; color:#0a2540;}'
+                    html += '.header-info p {margin:10px 0 0 0; font-size:16px; color:#4a5568;}'
+                    html += 'h2 {margin:64px 0 32px 0; font-size:28px; font-weight:600; color:#111827; border-bottom:3px solid #e5e7eb; padding-bottom:14px;}'
+                    html += 'table {width:100%; border-collapse:collapse; margin-top:40px; background:#fff; border:1px solid #e5e7eb; border-radius:16px; overflow:hidden; box-shadow:0 6px 16px rgba(0,0,0,0.05);}'
+                    html += 'th, td {padding:22px 28px; border-bottom:1px solid #e5e7eb; text-align:left;}'
+                    html += 'th {background:#f9fafb; font-weight:600; color:#6b7280; font-size:14px; text-transform:uppercase; letter-spacing:0.6px;}'
+                    html += 'tr:last-child td {border-bottom:none;}'
+                    html += 'tr:hover {background:#f9fafb;}'
                     html += '.channel-cell {background:#3498db; color:white; font-weight:bold; font-size:18px; text-align:left; padding-left:40px;}'
                     html += '.power-cell {padding-left:80px; font-weight:500;}'
-                    html += '.log-button {background:#3498db; color:white; padding:16px 40px; border:none; border-radius:10px; font-size:18px; cursor:pointer; margin:60px auto; display:block; box-shadow:0 6px 12px rgba(0,0,0,0.2);}'
-                    html += '.log-button:hover {background:#2980b9;}'
-                    html += '.modal {display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.8);}'
-                    html += '.modal-content {background:#fff; margin:5% auto; padding:30px; border-radius:12px; width:90%; max-width:1200px;}'
-                    html += '.modal-header {display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #eee; padding-bottom:15px;}'
-                    html += '.modal-close {font-size:36px; cursor:pointer; color:#aaa;}'
-                    html += '.modal-close:hover {color:#333;}'
-                    html += 'pre {background:#2c3e50; color:#ecf0f1; padding:25px; max-height:70vh; overflow:auto; border-radius:8px; font-family:monospace;}'
+                    html += '.log-button {background:#3498db; color:white; padding:12px 24px; border:none; border-radius:12px; font-size:15px; cursor:pointer; margin:80px auto; display:block; box-shadow:0 2px 6px rgba(0,0,0,0.06); transition:all 0.2s ease;}'
+                    html += '.log-button:hover {background:#2563eb; box-shadow:0 6px 16px rgba(0,0,0,0.12); transform:translateY(-2px);}'
+                    html += '.modal {display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; overflow:auto; background:rgba(0,0,0,0.7);}'
+                    html += '.modal-content {background:#ffffff; margin:8% auto; border:1px solid #e5e7eb; border-radius:16px; width:88%; max-width:1100px; box-shadow:0 15px 40px rgba(0,0,0,0.18);}'
+                    html += '.modal-header {padding:28px 48px; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;}'
+                    html += '.modal-header h2 {margin:0; font-size:24px;}'
+                    html += '.modal-close {color:#9ca3af; font-size:36px; cursor:pointer;}'
+                    html += '.modal-close:hover {color:#1f2937;}'
+                    html += 'pre {background:#1f2937; color:#e5e7eb; padding:40px 56px; max-height:70vh; overflow:auto; border-radius:0 0 16px 16px; font-family:monospace; font-size:15px;}'
                     html += '</style>'
                     html += '<script>function showLog(){document.getElementById("log-pre").innerHTML=document.getElementById("log-data").innerHTML;document.getElementById("modal").style.display="block";}'
                     html += 'function closeModal(){document.getElementById("modal").style.display="none";}'
                     html += 'window.onclick=function(e){if(e.target==document.getElementById("modal"))closeModal();}</script></head><body>'
 
+                    html += '<div class="container">'
                     html += '<div class="header"><img src="' + companyLogoUrl + '" alt="Senao Networks"/>'
                     html += '<div class="header-info"><h1>SNR Tx Power Test Report</h1>'
                     html += '<p><strong>Pipeline:</strong> ' + env.JOB_NAME + '</p>'
@@ -173,14 +178,14 @@ pipeline {
 
                     html += '</table>'
 
-                    html += '<div style="text-align:center;margin:60px 0;"><button class="log-button" onclick="showLog()">See Full Logs</button></div>'
+                    html += '<div style="text-align:center;margin:80px 0;"><button class="log-button" onclick="showLog()">See Full Logs</button></div>'
 
                     html += '<div id="modal" class="modal"><div class="modal-content"><div class="modal-header"><h2>Full Test Log</h2>'
                     html += '<span class="modal-close" onclick="closeModal()">×</span></div><pre id="log-pre"></pre></div></div>'
 
-                    html += '<div id="log-data" style="display:none;">' + logContent + '</div></body></html>'
+                    html += '<div id="log-data" style="display:none;">' + logContent + '</div></div></body></html>'
 
-                    writeFile file: 'snr_test_report.html', text: html
+                    writeFile file: 'snr_tx_power_test_report.html', text: html
                 }
             }
         }
@@ -193,11 +198,11 @@ pipeline {
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
                 reportDir: '.',
-                reportFiles: 'snr_test_report.html',
+                reportFiles: 'snr_tx_power_test_report.html',
                 reportName: 'SNR Tx Power Test Report'
             ])
 
-            archiveArtifacts artifacts: "snr_test_report.html,${env.LOG_FILE}", allowEmptyArchive: true
+            archiveArtifacts artifacts: "snr_tx_power_test_report.html,${env.LOG_FILE}", allowEmptyArchive: true
 
             sh "rm -f ${env.LOG_FILE} || true"
 
@@ -235,7 +240,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: "snr_test_report.html"
+                    attachmentsPattern: "snr_tx_power_test_report.html"
                 )
             }
         }
