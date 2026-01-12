@@ -6,9 +6,7 @@ import re
 import pytest
 from datetime import datetime
 
-
 def ping(host):
-    """Ping a host to check reachability"""
     param = '-n' if platform.system().lower() == 'windows' else '-c'
     with open(os.devnull, 'w') as DEVNULL:
         try:
@@ -94,18 +92,15 @@ def get_linkstats(host, radio_oid):
     return None
 
 
-def channel_to_frequency(channel):
+def channel_to_frequency(channel, band):
     try:
         c = int(channel)
-        if 36 <= c <= 48:
-            return 5180 + (c - 36) * 20
-        elif 52 <= c <= 64:
-            return 5260 + (c - 52) * 20
-        elif 100 <= c <= 140:
-            return 5500 + (c - 100) * 20
-        elif 149 <= c <= 165:
-            return 5745 + (c - 149) * 20
-        return "?"
+        if band == "5GHz":
+            return 5000 + (5 * c)  # F = 5000 + 5 * C
+        elif band == "6GHz":
+            return 5950 + (5 * c)  # F = 5950 + 5 * C
+        else:
+            return "?"
     except:
         return "?"
 
@@ -114,6 +109,7 @@ def test_snr_tx_power(request):
     radio_oid = "2" if request.config.getoption("--radio") == "radio1" else "3"
     local_ip = request.config.getoption("--local-ip")
     remote_ip = request.config.getoption("--remote-ip")
+    band = request.config.getoption("--frequency_band", "5GHz")
 
     channels_str = request.config.getoption("--channels", "36,50")
     powers_str = request.config.getoption("--powers", "9,10,11")
@@ -123,12 +119,13 @@ def test_snr_tx_power(request):
 
     print(f"\nSTARTING SNR vs TX POWER TEST at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", flush=True)
     print(f"Local IP: {local_ip} | Remote IP: {remote_ip} | Radio: {request.config.getoption('--radio')}", flush=True)
+    print(f"Frequency Band: {band}", flush=True)
     print(f"Channels: {channels}", flush=True)
     print(f"Powers: {powers}", flush=True)
     print("=" * 80, flush=True)
 
     for channel in channels:
-        print(f"\nSWITCHING TO CHANNEL: {channel}", flush=True)
+        print(f"\n====== SWITCHING TO CHANNEL: {channel} ({band}) ======", flush=True)
 
         if ping(local_ip) and ping(remote_ip):
             set_channel(remote_ip, channel, radio_oid)
@@ -154,7 +151,7 @@ def test_snr_tx_power(request):
                 current_channel = get_channel(local_ip, radio_oid)
 
                 if stats:
-                    freq = channel_to_frequency(current_channel)
+                    freq = channel_to_frequency(current_channel, band)
                     print(f"DATA_SAVED | Channel: {current_channel} | Frequency: {freq} MHz | Power: {power} | "
                           f"Remote IP: {stats['IP']} | "
                           f"Local SNR A1: {stats['Local SNR A1']} | Local SNR A2: {stats['Local SNR A2']} | "
@@ -173,3 +170,4 @@ def pytest_addoption(parser):
     parser.addoption("--radio", action="store", default="radio1", help="Radio name (radio1/radio2)")
     parser.addoption("--channels", action="store", default="36,50", help="Comma-separated channels")
     parser.addoption("--powers", action="store", default="9,10,11", help="Comma-separated power levels")
+    parser.addoption("--frequency_band", action="store", default="5GHz", help="Frequency band: 5GHz or 6GHz")
