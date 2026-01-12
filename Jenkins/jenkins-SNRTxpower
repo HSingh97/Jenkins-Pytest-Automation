@@ -162,7 +162,7 @@ pipeline {
                     def currentChannel = ""
                     results.each { r ->
                         if (r.channel != currentChannel) {
-                            html += '<tr><td class="channel-cell">Channel ' + r.channel + '<br>(' + r.freq + ' MHz)</td><td colspan="9"></td></tr>'
+                            html += '<tr><td class="channel-cell">' + r.channel + '<br>(' + r.freq + ' MHz)</td><td colspan="9"></td></tr>'
                             currentChannel = r.channel
                         }
 
