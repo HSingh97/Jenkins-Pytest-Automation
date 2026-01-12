@@ -97,6 +97,7 @@ pipeline {
                             .replace(">", "&gt;") :
                         "No log available"
 
+                    // Parse log for DATA_SAVED lines
                     def lines = readFile(env.LOG_FILE).split('\n')
                     def results = []
                     def currentChannel = ""
@@ -262,6 +263,10 @@ pipeline {
             archiveArtifacts artifacts: "snr_test_report.html,${env.LOG_FILE}", allowEmptyArchive: true
 
             sh 'rm -f ${env.LOG_FILE} || true'
+
+            echo "-----------------------------------------"
+            echo 'SNR Tx Power Test Completed!'
+            echo "-----------------------------------------"
 
             script {
                 def userEmails = [
