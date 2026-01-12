@@ -164,7 +164,6 @@ def test_snr_tx_power(request):
 
     print("\nTest completed successfully.", flush=True)
 
-
 def pytest_addoption(parser):
     parser.addoption("--local-ip", action="store", default="192.168.2.10")
     parser.addoption("--remote-ip", action="store", default="192.168.2.11")
