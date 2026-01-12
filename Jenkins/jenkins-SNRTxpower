@@ -89,10 +89,8 @@ pipeline {
                         readFile(file: env.LOG_FILE).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") :
                         "No log available"
 
-                    // Parse full data from DATA_SAVED lines
                     def lines = readFile(env.LOG_FILE).split('\n')
                     def results = []
-                    def currentChannel = ""
 
                     lines.each { line ->
                         if (line.contains("DATA_SAVED")) {
@@ -115,131 +113,75 @@ pipeline {
                         }
                     }
 
-                    def htmlContent = """
-                    <html>
-                    <head>
-                        <title>SNR Tx Power Test Report</title>
-                        <style>
-                            body {font-family: 'Segoe UI', sans-serif; background:#f9fafb; color:#1f2937; margin:0; padding:30px;}
-                            .container {max-width:1200px; margin:0 auto;}
-                            .header {display:flex; justify-content:space-between; align-items:center; background:#fff; padding:25px 40px; border-bottom:4px solid #2c3e50; box-shadow:0 4px 12px rgba(0,0,0,0.1);}
-                            .header img {height:70px;}
-                            .header-info h1 {margin:0; font-size:34px; color:#2c3e50;}
-                            .header-info p {margin:8px 0; font-size:17px; color:#555;}
-                            h2 {margin:50px 0 25px; font-size:28px; color:#2c3e50; border-bottom:3px solid #3498db; padding-bottom:10px;}
-                            table {width:100%; border-collapse:collapse; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,0.1); border-radius:12px; overflow:hidden;}
-                            th {background:#2c3e50; color:#fff; padding:16px; text-align:center;}
-                            td {padding:14px 20px; text-align:left; border-bottom:1px solid #eee;}
-                            tr:nth-child(even) {background:#f8f9fa;}
-                            tr:hover {background:#eaf4ff;}
-                            .channel-cell {background:#3498db; color:white; font-weight:bold; font-size:18px; text-align:left; padding-left:40px;}
-                            .power-cell {padding-left:80px; font-weight:500;}
-                            .log-button {background:#3498db; color:white; padding:16px 40px; border:none; border-radius:10px; font-size:18px; cursor:pointer; margin:60px auto; display:block; box-shadow:0 6px 12px rgba(0,0,0,0.2);}
-                            .log-button:hover {background:#2980b9;}
-                            .modal {display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.8);}
-                            .modal-content {background:#fff; margin:5% auto; padding:30px; border-radius:12px; width:90%; max-width:1200px;}
-                            .modal-header {display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #eee; padding-bottom:15px;}
-                            .modal-close {font-size:36px; cursor:pointer; color:#aaa;}
-                            .modal-close:hover {color:#333;}
-                            pre {background:#2c3e50; color:#ecf0f1; padding:25px; max-height:70vh; overflow:auto; border-radius:8px; font-family:monospace;}
-                        </style>
-                        <script>
-                            function showLog() {
-                                document.getElementById('log-pre').innerHTML = document.getElementById('log-data').innerHTML;
-                                document.getElementById('modal').style.display = 'block';
-                            }
-                            function closeModal() { document.getElementById('modal').style.display = 'none'; }
-                            window.onclick = function(e) { if (e.target == document.getElementById('modal')) closeModal(); }
-                        </script>
-                    </head>
-                    <body>
-                        <div class="header">
-                            <img src="${companyLogoUrl}" alt="Senao Networks"/>
-                            <div class="header-info">
-                                <h1>SNR Tx Power Test Report</h1>
-                                <p><strong>Pipeline:</strong> ${env.JOB_NAME}</p>
-                                <p><strong>Date & Time:</strong> ${currentDateTime}</p>
-                            </div>
-                        </div>
+                    // HTML generation - safe, no brace issues
+                    def html = '<html><head><title>SNR Tx Power Test Report</title>'
+                    html += '<style>body {font-family: "Segoe UI", sans-serif; background:#f9fafb; color:#1f2937; margin:0; padding:30px;}'
+                    html += '.container {max-width:1200px; margin:0 auto;}'
+                    html += '.header {display:flex; justify-content:space-between; align-items:center; background:#fff; padding:25px 40px; border-bottom:4px solid #2c3e50; box-shadow:0 4px 12px rgba(0,0,0,0.1);}'
+                    html += '.header img {height:70px;}'
+                    html += '.header-info h1 {margin:0; font-size:34px; color:#2c3e50;}'
+                    html += '.header-info p {margin:8px 0; font-size:17px; color:#555;}'
+                    html += 'h2 {margin:50px 0 25px; font-size:28px; color:#2c3e50; border-bottom:3px solid #3498db; padding-bottom:10px;}'
+                    html += 'table {width:100%; border-collapse:collapse; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,0.1); border-radius:12px; overflow:hidden;}'
+                    html += 'th {background:#2c3e50; color:#fff; padding:16px; text-align:center;}'
+                    html += 'td {padding:14px 20px; text-align:left; border-bottom:1px solid #eee;}'
+                    html += 'tr:nth-child(even) {background:#f8f9fa;}'
+                    html += 'tr:hover {background:#eaf4ff;}'
+                    html += '.channel-cell {background:#3498db; color:white; font-weight:bold; font-size:18px; text-align:left; padding-left:40px;}'
+                    html += '.power-cell {padding-left:80px; font-weight:500;}'
+                    html += '.log-button {background:#3498db; color:white; padding:16px 40px; border:none; border-radius:10px; font-size:18px; cursor:pointer; margin:60px auto; display:block; box-shadow:0 6px 12px rgba(0,0,0,0.2);}'
+                    html += '.log-button:hover {background:#2980b9;}'
+                    html += '.modal {display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.8);}'
+                    html += '.modal-content {background:#fff; margin:5% auto; padding:30px; border-radius:12px; width:90%; max-width:1200px;}'
+                    html += '.modal-header {display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #eee; padding-bottom:15px;}'
+                    html += '.modal-close {font-size:36px; cursor:pointer; color:#aaa;}'
+                    html += '.modal-close:hover {color:#333;}'
+                    html += 'pre {background:#2c3e50; color:#ecf0f1; padding:25px; max-height:70vh; overflow:auto; border-radius:8px; font-family:monospace;}'
+                    html += '</style>'
+                    html += '<script>function showLog(){document.getElementById("log-pre").innerHTML=document.getElementById("log-data").innerHTML;document.getElementById("modal").style.display="block";}'
+                    html += 'function closeModal(){document.getElementById("modal").style.display="none";}'
+                    html += 'window.onclick=function(e){if(e.target==document.getElementById("modal"))closeModal();}</script></head><body>'
 
-                        <h2>Build Parameters</h2>
-                        <table>
-                            <tr><th>Parameter</th><th>Value</th></tr>
-                            ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('')}
-                        </table>
+                    html += '<div class="header"><img src="' + companyLogoUrl + '" alt="Senao Networks"/>'
+                    html += '<div class="header-info"><h1>SNR Tx Power Test Report</h1>'
+                    html += '<p><strong>Pipeline:</strong> ' + env.JOB_NAME + '</p>'
+                    html += '<p><strong>Date & Time:</strong> ' + currentDateTime + '</p></div></div>'
 
-                        <h2>SNR vs Tx Power Results</h2>
-                        <table>
-                            <tr>
-                                <th>Channel</th>
-                                <th>Power (dBm)</th>
-                                <th>Remote IP</th>
-                                <th>Local SNR A1</th>
-                                <th>Local SNR A2</th>
-                                <th>Remote SNR A1</th>
-                                <th>Remote SNR A2</th>
-                                <th>Tx Rate</th>
-                                <th>Rx Rate</th>
-                                <th>Status Check</th>
-                            </tr>
-                    """
+                    html += '<h2>Build Parameters</h2><table><tr><th>Parameter</th><th>Value</th></tr>'
+                    buildParams.each { k, v -> html += "<tr><td><b>" + k + "</b></td><td>" + v + "</td></tr>" }
+                    html += '</table>'
+
+                    html += '<h2>SNR vs Tx Power Results</h2><table><tr>'
+                    html += '<th>Channel (MHz)</th><th>Power (dBm)</th><th>Remote IP</th><th>Local SNR A1</th><th>Local SNR A2</th>'
+                    html += '<th>Remote SNR A1</th><th>Remote SNR A2</th><th>Tx Rate</th><th>Rx Rate</th><th>Status Check</th></tr>'
 
                     def currentChannel = ""
                     results.each { r ->
                         if (r.channel != currentChannel) {
-                            htmlContent += """
-                            <tr>
-                                <td class="channel-cell">Channel ${r.channel}<br>(${r.freq} MHz)</td>
-                                <td colspan="9"></td>
-                            </tr>
-                            """
+                            html += '<tr><td class="channel-cell">Channel ' + r.channel + ' (' + r.freq + ' MHz)</td><td colspan="9"></td></tr>'
                             currentChannel = r.channel
                         }
 
-                        htmlContent += """
-                        <tr>
-                            <td></td>
-                            <td class="power-cell">${r.power}</td>
-                            <td>${r.remoteIp}</td>
-                            <td>${r.localA1}</td>
-                            <td>${r.localA2}</td>
-                            <td>${r.remoteA1}</td>
-                            <td>${r.remoteA2}</td>
-                            <td>${r.txRate}</td>
-                            <td>${r.rxRate}</td>
-                            <td style="color:green; font-weight:bold;">${r.status}</td>
-                        </tr>
-                        """
+                        html += '<tr><td></td><td class="power-cell">' + r.power + '</td>'
+                        html += '<td>' + r.remoteIp + '</td><td>' + r.localA1 + '</td><td>' + r.localA2 + '</td>'
+                        html += '<td>' + r.remoteA1 + '</td><td>' + r.remoteA2 + '</td><td>' + r.txRate + '</td>'
+                        html += '<td>' + r.rxRate + '</td><td style="color:green;font-weight:bold;">' + r.status + '</td></tr>'
                     }
 
                     if (results.isEmpty()) {
-                        htmlContent += "<tr><td colspan='10' style='color:red; text-align:center; padding:40px;'>No test results generated</td></tr>"
+                        html += '<tr><td colspan="10" style="color:red;text-align:center;padding:40px;">No test results generated</td></tr>'
                     }
 
-                    htmlContent += """
-                        </table>
+                    html += '</table>'
 
-                        <div style="text-align:center; margin:60px 0;">
-                            <button class="log-button" onclick="showLog()">See Full Logs</button>
-                        </div>
-                    </div>
+                    html += '<div style="text-align:center;margin:60px 0;"><button class="log-button" onclick="showLog()">See Full Logs</button></div>'
 
-                    <div id="modal" class="modal">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h2>Full Test Log</h2>
-                                <span class="modal-close" onclick="closeModal()">×</span>
-                            </div>
-                            <pre id="log-pre"></pre>
-                        </div>
-                    </div>
+                    html += '<div id="modal" class="modal"><div class="modal-content"><div class="modal-header"><h2>Full Test Log</h2>'
+                    html += '<span class="modal-close" onclick="closeModal()">&times;</span></div><pre id="log-pre"></pre></div></div>'
 
-                    <div id="log-data" style="display:none;">${logContent}</div>
-                </body>
-                </html>
-                    """
+                    html += '<div id="log-data" style="display:none;">' + logContent + '</div></body></html>'
 
-                    writeFile file: 'snr_test_report.html', text: htmlContent
+                    writeFile file: 'snr_test_report.html', text: html
                 }
             }
         }
