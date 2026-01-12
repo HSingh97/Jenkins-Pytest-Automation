@@ -98,6 +98,7 @@ pipeline {
                         readFile(file: env.LOG_FILE).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") :
                         "No log available"
 
+                    // Parse log for DATA_SAVED lines
                     def lines = readFile(env.LOG_FILE).split('\n')
                     def results = []
                     def currentChannel = ""
@@ -129,7 +130,8 @@ pipeline {
                         }
                     }
 
-                    def htmlContent = """
+                    // Build HTML in smaller parts to avoid brace errors
+                    def htmlHeader = """
                     <html>
                     <head>
                         <title>SNR Tx Power Test Report</title>
@@ -179,7 +181,11 @@ pipeline {
                         <h2>Build Parameters</h2>
                         <table>
                             <tr><th>Parameter</th><th>Value</th></tr>
-                            ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('')}
+                    """
+
+                    def paramsTable = buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('')
+
+                    def htmlMiddle = """
                         </table>
 
                         <h2>SNR vs Tx Power Results</h2>
@@ -198,15 +204,16 @@ pipeline {
                             </tr>
                     """
 
+                    def tableRows = ""
                     def lastChannel = ""
                     results.each { r ->
                         def chLabel = "Channel ${r.channel} (${r.freq} MHz)"
                         if (chLabel != lastChannel) {
-                            htmlContent += "<tr class='channel-row'><td colspan='10'>${chLabel}</td></tr>"
+                            tableRows += "<tr class='channel-row'><td colspan='10'>${chLabel}</td></tr>"
                             lastChannel = chLabel
                         }
 
-                        htmlContent += """
+                        tableRows += """
                         <tr>
                             <td></td>
                             <td class='power-cell'>${r.power}</td>
@@ -218,10 +225,10 @@ pipeline {
                     }
 
                     if (results.isEmpty()) {
-                        htmlContent += "<tr><td colspan='10' style='padding:40px;color:#999;text-align:center;'>No results found</td></tr>"
+                        tableRows += "<tr><td colspan='10' style='padding:40px;color:#999;text-align:center;'>No results found</td></tr>"
                     }
 
-                    htmlContent += """
+                    def htmlFooter = """
                         </table>
 
                         <div style="text-align:center;">
@@ -244,7 +251,11 @@ pipeline {
                 </html>
                 """
 
-                writeFile file: 'snr_test_report.html', text: htmlContent
+                    // Combine all parts safely
+                    def fullHtml = htmlHeader + paramsTable + htmlMiddle + tableRows + htmlFooter
+
+                    writeFile file: 'snr_test_report.html', text: fullHtml
+                }
             }
         }
     }
