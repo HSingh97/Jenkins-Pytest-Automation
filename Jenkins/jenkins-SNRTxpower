@@ -22,6 +22,7 @@ pipeline {
                     echo "--- Radio        : ${params.Radio}"
                     echo "--- Channels     : ${params.Channels}"
                     echo "--- Powers       : ${params.Powers}"
+                    echo "--- Frequency Band: ${params.FREQUENCY_BAND}"
                     echo "----------------------------------------"
 
                     if (!params['Local IP Address'] || !params['Remote IP Address']) {
@@ -40,21 +41,14 @@ pipeline {
         stage('SNR Tx Power Test') {
             steps {
                 script {
-                    def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
-                    def radio = params.Radio
-                    def channels = params.Channels
-                    def powers = params.Powers
-
-                    echo "Running SNR Tx Power Test"
-
                     sh """
                         python3 -u -m pytest -v -s testCases/test_SNRTxpower.py \
-                        --local-ip '${localIP}' \
-                        --remote-ip '${remoteIP}' \
-                        --radio '${radio}' \
-                        --channels '${channels}' \
-                        --powers '${powers}' 2>&1 | tee ${LOG_FILE}
+                        --local-ip '${params['Local IP Address']}' \
+                        --remote-ip '${params['Remote IP Address']}' \
+                        --radio '${params.Radio}' \
+                        --channels '${params.Channels}' \
+                        --powers '${params.Powers}' \
+                        --frequency-band '${params.FREQUENCY_BAND}' 2>&1 | tee ${env.LOG_FILE}
                     """
                 }
             }
@@ -73,14 +67,10 @@ pipeline {
                     def remote_fw_version = "N/A"
                     try {
                         local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (Exception e) {
-                        echo "Failed to get local FW: ${e}"
-                    }
+                    } catch (e) {}
                     try {
                         remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (Exception e) {
-                        echo "Failed to get remote FW: ${e}"
-                    }
+                    } catch (e) {}
 
                     def buildParams = [
                         "Local IP Address": localIP,
@@ -88,51 +78,44 @@ pipeline {
                         "Radio": params.Radio,
                         "Channels": params.Channels,
                         "Powers": params.Powers,
+                        "Frequency Band": params.FREQUENCY_BAND,
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
                     def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
-                    def logContent = fileExists(LOG_FILE) ?
-                        readFile(file: LOG_FILE)
-                            .replace("&", "&amp;")
-                            .replace("<", "&lt;")
-                            .replace(">", "&gt;") :
+                    def logContent = fileExists(env.LOG_FILE) ?
+                        readFile(file: env.LOG_FILE).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") :
                         "No log available"
 
-                    def lines = readFile(LOG_FILE).split('\n')
+                    // Parse full data from DATA_SAVED lines
+                    def lines = readFile(env.LOG_FILE).split('\n')
                     def results = []
                     def currentChannel = ""
-                    def currentFreq = ""
-
-                    def channelToFreq = { ch ->
-                        def c = ch as Integer
-                        if (c >= 36 && c <= 48) return 5180 + (c - 36) * 20
-                        if (c >= 52 && c <= 64) return 5260 + (c - 52) * 20
-                        if (c >= 100 && c <= 140) return 5500 + (c - 100) * 20
-                        if (c >= 149 && c <= 165) return 5745 + (c - 149) * 20
-                        return "?"
-                    }
 
                     lines.each { line ->
                         if (line.contains("DATA_SAVED")) {
                             def parts = line.split('\\|')
-                            if (parts.size() >= 3) {
+                            if (parts.size() >= 11) {
                                 def ch = parts[1].trim().replace("Channel:", "").trim()
-                                def pwr = parts[2].trim().replace("Power:", "").trim()
+                                def freq = parts[2].trim().replace("Frequency:", "").trim().replace(" MHz", "")
+                                def pwr = parts[3].trim().replace("Power:", "").trim()
+                                def remoteIp = parts[4].trim().replace("Remote IP:", "").trim()
+                                def localA1 = parts[5].trim().replace("Local SNR A1:", "").trim()
+                                def localA2 = parts[6].trim().replace("Local SNR A2:", "").trim()
+                                def remoteA1 = parts[7].trim().replace("Remote SNR A1:", "").trim()
+                                def remoteA2 = parts[8].trim().replace("Remote SNR A2:", "").trim()
+                                def txRate = parts[9].trim().replace("Tx Rate:", "").trim()
+                                def rxRate = parts[10].trim().replace("Rx Rate:", "").trim()
+                                def status = parts[11].trim().replace("Status:", "").trim()
 
-                                if (ch != currentChannel) {
-                                    currentChannel = ch
-                                    currentFreq = channelToFreq(ch)
-                                }
-
-                                results << [channel: currentChannel, freq: currentFreq, power: pwr]
+                                results << [channel: ch, freq: freq, power: pwr, remoteIp: remoteIp, localA1: localA1, localA2: localA2, remoteA1: remoteA1, remoteA2: remoteA2, txRate: txRate, rxRate: rxRate, status: status]
                             }
                         }
                     }
 
-                    def htmlHeader = """
+                    def htmlContent = """
                     <html>
                     <head>
                         <title>SNR Tx Power Test Report</title>
@@ -146,11 +129,11 @@ pipeline {
                             h2 {margin:50px 0 25px; font-size:28px; color:#2c3e50; border-bottom:3px solid #3498db; padding-bottom:10px;}
                             table {width:100%; border-collapse:collapse; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,0.1); border-radius:12px; overflow:hidden;}
                             th {background:#2c3e50; color:#fff; padding:16px; text-align:center;}
-                            td {padding:14px 20px; text-align:center; border-bottom:1px solid #eee;}
+                            td {padding:14px 20px; text-align:left; border-bottom:1px solid #eee;}
                             tr:nth-child(even) {background:#f8f9fa;}
                             tr:hover {background:#eaf4ff;}
-                            .channel-row {background:#3498db !important; color:white; font-weight:bold; font-size:18px; text-align:left; padding-left:50px;}
-                            .power-cell {text-align:left; padding-left:90px; font-weight:500;}
+                            .channel-cell {background:#3498db; color:white; font-weight:bold; font-size:18px; text-align:left; padding-left:40px;}
+                            .power-cell {padding-left:80px; font-weight:500;}
                             .log-button {background:#3498db; color:white; padding:16px 40px; border:none; border-radius:10px; font-size:18px; cursor:pointer; margin:60px auto; display:block; box-shadow:0 6px 12px rgba(0,0,0,0.2);}
                             .log-button:hover {background:#2980b9;}
                             .modal {display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.8);}
@@ -182,17 +165,13 @@ pipeline {
                         <h2>Build Parameters</h2>
                         <table>
                             <tr><th>Parameter</th><th>Value</th></tr>
-                    """
-
-                    def paramsTable = buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('')
-
-                    def htmlMiddle = """
+                            ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('')}
                         </table>
 
                         <h2>SNR vs Tx Power Results</h2>
                         <table>
                             <tr>
-                                <th>Channel (MHz)</th>
+                                <th>Channel</th>
                                 <th>Power (dBm)</th>
                                 <th>Remote IP</th>
                                 <th>Local SNR A1</th>
@@ -205,34 +184,42 @@ pipeline {
                             </tr>
                     """
 
-                    def tableRows = ""
-                    def lastChannel = ""
+                    def currentChannel = ""
                     results.each { r ->
-                        def chLabel = "Channel ${r.channel} (${r.freq} MHz)"
-                        if (chLabel != lastChannel) {
-                            tableRows += "<tr class='channel-row'><td colspan='10'>${chLabel}</td></tr>"
-                            lastChannel = chLabel
+                        if (r.channel != currentChannel) {
+                            htmlContent += """
+                            <tr>
+                                <td class="channel-cell">Channel ${r.channel}<br>(${r.freq} MHz)</td>
+                                <td colspan="9"></td>
+                            </tr>
+                            """
+                            currentChannel = r.channel
                         }
 
-                        tableRows += """
+                        htmlContent += """
                         <tr>
                             <td></td>
-                            <td class='power-cell'>${r.power}</td>
-                            <td>192.168.2.11</td>
-                            <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
-                            <td style='color:green;font-weight:bold;'>OK</td>
+                            <td class="power-cell">${r.power}</td>
+                            <td>${r.remoteIp}</td>
+                            <td>${r.localA1}</td>
+                            <td>${r.localA2}</td>
+                            <td>${r.remoteA1}</td>
+                            <td>${r.remoteA2}</td>
+                            <td>${r.txRate}</td>
+                            <td>${r.rxRate}</td>
+                            <td style="color:green; font-weight:bold;">${r.status}</td>
                         </tr>
                         """
                     }
 
                     if (results.isEmpty()) {
-                        tableRows += "<tr><td colspan='10' style='padding:40px;color:#999;text-align:center;'>No results found</td></tr>"
+                        htmlContent += "<tr><td colspan='10' style='color:red; text-align:center; padding:40px;'>No test results generated</td></tr>"
                     }
 
-                    def htmlFooter = """
+                    htmlContent += """
                         </table>
 
-                        <div style="text-align:center;">
+                        <div style="text-align:center; margin:60px 0;">
                             <button class="log-button" onclick="showLog()">See Full Logs</button>
                         </div>
                     </div>
@@ -250,11 +237,9 @@ pipeline {
                     <div id="log-data" style="display:none;">${logContent}</div>
                 </body>
                 </html>
-                """
+                    """
 
-                    def fullHtml = htmlHeader + paramsTable + htmlMiddle + tableRows + htmlFooter
-
-                    writeFile file: 'snr_test_report.html', text: fullHtml
+                    writeFile file: 'snr_test_report.html', text: htmlContent
                 }
             }
         }
@@ -271,9 +256,9 @@ pipeline {
                 reportName: 'SNR Tx Power Test Report'
             ])
 
-            archiveArtifacts artifacts: "snr_test_report.html,${LOG_FILE}", allowEmptyArchive: true
+            archiveArtifacts artifacts: "snr_test_report.html,${env.LOG_FILE}", allowEmptyArchive: true
 
-            sh "rm -f ${LOG_FILE} || true"
+            sh "rm -f ${env.LOG_FILE} || true"
 
             echo "-----------------------------------------"
             echo 'SNR Tx Power Test Completed!'
