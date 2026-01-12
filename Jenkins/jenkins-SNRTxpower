@@ -74,12 +74,12 @@ pipeline {
                     try {
                         local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
                     } catch (Exception e) {
-                        echo "Failed to get local FW version: ${e}"
+                        echo "Failed to get local FW: ${e}"
                     }
                     try {
                         remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
                     } catch (Exception e) {
-                        echo "Failed to get remote FW version: ${e}"
+                        echo "Failed to get remote FW: ${e}"
                     }
 
                     def buildParams = [
@@ -95,13 +95,9 @@ pipeline {
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
                     def logContent = fileExists(env.LOG_FILE) ?
-                        readFile(file: env.LOG_FILE)
-                            .replace("&", "&amp;")
-                            .replace("<", "&lt;")
-                            .replace(">", "&gt;") :
+                        readFile(file: env.LOG_FILE).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") :
                         "No log available"
 
-                    // Parse log for DATA_SAVED lines
                     def lines = readFile(env.LOG_FILE).split('\n')
                     def results = []
                     def currentChannel = ""
