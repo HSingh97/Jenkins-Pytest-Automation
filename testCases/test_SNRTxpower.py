@@ -6,7 +6,6 @@ import re
 import pytest
 from datetime import datetime
 
-
 def ping(host):
     param = '-n' if platform.system().lower() == 'windows' else '-c'
     with open(os.devnull, 'w') as DEVNULL:
@@ -97,22 +96,19 @@ def channel_to_frequency(channel, band):
     try:
         c = int(channel)
         if band == "5GHz":
-            # 5GHz : F = 5000 + (5 * C)
             return 5000 + (5 * c)
         elif band == "6GHz":
-            # 6GHz : F = 5950 + (5 * C)
             return 5950 + (5 * c)
         else:
             return "?"
     except:
         return "?"
 
-
 def test_snr_tx_power(request):
     radio_oid = "2" if request.config.getoption("--radio") == "radio1" else "3"
     local_ip = request.config.getoption("--local-ip")
     remote_ip = request.config.getoption("--remote-ip")
-    band = request.config.getoption("--frequency-band", "5GHz")
+    band = request.config.getoption("--frequency_band", "5GHz")
 
     channels_str = request.config.getoption("--channels", "36,50")
     powers_str = request.config.getoption("--powers", "9,10,11")
@@ -128,7 +124,7 @@ def test_snr_tx_power(request):
     print("=" * 80, flush=True)
 
     for channel in channels:
-        print(f"\n SWITCHING TO CHANNEL: {channel} ({band}) ", flush=True)
+        print(f"\n====== SWITCHING TO CHANNEL: {channel} ({band}) ======", flush=True)
 
         if ping(local_ip) and ping(remote_ip):
             set_channel(remote_ip, channel, radio_oid)
@@ -141,7 +137,7 @@ def test_snr_tx_power(request):
             continue
 
         for power in powers:
-            print(f"\n Testing Channel {channel} @ {power} dBm ", flush=True)
+            print(f"\n--- Testing Channel {channel} @ {power} dBm ---", flush=True)
 
             if ping(local_ip) and ping(remote_ip):
                 set_power(remote_ip, power, radio_oid)
@@ -165,12 +161,12 @@ def test_snr_tx_power(request):
             else:
                 print("Link lost during test", flush=True)
 
-
+    print("\nTest completed successfully.", flush=True)
 
 def pytest_addoption(parser):
-    parser.addoption("--local-ip", action="store", default="192.168.2.10", help="Local device IP")
-    parser.addoption("--remote-ip", action="store", default="192.168.2.11", help="Remote device IP")
-    parser.addoption("--radio", action="store", default="radio1", help="Radio name (radio1/radio2)")
-    parser.addoption("--channels", action="store", default="36,50", help="Comma-separated channels")
-    parser.addoption("--powers", action="store", default="9,10,11", help="Comma-separated power levels")
-    parser.addoption("--frequency-band", action="store", default="5GHz", help="Frequency band: 5GHz or 6GHz")
+    parser.addoption("--local-ip", action="store", default="192.168.2.10")
+    parser.addoption("--remote-ip", action="store", default="192.168.2.11")
+    parser.addoption("--radio", action="store", default="radio1")
+    parser.addoption("--channels", action="store", default="36,50")
+    parser.addoption("--powers", action="store", default="9,10,11")
+    parser.addoption("--frequency_band", action="store", default="5GHz", help="Frequency band: 5GHz or 6GHz")

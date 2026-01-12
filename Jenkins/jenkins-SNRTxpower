@@ -48,7 +48,7 @@ pipeline {
                         --radio '${params.Radio}' \
                         --channels '${params.Channels}' \
                         --powers '${params.Powers}' \
-                        --frequency-band '${params.FREQUENCY_BAND}' 2>&1 | tee ${env.LOG_FILE}
+                        --frequency_band '${params.FREQUENCY_BAND}' 2>&1 | tee ${env.LOG_FILE}
                     """
                 }
             }
@@ -113,7 +113,6 @@ pipeline {
                         }
                     }
 
-                    // HTML generation - safe, no brace issues
                     def html = '<html><head><title>SNR Tx Power Test Report</title>'
                     html += '<style>body {font-family: "Segoe UI", sans-serif; background:#f9fafb; color:#1f2937; margin:0; padding:30px;}'
                     html += '.container {max-width:1200px; margin:0 auto;}'
@@ -148,7 +147,7 @@ pipeline {
                     html += '<p><strong>Date & Time:</strong> ' + currentDateTime + '</p></div></div>'
 
                     html += '<h2>Build Parameters</h2><table><tr><th>Parameter</th><th>Value</th></tr>'
-                    buildParams.each { k, v -> html += "<tr><td><b>" + k + "</b></td><td>" + v + "</td></tr>" }
+                    buildParams.each { k, v -> html += '<tr><td><b>' + k + '</b></td><td>' + v + '</td></tr>' }
                     html += '</table>'
 
                     html += '<h2>SNR vs Tx Power Results</h2><table><tr>'
@@ -158,7 +157,7 @@ pipeline {
                     def currentChannel = ""
                     results.each { r ->
                         if (r.channel != currentChannel) {
-                            html += '<tr><td class="channel-cell">Channel ' + r.channel + ' (' + r.freq + ' MHz)</td><td colspan="9"></td></tr>'
+                            html += '<tr><td class="channel-cell">Channel ' + r.channel + '<br>(' + r.freq + ' MHz)</td><td colspan="9"></td></tr>'
                             currentChannel = r.channel
                         }
 
@@ -177,7 +176,7 @@ pipeline {
                     html += '<div style="text-align:center;margin:60px 0;"><button class="log-button" onclick="showLog()">See Full Logs</button></div>'
 
                     html += '<div id="modal" class="modal"><div class="modal-content"><div class="modal-header"><h2>Full Test Log</h2>'
-                    html += '<span class="modal-close" onclick="closeModal()">&times;</span></div><pre id="log-pre"></pre></div></div>'
+                    html += '<span class="modal-close" onclick="closeModal()">×</span></div><pre id="log-pre"></pre></div></div>'
 
                     html += '<div id="log-data" style="display:none;">' + logContent + '</div></body></html>'
 
