@@ -54,7 +54,7 @@ pipeline {
                         --remote-ip '${remoteIP}' \
                         --radio '${radio}' \
                         --channels '${channels}' \
-                        --powers '${powers}' 2>&1 | tee ${env.LOG_FILE}
+                        --powers '${powers}' 2>&1 | tee ${LOG_FILE}
                     """
                 }
             }
@@ -94,12 +94,14 @@ pipeline {
                     def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
-                    def logContent = fileExists(env.LOG_FILE) ?
-                        readFile(file: env.LOG_FILE).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") :
+                    def logContent = fileExists(LOG_FILE) ?
+                        readFile(file: LOG_FILE)
+                            .replace("&", "&amp;")
+                            .replace("<", "&lt;")
+                            .replace(">", "&gt;") :
                         "No log available"
 
-                    // Parse log for DATA_SAVED lines
-                    def lines = readFile(env.LOG_FILE).split('\n')
+                    def lines = readFile(LOG_FILE).split('\n')
                     def results = []
                     def currentChannel = ""
                     def currentFreq = ""
@@ -130,7 +132,6 @@ pipeline {
                         }
                     }
 
-                    // Build HTML in smaller parts to avoid brace errors
                     def htmlHeader = """
                     <html>
                     <head>
@@ -251,7 +252,6 @@ pipeline {
                 </html>
                 """
 
-                    // Combine all parts safely
                     def fullHtml = htmlHeader + paramsTable + htmlMiddle + tableRows + htmlFooter
 
                     writeFile file: 'snr_test_report.html', text: fullHtml
@@ -271,9 +271,9 @@ pipeline {
                 reportName: 'SNR Tx Power Test Report'
             ])
 
-            archiveArtifacts artifacts: "snr_test_report.html,${env.LOG_FILE}", allowEmptyArchive: true
+            archiveArtifacts artifacts: "snr_test_report.html,${LOG_FILE}", allowEmptyArchive: true
 
-            sh 'rm -f ${env.LOG_FILE} || true'
+            sh "rm -f ${LOG_FILE} || true"
 
             echo "-----------------------------------------"
             echo 'SNR Tx Power Test Completed!'
