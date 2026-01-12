@@ -78,7 +78,7 @@ pipeline {
                         "Radio": params.Radio,
                         "Channels": params.Channels,
                         "Powers": params.Powers,
-                        "Frequency Band": env.FREQUENCY_BAND,
+                        //"Frequency Band": env.FREQUENCY_BAND,
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
