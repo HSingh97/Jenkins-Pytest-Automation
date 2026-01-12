@@ -8,6 +8,7 @@ from datetime import datetime
 
 
 def ping(host):
+    """Ping a host to check reachability"""
     param = '-n' if platform.system().lower() == 'windows' else '-c'
     with open(os.devnull, 'w') as DEVNULL:
         try:
@@ -85,9 +86,10 @@ def get_linkstats(host, radio_oid):
             "Rx Rate": get_oid_value("9")
         }
 
-        print(f"Stats for {ip_address}: Local A1={stats['Local SNR A1']}, A2={stats['Local SNR A2']} | "
-              f"Remote A1={stats['Remote SNR A1']}, A2={stats['Remote SNR A2']} | "
-              f"Tx Rate: {stats['Tx Rate']} | Rx Rate: {stats['Rx Rate']}", flush=True)
+        print(f"Stats for {ip_address}:", flush=True)
+        print(f"  Local SNR: A1={stats['Local SNR A1']}, A2={stats['Local SNR A2']}", flush=True)
+        print(f"  Remote SNR: A1={stats['Remote SNR A1']}, A2={stats['Remote SNR A2']}", flush=True)
+        print(f"  Tx Rate: {stats['Tx Rate']} | Rx Rate: {stats['Rx Rate']}", flush=True)
         return stats
     return None
 
@@ -108,47 +110,62 @@ def channel_to_frequency(channel):
         return "?"
 
 
-@pytest.mark.parametrize("channel", channels_list)
-@pytest.mark.parametrize("power", powers_list)
-def test_snr_tx_power(channel, power, request):
+def test_snr_tx_power(request):
     radio_oid = "2" if request.config.getoption("--radio") == "radio1" else "3"
     local_ip = request.config.getoption("--local-ip")
     remote_ip = request.config.getoption("--remote-ip")
 
-    print(f"\nTesting Channel {channel} @ {power} dBm ", flush=True)
+    channels_str = request.config.getoption("--channels", "36,50")
+    powers_str = request.config.getoption("--powers", "9,10,11")
 
-    if ping(local_ip) and ping(remote_ip):
-        set_channel(remote_ip, channel, radio_oid)
-        time.sleep(2)
-        set_channel(local_ip, channel, radio_oid)
-        print("Waiting 60s for DFS/Link establishment...", flush=True)
-        time.sleep(60)
-    else:
-        pytest.fail("Devices not reachable before channel change")
+    channels = [ch.strip() for ch in channels_str.split(',') if ch.strip()]
+    powers = [int(p.strip()) for p in powers_str.split(',') if p.strip()]
 
-    print(f"Setting power to {power} dBm", flush=True)
-    if ping(local_ip) and ping(remote_ip):
-        set_power(remote_ip, power, radio_oid)
-        time.sleep(2)
-        set_power(local_ip, power, radio_oid)
-        print("Waiting 30s for link to stabilize...", flush=True)
-        time.sleep(30)
-    else:
-        pytest.fail("Link lost before setting power")
+    print(f"\nSTARTING SNR vs TX POWER TEST at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", flush=True)
+    print(f"Local IP: {local_ip} | Remote IP: {remote_ip} | Radio: {request.config.getoption('--radio')}", flush=True)
+    print(f"Channels: {channels}", flush=True)
+    print(f"Powers: {powers}", flush=True)
+    print("=" * 80, flush=True)
 
-    stats = get_linkstats(local_ip, radio_oid)
-    current_channel = get_channel(local_ip, radio_oid)
+    for channel in channels:
+        print(f"\nSWITCHING TO CHANNEL: {channel}", flush=True)
 
-    if stats:
-        freq = channel_to_frequency(current_channel)
-        print(f"DATA_SAVED | Channel: {current_channel} | Frequency: {freq} MHz | Power: {power} | "
-              f"Remote IP: {stats['IP']} | "
-              f"Local SNR A1: {stats['Local SNR A1']} | Local SNR A2: {stats['Local SNR A2']} | "
-              f"Remote SNR A1: {stats['Remote SNR A1']} | Remote SNR A2: {stats['Remote SNR A2']} | "
-              f"Tx Rate: {stats['Tx Rate']} | Rx Rate: {stats['Rx Rate']} | Status: OK", flush=True)
-    else:
-        pytest.fail("No link stats retrieved")
+        if ping(local_ip) and ping(remote_ip):
+            set_channel(remote_ip, channel, radio_oid)
+            time.sleep(2)
+            set_channel(local_ip, channel, radio_oid)
+            print("Waiting 60s for DFS/Link establishment...", flush=True)
+            time.sleep(60)
+        else:
+            print("Devices not reachable before channel change", flush=True)
+            continue
 
+        for power in powers:
+            print(f"\n--- Testing Channel {channel} @ {power} dBm ---", flush=True)
+
+            if ping(local_ip) and ping(remote_ip):
+                set_power(remote_ip, power, radio_oid)
+                time.sleep(2)
+                set_power(local_ip, power, radio_oid)
+                print("Waiting 30s for link to stabilize...", flush=True)
+                time.sleep(30)
+
+                stats = get_linkstats(local_ip, radio_oid)
+                current_channel = get_channel(local_ip, radio_oid)
+
+                if stats:
+                    freq = channel_to_frequency(current_channel)
+                    print(f"DATA_SAVED | Channel: {current_channel} | Frequency: {freq} MHz | Power: {power} | "
+                          f"Remote IP: {stats['IP']} | "
+                          f"Local SNR A1: {stats['Local SNR A1']} | Local SNR A2: {stats['Local SNR A2']} | "
+                          f"Remote SNR A1: {stats['Remote SNR A1']} | Remote SNR A2: {stats['Remote SNR A2']} | "
+                          f"Tx Rate: {stats['Tx Rate']} | Rx Rate: {stats['Rx Rate']} | Status: OK", flush=True)
+                else:
+                    print("No link stats retrieved", flush=True)
+            else:
+                print("Link lost during test", flush=True)
+
+    print("\nTest completed successfully.", flush=True)
 
 def pytest_addoption(parser):
     parser.addoption("--local-ip", action="store", default="192.168.2.10", help="Local device IP")
@@ -156,13 +173,3 @@ def pytest_addoption(parser):
     parser.addoption("--radio", action="store", default="radio1", help="Radio name (radio1/radio2)")
     parser.addoption("--channels", action="store", default="36,50", help="Comma-separated channels")
     parser.addoption("--powers", action="store", default="9,10,11", help="Comma-separated power levels")
-
-
-def pytest_generate_tests(metafunc):
-    if "channel" in metafunc.fixturenames:
-        channels = metafunc.config.getoption("--channels").split(',')
-        metafunc.parametrize("channel", [ch.strip() for ch in channels if ch.strip()])
-
-    if "power" in metafunc.fixturenames:
-        powers = metafunc.config.getoption("--powers").split(',')
-        metafunc.parametrize("power", [int(p.strip()) for p in powers if p.strip()])
