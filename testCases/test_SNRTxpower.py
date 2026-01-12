@@ -96,9 +96,9 @@ def channel_to_frequency(channel, band):
     try:
         c = int(channel)
         if band == "5GHz":
-            return 5000 + (5 * c)  # F = 5000 + 5 * C
+            return 5000 + (5 * c)
         elif band == "6GHz":
-            return 5950 + (5 * c)  # F = 5950 + 5 * C
+            return 5950 + (5 * c)
         else:
             return "?"
     except:
@@ -163,6 +163,7 @@ def test_snr_tx_power(request):
                 print("Link lost during test", flush=True)
 
     print("\nTest completed successfully.", flush=True)
+
 
 def pytest_addoption(parser):
     parser.addoption("--local-ip", action="store", default="192.168.2.10")
