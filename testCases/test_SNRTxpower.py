@@ -3,24 +3,38 @@ import time
 import subprocess
 import platform
 import re
-import openpyxl
 import pytest
 from datetime import datetime
 
 
-def init_excel(excel_filename):
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Results"
+def ping(host):
+    """Ping a host to check reachability"""
+    param = '-n' if platform.system().lower() == 'windows' else '-c'
+    with open(os.devnull, 'w') as DEVNULL:
+        try:
+            result = subprocess.call(['ping', param, '3', host],
+                                    stdout=DEVNULL, stderr=DEVNULL, timeout=10) == 0
+            print(f"{host} is {'Reachable' if result else 'Not Reachable'}", flush=True)
+            return result
+        except:
+            print(f"{host} ping timeout", flush=True)
+            return False
 
-    # Simple headers for Excel
-    headers = ["Channel", "Power (dBm)", "Remote IP",
-               "Local SNR A1", "Local SNR A2",
-               "Remote SNR A1", "Remote SNR A2",
-               "Tx Rate", "Rx Rate", "Status Check"]
-    ws.append(headers)
-    wb.save(excel_filename)
-    return wb, ws
+
+def set_power(ip, power, radio_oid):
+    print(f"Setting power on {ip} to {power} dBm", flush=True)
+    os.system(f"snmpset -v 2c -c private {ip} .1.3.6.1.4.1.52619.1.1.1.2.1.12.{radio_oid}.1 i {power}")
+    time.sleep(1)
+    os.system(f"snmpset -v 2c -c private {ip} .1.3.6.1.4.1.52619.1.2.1.1.0 i 1")
+    time.sleep(10)
+
+
+def set_channel(ip, chan, radio_oid):
+    print(f"Setting Channel on {ip} to {chan}", flush=True)
+    os.system(f"snmpset -v 2c -c private {ip} .1.3.6.1.4.1.52619.1.1.1.1.1.9.{radio_oid} i {chan}")
+    time.sleep(1)
+    os.system(f"snmpset -v 2c -c private {ip} .1.3.6.1.4.1.52619.1.2.1.1.0 i 1")
+    time.sleep(10)
 
 
 def get_channel(host, radio_oid):
@@ -30,7 +44,7 @@ def get_channel(host, radio_oid):
         output = subprocess.check_output(cmd, shell=True, timeout=15).decode("utf-8")
         match = re.search(r'INTEGER:\s*(\d+)', output)
         val = match.group(1) if match else "-"
-        print(f"{oid} = INTEGER: {val}", flush=True)
+        print(f"Current Channel: {val}", flush=True)
         return val
     except Exception as e:
         print(f"Error fetching channel: {e}", flush=True)
@@ -53,182 +67,109 @@ def get_linkstats(host, radio_oid):
         match = re.search(r'IpAddress:\s*([\d.]+)', remoteip_output)
         ip_address = match.group(1) if match else "-"
 
-        def get_oid_value(oid_suffix):
-            cmd = f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.{oid_suffix}.{radio_oid}.{i}"
+        def get_oid_value(suffix):
+            cmd = f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.{suffix}.{radio_oid}.{i}"
             try:
                 out = subprocess.check_output(cmd, shell=True, timeout=10).decode("utf-8")
                 match = re.search(r'INTEGER:\s*(\d+)', out)
-                val = match.group(1) if match else "-"
-                print(f"{cmd.split('snmpget')[1].strip()} = INTEGER: {val}", flush=True)
-                return val
+                return match.group(1) if match else "-"
             except:
                 return "-"
 
-        localSNRA1_val = get_oid_value("13")
-        localSNRA2_val = get_oid_value("14")
-        remoteSNRA1_val = get_oid_value("15")
-        remoteSNRA2_val = get_oid_value("16")
-        txrate_val = get_oid_value("10")
-        rxrate_val = get_oid_value("9")
-
-        print("\n" + "-" * 64, flush=True)
-        print(f"Stats for {ip_address}", flush=True)
-        print(f"Local SNR: A1={localSNRA1_val}, A2={localSNRA2_val}", flush=True)
-        print(f"Remote SNR: A1={remoteSNRA1_val}, A2={remoteSNRA2_val}", flush=True)
-        print("-" * 64 + "\n", flush=True)
-
-        return {
+        stats = {
             "IP": ip_address,
-            "Local SNR A1": localSNRA1_val,
-            "Local SNR A2": localSNRA2_val,
-            "Remote SNR A1": remoteSNRA1_val,
-            "Remote SNR A2": remoteSNRA2_val,
-            "Tx Rate": txrate_val,
-            "Rx Rate": rxrate_val
+            "Local SNR A1": get_oid_value("13"),
+            "Local SNR A2": get_oid_value("14"),
+            "Remote SNR A1": get_oid_value("15"),
+            "Remote SNR A2": get_oid_value("16"),
+            "Tx Rate": get_oid_value("10"),
+            "Rx Rate": get_oid_value("9")
         }
+
+        print(f"Stats for {ip_address}:", flush=True)
+        print(f"  Local SNR: A1={stats['Local SNR A1']}, A2={stats['Local SNR A2']}", flush=True)
+        print(f"  Remote SNR: A1={stats['Remote SNR A1']}, A2={stats['Remote SNR A2']}", flush=True)
+        print(f"  Tx Rate: {stats['Tx Rate']} | Rx Rate: {stats['Rx Rate']}", flush=True)
+        return stats
     return None
 
 
-def set_power(ip, power, radio_oid):
-    print(f"Setting power on {ip} to {power}", flush=True)
-    os.system(f"snmpset -v 2c -c private {ip} .1.3.6.1.4.1.52619.1.1.1.2.1.12.{radio_oid}.1 i {power}")
-    time.sleep(1)
-    os.system(f"snmpset -v 2c -c private {ip} .1.3.6.1.4.1.52619.1.2.1.1.0 i 1")
-    time.sleep(10)
+def channel_to_frequency(channel):
+    try:
+        c = int(channel)
+        if 36 <= c <= 48:
+            return 5180 + (c - 36) * 20
+        elif 52 <= c <= 64:
+            return 5260 + (c - 52) * 20
+        elif 100 <= c <= 140:
+            return 5500 + (c - 100) * 20
+        elif 149 <= c <= 165:
+            return 5745 + (c - 149) * 20
+        return "?"
+    except:
+        return "?"
 
 
-def set_channel(ip, chan, radio_oid):
-    print(f"Setting Channel on {ip} to {chan}", flush=True)
-    os.system(f"snmpset -v 2c -c private {ip} .1.3.6.1.4.1.52619.1.1.1.1.1.9.{radio_oid} i {chan}")
-    time.sleep(1)
-    os.system(f"snmpset -v 2c -c private {ip} .1.3.6.1.4.1.52619.1.2.1.1.0 i 1")
-    time.sleep(10)
+def test_snr_tx_power(request):
+    radio_oid = "2" if request.config.getoption("--radio") == "radio1" else "3"
+    local_ip = request.config.getoption("--local-ip")
+    remote_ip = request.config.getoption("--remote-ip")
 
+    channels_str = request.config.getoption("--channels", "36,50")
+    powers_str = request.config.getoption("--powers", "9,10,11")
 
-def ping(host):
-    param = '-n' if platform.system().lower() == 'windows' else '-c'
-    with open(os.devnull, 'w') as DEVNULL:
-        try:
-            result = subprocess.call(['ping', param, '3', host], stdout=DEVNULL, stderr=DEVNULL, timeout=10) == 0
-            print(f"\n{host} is {'Reachable' if result else 'Not Reachable'}\n", flush=True)
-            return result
-        except:
-            print(f"\n{host} ping timeout\n", flush=True)
-            return False
+    channels = [ch.strip() for ch in channels_str.split(',') if ch.strip()]
+    powers = [int(p.strip()) for p in powers_str.split(',') if p.strip()]
 
-
-def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers):
-    radio_oid = "2" if radio == "radio1" else "3"
-
-    excel_filename = os.getenv("EXCEL_FILE", f"snr_test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
-    table_html_file = os.getenv("TABLE_HTML", "results_table.html")
-
-    print("\n" + "=" * 80, flush=True)
-    print("STARTING SNR vs TX POWER TEST", flush=True)
-    print(f"Local IP : {local_ip} | Remote IP: {remote_ip}", flush=True)
-    print(f"Radio    : {radio}", flush=True)
-    print(f"Channels : {channels}", flush=True)
-    print(f"Powers   : {powers}", flush=True)
+    print(f"\nSTARTING SNR vs TX POWER TEST at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", flush=True)
+    print(f"Local IP: {local_ip} | Remote IP: {remote_ip} | Radio: {request.config.getoption('--radio')}", flush=True)
+    print(f"Channels: {channels}", flush=True)
+    print(f"Powers: {powers}", flush=True)
     print("=" * 80, flush=True)
 
-    try:
-        wb, ws = init_excel(excel_filename)
-        print(f"Results will be saved to: {excel_filename}", flush=True)
+    for channel in channels:
+        print(f"\nSWITCHING TO CHANNEL: {channel}", flush=True)
 
-        test_channels = channels if channels else [None]
-        current_channel = ""
+        if ping(local_ip) and ping(remote_ip):
+            set_channel(remote_ip, channel, radio_oid)
+            time.sleep(2)
+            set_channel(local_ip, channel, radio_oid)
+            print("Waiting 60s for DFS/Link establishment...", flush=True)
+            time.sleep(60)
+        else:
+            print("Devices not reachable before channel change", flush=True)
+            continue
 
-        html_table = '''
-<h2>SNR vs Tx Power Results</h2>
-<table style="width:100%; border-collapse:collapse; margin:20px 0; background:#fff; box-shadow:0 4px 10px rgba(0,0,0,0.1); border-radius:12px; overflow:hidden;">
-    <tr style="background:#2c3e50; color:#fff;">
-        <th style="padding:14px; text-align:center;">Channel</th>
-        <th style="padding:14px; text-align:center;">Power (dBm)</th>
-        <th style="padding:14px; text-align:center;">Remote IP</th>
-        <th style="padding:14px; text-align:center;">Local SNR A1</th>
-        <th style="padding:14px; text-align:center;">Local SNR A2</th>
-        <th style="padding:14px; text-align:center;">Remote SNR A1</th>
-        <th style="padding:14px; text-align:center;">Remote SNR A2</th>
-        <th style="padding:14px; text-align:center;">Tx Rate</th>
-        <th style="padding:14px; text-align:center;">Rx Rate</th>
-        <th style="padding:14px; text-align:center;">Status Check</th>
-    </tr>
-'''
+        for power in powers:
+            print(f"\n--- Testing Channel {channel} @ {power} dBm ---", flush=True)
 
-        for channel in test_channels:
-            if channel is not None:
-                print(f"\n\n====== SWITCHING TO CHANNEL: {channel} ======", flush=True)
+            if ping(local_ip) and ping(remote_ip):
+                set_power(remote_ip, power, radio_oid)
+                time.sleep(2)
+                set_power(local_ip, power, radio_oid)
+                print("Waiting 30s for link to stabilize...", flush=True)
+                time.sleep(30)
 
-                if ping(local_ip) and ping(remote_ip):
-                    set_channel(local_ip, channel, radio_oid)
-                    print(f"Channel set to {channel}. Waiting 60s for DFS/Link establishment...", flush=True)
-                    time.sleep(60)
+                stats = get_linkstats(local_ip, radio_oid)
+                current_channel = get_channel(local_ip, radio_oid)
+
+                if stats:
+                    freq = channel_to_frequency(current_channel)
+                    print(f"DATA_SAVED | Channel: {current_channel} | Frequency: {freq} MHz | Power: {power} | "
+                          f"Remote IP: {stats['IP']} | "
+                          f"Local SNR A1: {stats['Local SNR A1']} | Local SNR A2: {stats['Local SNR A2']} | "
+                          f"Remote SNR A1: {stats['Remote SNR A1']} | Remote SNR A2: {stats['Remote SNR A2']} | "
+                          f"Tx Rate: {stats['Tx Rate']} | Rx Rate: {stats['Rx Rate']} | Status: OK", flush=True)
                 else:
-                    raise Exception("Devices not reachable before channel change")
+                    print("No link stats retrieved", flush=True)
+            else:
+                print("Link lost during test", flush=True)
 
-            for power in powers:
-                print(f"\n--- Testing Channel {channel or 'Current'} | Power Level: {power} dBm ---", flush=True)
+    print("\nTest completed successfully.", flush=True)
 
-                if ping(local_ip) and ping(remote_ip):
-                    set_power(remote_ip, power, radio_oid)
-                    time.sleep(2)
-                    set_power(local_ip, power, radio_oid)
-                    print("Waiting 30s for link to stabilize...", flush=True)
-                    time.sleep(30)
-
-                    stats = get_linkstats(local_ip, radio_oid)
-                    current_channel_read = get_channel(local_ip, radio_oid)
-
-                    if stats:
-                        status_msg = "OK"
-
-                        if current_channel_read != current_channel:
-                            ws.append([f"Channel {current_channel_read}", "", "", "", "", "", "", "", "", ""])
-                            html_table += f'<tr style="background:#3498db; color:white; font-weight:bold; font-size:18px;"><td colspan="10" style="padding-left:40px; text-align:left;">Channel {current_channel_read}</td></tr>'
-                            current_channel = current_channel_read
-
-                        row_data = [
-                            "", power, stats['IP'],
-                            stats['Local SNR A1'], stats['Local SNR A2'],
-                            stats['Remote SNR A1'], stats['Remote SNR A2'],
-                            stats['Tx Rate'], stats['Rx Rate'], status_msg
-                        ]
-                        ws.append(row_data)
-                        wb.save(excel_filename)
-
-                        html_table += f'''
-                        <tr style="background:#f8f9fa;" onmouseover="this.style.backgroundColor='#eaf4ff'" onmouseout="this.style.backgroundColor='#f8f9fa'">
-                            <td></td>
-                            <td style="padding-left:80px; text-align:left; font-weight:500;">{power}</td>
-                            <td>{stats['IP']}</td>
-                            <td>{stats['Local SNR A1']}</td>
-                            <td>{stats['Local SNR A2']}</td>
-                            <td>{stats['Remote SNR A1']}</td>
-                            <td>{stats['Remote SNR A2']}</td>
-                            <td>{stats['Tx Rate']}</td>
-                            <td>{stats['Rx Rate']}</td>
-                            <td style="color:green; font-weight:bold;">{status_msg}</td>
-                        </tr>
-                        '''
-
-                        print(f"Data saved. Channel: {current_channel_read} | Power: {power} | Status: {status_msg}", flush=True)
-                    else:
-                        print("No link stats retrieved", flush=True)
-                else:
-                    raise Exception(f"Link lost during test at power {power} dBm")
-        html_table += "</table>"
-
-        with open(table_html_file, "w") as f:
-            f.write(html_table)
-        print(f"Beautiful HTML table generated: {table_html_file}", flush=True)
-
-    except Exception as e:
-        print(f"TEST FAILED: {str(e)}", flush=True)
-        pytest.fail(f"Test failed: {e}")
-
-
-# Suppress warnings
-def warn(*args, **kwargs):
-    pass
-import warnings
-warnings.warn = warn
+def pytest_addoption(parser):
+    parser.addoption("--local-ip", action="store", default="192.168.2.10", help="Local device IP")
+    parser.addoption("--remote-ip", action="store", default="192.168.2.11", help="Remote device IP")
+    parser.addoption("--radio", action="store", default="radio1", help="Radio name (radio1/radio2)")
+    parser.addoption("--channels", action="store", default="36,50", help="Comma-separated channels")
+    parser.addoption("--powers", action="store", default="9,10,11", help="Comma-separated power levels")

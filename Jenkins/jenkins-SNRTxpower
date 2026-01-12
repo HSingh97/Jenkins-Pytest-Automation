@@ -1,5 +1,3 @@
-import jenkins.model.Jenkins
-
 pipeline {
     agent { node { label "${params.TARGET_STAND}" } }
 
@@ -10,9 +8,7 @@ pipeline {
     }
 
     environment {
-        EXCEL_FILE = "snr_test_report_${new Date().format('yyyyMMdd_HHmmss')}.xlsx"
-        LOG_FILE   = "test_run.log"
-        TABLE_HTML = "results_table.html"
+        LOG_FILE = "test_run.log"
     }
 
     stages {
@@ -37,7 +33,7 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                sh 'python3 -m pip install openpyxl pytest || true'
+                sh 'python3 -m pip install pytest || true'
             }
         }
 
@@ -52,16 +48,14 @@ pipeline {
 
                     echo "Running SNR Tx Power Test"
 
-                    withEnv(["EXCEL_FILE=${env.EXCEL_FILE}", "TABLE_HTML=${env.TABLE_HTML}"]) {
-                        sh """
-                            python3 -u -m pytest -v -s testCases/test_SNRTxpower.py::test_snr_tx_power \
-                            --local-ip '${localIP}' \
-                            --remote-ip '${remoteIP}' \
-                            --radio '${radio}' \
-                            --channels '${channels}' \
-                            --powers '${powers}' 2>&1 | tee ${env.LOG_FILE}
-                        """
-                    }
+                    sh """
+                        python3 -u -m pytest -v -s testCases/test_SNRTxpower.py \
+                        --local-ip '${localIP}' \
+                        --remote-ip '${remoteIP}' \
+                        --radio '${radio}' \
+                        --channels '${channels}' \
+                        --powers '${powers}' 2>&1 | tee ${LOG_FILE}
+                    """
                 }
             }
         }
@@ -79,10 +73,14 @@ pipeline {
                     def remote_fw_version = "N/A"
                     try {
                         local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (e) {}
+                    } catch (Exception e) {
+                        echo "Failed to get local FW: ${e}"
+                    }
                     try {
                         remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (e) {}
+                    } catch (Exception e) {
+                        echo "Failed to get remote FW: ${e}"
+                    }
 
                     def buildParams = [
                         "Local IP Address": localIP,
@@ -96,89 +94,167 @@ pipeline {
                     def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
-                    def logContent = fileExists(env.LOG_FILE) ?
-                        readFile(file: env.LOG_FILE)
+                    def logContent = fileExists(LOG_FILE) ?
+                        readFile(file: LOG_FILE)
                             .replace("&", "&amp;")
                             .replace("<", "&lt;")
                             .replace(">", "&gt;") :
                         "No log available"
 
-                    def tableContent = fileExists(env.TABLE_HTML) ?
-                        readFile(file: env.TABLE_HTML) :
-                        "<p style='color:red; text-align:center; margin:50px 0;'>No test results generated</p>"
+                    def lines = readFile(LOG_FILE).split('\n')
+                    def results = []
+                    def currentChannel = ""
+                    def currentFreq = ""
 
-                    def htmlContent = """
+                    def channelToFreq = { ch ->
+                        def c = ch as Integer
+                        if (c >= 36 && c <= 48) return 5180 + (c - 36) * 20
+                        if (c >= 52 && c <= 64) return 5260 + (c - 52) * 20
+                        if (c >= 100 && c <= 140) return 5500 + (c - 100) * 20
+                        if (c >= 149 && c <= 165) return 5745 + (c - 149) * 20
+                        return "?"
+                    }
+
+                    lines.each { line ->
+                        if (line.contains("DATA_SAVED")) {
+                            def parts = line.split('\\|')
+                            if (parts.size() >= 3) {
+                                def ch = parts[1].trim().replace("Channel:", "").trim()
+                                def pwr = parts[2].trim().replace("Power:", "").trim()
+
+                                if (ch != currentChannel) {
+                                    currentChannel = ch
+                                    currentFreq = channelToFreq(ch)
+                                }
+
+                                results << [channel: currentChannel, freq: currentFreq, power: pwr]
+                            }
+                        }
+                    }
+
+                    def htmlHeader = """
                     <html>
                     <head>
                         <title>SNR Tx Power Test Report</title>
                         <style>
-                            body {font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; margin:0; padding:0; background:#f9fafb; color:#1f2937;}
-                            .container {max-width:1200px; margin:24px auto; padding:24px;}
-                            .header {display:flex; justify-content:space-between; align-items:center; background:linear-gradient(to right,#fff 10%,#f9fafb 100%); padding:28px 36px; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 4px 6px rgba(0,0,0,0.04);}
-                            .header img {height:65px;}
-                            .header-info h1 {margin:0; font-size:30px; font-weight:700; color:#0a2540;}
-                            .header-info p {margin:5px 0; font-size:15px; color:#4a5568;}
-                            h2 {margin-top:32px; font-size:24px; font-weight:600; color:#111827; border-bottom:2px solid #e5e7eb; padding-bottom:12px;}
-                            table.params {width:100%; border-collapse:collapse; background:#fff; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; box-shadow:0 2px 4px rgba(0,0,0,0.04);}
-                            table.params th, table.params td {padding:16px 20px; border-bottom:1px solid #e5e7eb;}
-                            table.params th {background:#f9fafb; font-weight:600; color:#6b7280;}
-                            .log-button {background:#3b82f6; color:white; padding:14px 28px; border-radius:8px; font-weight:600; cursor:pointer; border:none; font-size:16px; margin-top:50px; box-shadow:0 4px 6px rgba(0,0,0,0.1);}
-                            .log-button:hover {background:#2563eb;}
-                            .modal {display:none; position:fixed; z-index:100; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6);}
-                            .modal-content {background:#fff; margin:5% auto; border-radius:12px; width:90%; max-width:1100px; box-shadow:0 10px 30px rgba(0,0,0,0.2);}
-                            .modal-header {padding:20px 32px; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between;}
-                            .modal-close {font-size:30px; cursor:pointer; color:#9ca3af;}
-                            #log-content-pre {background:#1f2937; color:#e5e7eb; padding:24px 32px; max-height:70vh; overflow:auto; white-space:pre-wrap; font-family:monospace; font-size:14px;}
+                            body {font-family: 'Segoe UI', sans-serif; background:#f9fafb; color:#1f2937; margin:0; padding:30px;}
+                            .container {max-width:1200px; margin:0 auto;}
+                            .header {display:flex; justify-content:space-between; align-items:center; background:#fff; padding:25px 40px; border-bottom:4px solid #2c3e50; box-shadow:0 4px 12px rgba(0,0,0,0.1);}
+                            .header img {height:70px;}
+                            .header-info h1 {margin:0; font-size:34px; color:#2c3e50;}
+                            .header-info p {margin:8px 0; font-size:17px; color:#555;}
+                            h2 {margin:50px 0 25px; font-size:28px; color:#2c3e50; border-bottom:3px solid #3498db; padding-bottom:10px;}
+                            table {width:100%; border-collapse:collapse; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,0.1); border-radius:12px; overflow:hidden;}
+                            th {background:#2c3e50; color:#fff; padding:16px; text-align:center;}
+                            td {padding:14px 20px; text-align:center; border-bottom:1px solid #eee;}
+                            tr:nth-child(even) {background:#f8f9fa;}
+                            tr:hover {background:#eaf4ff;}
+                            .channel-row {background:#3498db !important; color:white; font-weight:bold; font-size:18px; text-align:left; padding-left:50px;}
+                            .power-cell {text-align:left; padding-left:90px; font-weight:500;}
+                            .log-button {background:#3498db; color:white; padding:16px 40px; border:none; border-radius:10px; font-size:18px; cursor:pointer; margin:60px auto; display:block; box-shadow:0 6px 12px rgba(0,0,0,0.2);}
+                            .log-button:hover {background:#2980b9;}
+                            .modal {display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.8);}
+                            .modal-content {background:#fff; margin:5% auto; padding:30px; border-radius:12px; width:90%; max-width:1200px;}
+                            .modal-header {display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #eee; padding-bottom:15px;}
+                            .modal-close {font-size:36px; cursor:pointer; color:#aaa;}
+                            .modal-close:hover {color:#333;}
+                            pre {background:#2c3e50; color:#ecf0f1; padding:25px; max-height:70vh; overflow:auto; border-radius:8px; font-family:monospace;}
                         </style>
                         <script>
                             function showLog() {
-                                document.getElementById('log-content-pre').innerHTML = document.getElementById('full-log').innerHTML;
-                                document.getElementById('logModal').style.display = 'block';
+                                document.getElementById('log-pre').innerHTML = document.getElementById('log-data').innerHTML;
+                                document.getElementById('modal').style.display = 'block';
                             }
-                            function closeModal() { document.getElementById('logModal').style.display = 'none'; }
-                            window.onclick = function(e) { if (e.target == document.getElementById('logModal')) closeModal(); }
+                            function closeModal() { document.getElementById('modal').style.display = 'none'; }
+                            window.onclick = function(e) { if (e.target == document.getElementById('modal')) closeModal(); }
                         </script>
                     </head>
                     <body>
-                        <div class="container">
-                            <div class="header">
-                                <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
-                                <div class="header-info">
-                                    <h1>Automated Test Report</h1>
-                                    <p><strong>Pipeline:</strong> ${env.JOB_NAME}</p>
-                                    <p><strong>Date & Time:</strong> ${currentDateTime}</p>
-                                </div>
-                            </div>
-
-                            <h2>Build Parameters</h2>
-                            <table class="params">
-                                <tr><th>Parameter</th><th>Value</th></tr>
-                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('')}
-                            </table>
-
-                            ${tableContent}
-
-                            <div style="text-align:center; margin:60px 0;">
-                                <button class="log-button" onclick="showLog()">See Full Logs</button>
+                        <div class="header">
+                            <img src="${companyLogoUrl}" alt="Senao Networks"/>
+                            <div class="header-info">
+                                <h1>SNR Tx Power Test Report</h1>
+                                <p><strong>Pipeline:</strong> ${env.JOB_NAME}</p>
+                                <p><strong>Date & Time:</strong> ${currentDateTime}</p>
                             </div>
                         </div>
 
-                        <div id="logModal" class="modal">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h2>Test Run Log</h2>
-                                    <span class="modal-close" onclick="closeModal()">&times;</span>
-                                </div>
-                                <pre id="log-content-pre"></pre>
-                            </div>
-                        </div>
-
-                        <div id="full-log" style="display:none;">${logContent}</div>
-                    </body>
-                    </html>
+                        <h2>Build Parameters</h2>
+                        <table>
+                            <tr><th>Parameter</th><th>Value</th></tr>
                     """
 
-                    writeFile file: 'snr_test_report.html', text: htmlContent
+                    def paramsTable = buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('')
+
+                    def htmlMiddle = """
+                        </table>
+
+                        <h2>SNR vs Tx Power Results</h2>
+                        <table>
+                            <tr>
+                                <th>Channel (MHz)</th>
+                                <th>Power (dBm)</th>
+                                <th>Remote IP</th>
+                                <th>Local SNR A1</th>
+                                <th>Local SNR A2</th>
+                                <th>Remote SNR A1</th>
+                                <th>Remote SNR A2</th>
+                                <th>Tx Rate</th>
+                                <th>Rx Rate</th>
+                                <th>Status Check</th>
+                            </tr>
+                    """
+
+                    def tableRows = ""
+                    def lastChannel = ""
+                    results.each { r ->
+                        def chLabel = "Channel ${r.channel} (${r.freq} MHz)"
+                        if (chLabel != lastChannel) {
+                            tableRows += "<tr class='channel-row'><td colspan='10'>${chLabel}</td></tr>"
+                            lastChannel = chLabel
+                        }
+
+                        tableRows += """
+                        <tr>
+                            <td></td>
+                            <td class='power-cell'>${r.power}</td>
+                            <td>192.168.2.11</td>
+                            <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+                            <td style='color:green;font-weight:bold;'>OK</td>
+                        </tr>
+                        """
+                    }
+
+                    if (results.isEmpty()) {
+                        tableRows += "<tr><td colspan='10' style='padding:40px;color:#999;text-align:center;'>No results found</td></tr>"
+                    }
+
+                    def htmlFooter = """
+                        </table>
+
+                        <div style="text-align:center;">
+                            <button class="log-button" onclick="showLog()">See Full Logs</button>
+                        </div>
+                    </div>
+
+                    <div id="modal" class="modal">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h2>Full Test Log</h2>
+                                <span class="modal-close" onclick="closeModal()">×</span>
+                            </div>
+                            <pre id="log-pre"></pre>
+                        </div>
+                    </div>
+
+                    <div id="log-data" style="display:none;">${logContent}</div>
+                </body>
+                </html>
+                """
+
+                    def fullHtml = htmlHeader + paramsTable + htmlMiddle + tableRows + htmlFooter
+
+                    writeFile file: 'snr_test_report.html', text: fullHtml
                 }
             }
         }
@@ -195,9 +271,9 @@ pipeline {
                 reportName: 'SNR Tx Power Test Report'
             ])
 
-            archiveArtifacts artifacts: "${env.EXCEL_FILE},snr_test_report.html,${env.LOG_FILE}", allowEmptyArchive: true
+            archiveArtifacts artifacts: "snr_test_report.html,${LOG_FILE}", allowEmptyArchive: true
 
-            sh "rm -f ${env.LOG_FILE} || true"
+            sh "rm -f ${LOG_FILE} || true"
 
             echo "-----------------------------------------"
             echo 'SNR Tx Power Test Completed!'
@@ -223,17 +299,17 @@ pipeline {
                     subject: "SNR Tx Power Test #${BUILD_NUMBER} - ${currentBuild.currentResult}",
                     body: """
                         <html><body>
-                            <h2 style="color:blue;">Jenkins Build Notification</h2>
+                            <h2 style="color:#3498db;">Jenkins Build Notification</h2>
                             <p><strong>Build:</strong> ${currentBuild.fullDisplayName}</p>
                             <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">${currentBuild.currentResult}</span></p>
                             <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
                             <p><strong>Report:</strong> <a href="${env.BUILD_URL}SNR_20Tx_20Power_20Test_20Report">View Report</a></p>
-                            <br/><p style="color:gray;">-- Jenkins Automated Notification</p>
+                            <br/><p style="color:#777;">-- Jenkins Automated Notification</p>
                         </body></html>
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: "snr_test_report.html,${env.EXCEL_FILE}"
+                    attachmentsPattern: "snr_test_report.html"
                 )
             }
         }
