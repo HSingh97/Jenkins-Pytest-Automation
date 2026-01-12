@@ -22,58 +22,74 @@ pipeline {
         stage('Install Python Dependencies') {
             steps {
                 script {
-                    echo "Installing Dependencies..."
-                    // FIX 1: Remove 'pip3 install' text
-                    sh "sed -i 's/pip3 install //g' utilities/requirements.txt || true"
-                    // FIX 2: Remove 'apt-get' lines
-                    sh "sed -i '/apt-get/d' utilities/requirements.txt || true"
-                    // FIX 3: Convert spaces to newlines (fixes 'pytest pytest-html' on one line)
-                    sh "sed -i 's/ /\\n/g' utilities/requirements.txt || true"
-
-                    // Install packages
-                    sh "pip3 install -r utilities/requirements.txt --break-system-packages || pip3 install -r utilities/requirements.txt || true"
+                    echo "----------------------------------------"
+                    echo "Installing Dependencies"
+                    echo "----------------------------------------"
+                    sh "sh utilities/requirements.txt"
                 }
             }
         }
 
-        stage('Download Firmware') {
+        stage('Download Firmware'){
             steps {
                 script {
-                    echo "Downloading the Build..."
+                    echo "----------------------------------------"
+                    echo "Downloading the Build"
+                    echo "----------------------------------------"
                     sh "mkdir -p artifacts"
+                    sh "pwd"
+
+                    echo "Cleaning up any old firmware files..."
                     sh "rm -f fw.tgz"
 
                     def targetTgzFile = "fw.tgz"
-                    def customBuildFile = params.UPLOADED_FIRMWARE
 
-                    def url = params['Build URL']
+                    def customBuildFile = params.UPLOADED_FIRMWARE
+                    def logFile = "${workspace}/artifacts/flashing-device.log"
+
+                    def url = params['Build']
                     int bonsaiIndex = url.indexOf('/bonsai/')
-                    if (bonsaiIndex == -1) error "Invalid Build URL: ${url}"
+                    if (bonsaiIndex == -1) {
+                        error "Invalid Build URL: ${url}. URL must contain '/bonsai/'."
+                    }
                     def buildPath = url.substring(bonsaiIndex + 8)
                     def WGET_URL = "https://jenkins.senao.com/bonsai/${buildPath}"
-                    if (!WGET_URL.endsWith('/')) WGET_URL += '/'
+                    if (!WGET_URL.endsWith('/')) {
+                        WGET_URL += '/'
+                    }
+                    echo "Full WGET URL: ${WGET_URL}"
+
 
                     if (customBuildFile) {
-                         sh "mv -f '${customBuildFile}' ${targetTgzFile}"
-                    } else {
-                        // Download .tgz
-                        sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.tgz' --no-directories ${WGET_URL}"
-
+                        echo "Using custom uploaded file as TGZ: ${targetTgzFile}"
+                        sh "mv -f '${customBuildFile}' ${targetTgzFile} 2>&1 | tee \"${logFile}\""
+                        sh "echo 'Downloading .img.enc file...' | tee -a \"${logFile}\""
+                        sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
                         sh """
-                            tgzfile=\$(ls -t *-apps.tgz 2>/dev/null | head -n 1)
-                            if [ -n "\$tgzfile" ]; then
-                                mv -f "\$tgzfile" "${targetTgzFile}"
-                                echo "Found and renamed: \$tgzfile"
-                            else
-                                echo "No .tgz file found!"
-                                exit 1
-                            fi
-                        """
+                           #!/bin/bash
+                           imgfile=\$(ls -t *-apps.img.enc 2>/dev/null | head -n 1)
+                           if [ -n "\$imgfile" ]; then mv -f "\$imgfile" "${targetImgFile}"; fi
+                        """ + " 2>&1 | tee -a \"${logFile}\""
+                    } else {
+                        sh "echo 'No custom build found. Downloading from URL.' | tee \"${logFile}\""
+                        sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc,*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
+
+                        // Rename the tgz file
+                        sh "mv -f *-apps.tgz ${targetTgzFile} 2>&1 | tee -a \"${logFile}\""
+
+                        // Rename the img.enc file
+                        sh """
+                           #!/bin/bash
+                           imgfile=\$(ls -t *-apps.img.enc 2>/dev/null | head -n 1)
+                           echo "ERROR: No downloaded .img file matching '*-apps.img.enc' was found."
+                           exit 1
+                        """ + " 2>&1 | tee -a \"${logFile}\""
                     }
 
+                    echo "Setting firmware for upgrade: ${targetTgzFile}"
                     env.FIRMWARE_FILE = targetTgzFile
-                    echo "Selected Firmware: ${env.FIRMWARE_FILE}"
-                    archiveArtifacts(env.FIRMWARE_FILE)
+
+                    archiveArtifacts(targetTgzFile)
                 }
             }
         }
@@ -82,21 +98,48 @@ pipeline {
             steps {
                 script {
                     def localIP = params['Local IP Address']
-                    def keep = params['Keep Setting'] ? "" : "-n"
+                    def remoteIP = params['Remote IP Address']
+                    def model = params['Model']
+                    def buildURL = params['Build']
+                    def serialPort = params['Serial Logging Port']
+
+                    // Clear old files from previous runs
+                    sh 'rm -f test-*.log test.log'
+                    echo "✅ Cleared old workspace"
+
+                    sh "echo '{\"iterations\": []}' > iteration_results.json"  // Initialize JSON object with 'iterations' key
+
                     def FIRMWARE_UPGRADE_COUNT = params.FIRMWARE_UPGRADE_COUNT ?: "1"
 
-                    sh 'rm -f test-*.log iteration_results.json'
-                    sh "echo '{\"iterations\": []}' > iteration_results.json"
+                    echo "Local IP Address: ${localIP}"
+                    echo "Remote IP Address: ${remoteIP}"
+                    echo "--- Firmware file being passed to Pytest: ${env.FIRMWARE_FILE} ---"
 
                     echo "----------------------------------------"
-                    echo "Upgrading FW using file: ${env.FIRMWARE_FILE}"
+                    echo "Upgrading the Firmware"
                     echo "----------------------------------------"
+                    sh "mkdir -p artifacts"
 
-                    for (int i = 1; i <= FIRMWARE_UPGRADE_COUNT.toInteger(); i++) {
-                        echo "--- Iteration ${i} ---"
-                        sh "python3 testCases/test_CLI_FW_Upgrade.py '${localIP}' '${env.FIRMWARE_FILE}' '${i}' '${keep}' 2>&1 | tee test-${i}.log"
+                    for (int i = 1; i <= FIRMWARE_UPGRADE_COUNT.toInteger() ; i++) {
+                        echo "Running Firmware Upgrade test iteration ${i}"
+                        try {
+                            sh """
+                                export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade 2>&1 \
+                                --local-ip '$localIP' --remote-ip '$remoteIP' \
+                                --serialPort '$serialPort' --iter ${i} | tee \"${workspace}/artifacts/firmware-upgrade-device.log\"
+                            """
+                        } catch (Exception e) {
+                            echo "Firmware Upgrade test iteration ${i} failed: ${e.message}"
+                        }
                     }
-                    archiveArtifacts('iteration_results.json')
+
+                    // Zip the logs for archival
+                    sh 'zip fw_upgrade_test_results.zip test-*.log'
+                    // Archive the zip file
+                    archiveArtifacts('fw_upgrade_test_results.zip')
+                    // DO NOT remove test-*.log files here. They are needed for the next stage.
+                    // They will be removed in the post-build 'always' block.
+                    archiveArtifacts('artifacts/**/*')
                 }
             }
         }

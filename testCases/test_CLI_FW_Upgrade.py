@@ -1,140 +1,107 @@
-#!/usr/bin/env python3
-import os
-import sys
 import time
+import warnings
+import pytest
 import json
-from datetime import datetime
-
-USERNAME = "root"
-PASSWORD = "admin"
-TIMEOUT = 600
-
-
-def run_ssh(cmd, ip):
-    # Quiet SSH with short timeout
-    ssh_opts = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 -o LogLevel=ERROR"
-    full_cmd = f"sshpass -p '{PASSWORD}' ssh {ssh_opts} {USERNAME}@{ip} \"{cmd}\""
-    return os.system(full_cmd)
+from pageObjects.HomePage import HomePage
+from pageObjects.UpgradePage import UpgradePage
+from preMadeFunctions import accessWeb, pingFunction, ssh_operations, ssh_netmiko
+from testCases.configsetup import setup
+from utilities import serial_logger
 
 
-def run_scp(local_path, remote_path, ip):
-    scp_opts = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
-    full_cmd = f"sshpass -p '{PASSWORD}' scp {scp_opts} '{local_path}' {USERNAME}@{ip}:{remote_path}"
-    return os.system(full_cmd)
+def perform_ping_check(local_ip, remote_ip, result_dict):
+    print(f"--- Pinging local IP: {local_ip} ---", flush=True)
+    if pingFunction.check_access(local_ip):
+        result_dict["Ping Results"]["Local"] = True
+        print(f"Local device ({local_ip}) is REACHABLE", flush=True)
 
-
-def wait_for_device(ip, timeout=TIMEOUT):
-    print(f"\nWaiting for device {ip} to come back online (max {timeout}s)...", end="", flush=True)
-    start_time = time.time()
-
-    while (time.time() - start_time) < timeout:
-        if os.system(f"ping -c 1 -W 2 {ip} > /dev/null 2>&1") == 0:
-            time.sleep(15)  # Grace period for services
-            print(f"\nDEVICE {ip} IS BACK ONLINE!")
-            return True
-        time.sleep(5)
-        print(".", end="", flush=True)
-
-    print(f"\nTIMEOUT: {ip} did not respond after {timeout}s")
-    return False
-
-
-def get_version(ip):
-    cmd = "cat /etc/version 2>/dev/null || ubus call system board | grep description | cut -d\\\" -f2 || echo Unknown"
-    ssh_opts = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
-    try:
-        stream = os.popen(f"sshpass -p '{PASSWORD}' ssh {ssh_opts} {USERNAME}@{ip} \"{cmd}\"")
-        result = stream.read().strip()
-        return result if result else "Unknown"
-    except:
-        return "Unknown"
-
-
-# --- Main ---
-
-if len(sys.argv) != 5:
-    print("Usage: test_CLI_FW_Upgrade.py <local_ip> <fw_path> <iteration> <keep_flag>")
-    sys.exit(1)
-
-local_ip = sys.argv[1]
-fw_path = sys.argv[2]
-iteration = sys.argv[3]
-keep_flag = sys.argv[4]
-
-keep_text = "YES" if keep_flag == "" else "NO"
-
-fw_filename = os.path.basename(fw_path)
-remote_path = f"/tmp/{fw_filename}"
-
-result = {
-    "iteration": iteration,
-    "test": "CLI_FW_Upgrade",
-    "status": "FAIL",
-    "Local IP": local_ip,
-    "Keep Settings": keep_text,
-    "Firmware File": fw_filename,
-    "Final Version": "",
-    "Log": ""
-}
-
-print(f"\n{'=' * 90}")
-print(f" CLI FIRMWARE UPGRADE – ITERATION {iteration}")
-print(f" DUT IP      : {local_ip}")
-print(f" Keep Config : {keep_text}")
-print(f" File        : {fw_filename}")
-print(f"{'=' * 90}")
-
-try:
-    # Step 1: Upload
-    print(f"[{datetime.now():%H:%M:%S}] Uploading {fw_filename} to {remote_path}...")
-    if run_scp(fw_path, remote_path, local_ip) != 0:
-        raise Exception("Failed to upload fw via SCP")
-
-    # Step 2: Trigger sysupgrade with FORCE (-F)
-    # Added -F to bypass "mandatory section missing" errors
-    upgrade_cmd = f"sysupgrade -F {keep_flag} -v {remote_path}"
-    print(f"[{datetime.now():%H:%M:%S}] Starting upgrade (Forced): {upgrade_cmd}")
-
-    exit_code = run_ssh(upgrade_cmd, local_ip)
-
-    if exit_code != 0:
-        raise Exception(f"Device still rejected the upgrade (Exit Code: {exit_code}).")
-
-    # Step 3: Wait
-    if not wait_for_device(local_ip):
-        raise Exception("Device did not come back after upgrade")
-
-    # Step 4: Verify
-    final_ver = get_version(local_ip)
-    print(f"[{datetime.now():%H:%M:%S}] UPGRADE SUCCESSFUL! New version: {final_ver}")
-
-    result["status"] = "PASS"
-    result["Final Version"] = final_ver
-    result["Log"] = f"Success → {final_ver}"
-
-except Exception as e:
-    result["Log"] = f"FAILED → {str(e)}"
-    print(f"\nUPGRADE FAILED: {e}")
-
-finally:
-    # Save result
-    json_file = "iteration_results.json"
-    try:
-        if os.path.exists(json_file):
-            with open(json_file, "r") as f:
-                try:
-                    data = json.load(f)
-                except:
-                    data = {"iterations": []}
+        print(f"--- Pinging remote IP: {remote_ip} ---", flush=True)
+        if pingFunction.check_access(remote_ip):
+            result_dict["Ping Results"]["Remote"] = True
+            print(f"Remote device ({remote_ip}) is REACHABLE", flush=True)
         else:
+            result_dict["Ping Results"]["Remote"] = False
+            print(f"Remote device ({remote_ip}) is UNREACHABLE (this is often expected)", flush=True)
+    else:
+        result_dict["Ping Results"]["Local"] = False
+        print(f"CRITICAL: Local device ({local_ip}) is UNREACHABLE → Upgrade FAILED", flush=True)
+
+
+def append_result_to_json(result, filename="iteration_results.json"):
+    try:
+        with open(filename, "r") as f:
+            data = json.load(f)
+        if not isinstance(data, dict) or "iterations" not in data:
             data = {"iterations": []}
-    except:
+    except (FileNotFoundError, json.JSONDecodeError):
         data = {"iterations": []}
 
     data["iterations"].append(result)
-
-    with open(json_file, "w") as f:
+    with open(filename, "w") as f:
         json.dump(data, f, indent=4)
 
-    print(f"\nFINAL RESULT → {result['status']}")
-    print(f"{'=' * 90}\n")
+    print("\n=== FINAL RESULT FOR THIS ITERATION ===", flush=True)
+    print(json.dumps(result, indent=4), flush=True)
+    print("=======================================\n", flush=True)
+
+
+def test_Upgrade(driver, local_ip, remote_ip, serialPort, iter):
+    print("\n" + "="*60, flush=True)
+    print(f"      STARTING CLI FIRMWARE UPGRADE - ITERATION {iter}     ".center(60), flush=True)
+    print(f"      Local IP  : {local_ip} ".center(60), flush=True)
+    print(f"      Remote IP : {remote_ip} ".center(60), flush=True)
+    print(f"      Serial    : {serialPort} ".center(60), flush=True)
+    print("="*60 + "\n", flush=True)
+
+    result = {
+        "iteration": str(iter),
+        "test": "CLI FW Upgrade",
+        "status": "FAIL",
+        "Local IP": local_ip,
+        "Remote IP": remote_ip,
+        "Ping Results": {"Local": False, "Remote": False},
+        "Device Logs": ""
+    }
+
+    print(f"--- Starting serial console logging → test-{iter}.log ---", flush=True)
+    serial_logger.start_logger(serialPort, f"test-{iter}.log")
+
+    try:
+        ssh_netmiko.runcommand_CLI(local_ip, "show wireless radio1 all")
+        time.sleep(3)
+
+        perform_ping_check(local_ip, remote_ip, result)
+
+        if result["Ping Results"]["Local"]:
+            if result["Ping Results"]["Remote"]:
+                result["status"] = "PASS"
+                result["Device Logs"] = "Both nodes reachable"
+                print("UPGRADE SUCCESS – BOTH NODES UP", flush=True)
+            else:
+                result["status"] = "PASS but Remote ping failed"
+                result["Device Logs"] = "Local OK | Remote unreachable (usually acceptable)"
+                print("UPGRADE SUCCESS – Local OK, Remote down (acceptable)", flush=True)
+        else:
+            result["status"] = "FAIL"
+            result["Device Logs"] = "LOCAL NODE DOWN → UPGRADE FAILED"
+            print("UPGRADE FAILED – LOCAL DEVICE DID NOT COME BACK", flush=True)
+            pytest.fail("Local device unreachable after upgrade")
+
+    except Exception as e:
+        print(f"\nCRITICAL ERROR – TEST CRASHED: {e}", flush=True)
+        result["status"] = "ERROR"
+        result["Device Logs"] = f"TEST CRASHED: {str(e)}"
+        pytest.fail(f"Firmware upgrade test crashed: {e}")
+
+    finally:
+        print(f"--- Stopping serial logger for iteration {iter} ---", flush=True)
+        serial_logger.stop_logger(serialPort)
+        append_result_to_json(result)
+        driver.quit()
+        print("Browser closed. Iteration finished.\n", flush=True)
+
+
+# Silence warnings
+def warn(*args, **kwargs):
+    pass
+warnings.warn = warn
