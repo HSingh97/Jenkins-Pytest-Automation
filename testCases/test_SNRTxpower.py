@@ -165,9 +165,9 @@ def test_snr_tx_power(request):
     print("\nTest completed successfully.", flush=True)
 
 def pytest_addoption(parser):
-    parser.addoption("--local-ip", action="store", default="192.168.2.10", help="Local device IP")
-    parser.addoption("--remote-ip", action="store", default="192.168.2.11", help="Remote device IP")
-    parser.addoption("--radio", action="store", default="radio1", help="Radio name (radio1/radio2)")
-    parser.addoption("--channels", action="store", default="36,50", help="Comma-separated channels")
-    parser.addoption("--powers", action="store", default="9,10,11", help="Comma-separated power levels")
+    parser.addoption("--local-ip", action="store", default="192.168.2.10")
+    parser.addoption("--remote-ip", action="store", default="192.168.2.11")
+    parser.addoption("--radio", action="store", default="radio1")
+    parser.addoption("--channels", action="store", default="36,50")
+    parser.addoption("--powers", action="store", default="9,10,11")
     parser.addoption("--frequency_band", action="store", default="5GHz", help="Frequency band: 5GHz or 6GHz")
