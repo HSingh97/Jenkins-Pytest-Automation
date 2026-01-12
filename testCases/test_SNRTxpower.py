@@ -104,12 +104,12 @@ def channel_to_frequency(channel, band):
     except:
         return "?"
 
-
 def test_snr_tx_power(request):
     radio_oid = "2" if request.config.getoption("--radio") == "radio1" else "3"
     local_ip = request.config.getoption("--local-ip")
     remote_ip = request.config.getoption("--remote-ip")
-    band = request.config.getoption("--frequency_band", "5GHz")
+
+    band = os.environ.get('FREQUENCY_BAND', '5GHz')
 
     channels_str = request.config.getoption("--channels", "36,50")
     powers_str = request.config.getoption("--powers", "9,10,11")
@@ -162,12 +162,9 @@ def test_snr_tx_power(request):
             else:
                 print("Link lost during test", flush=True)
 
-    print("\nTest completed successfully.", flush=True)
-
 def pytest_addoption(parser):
     parser.addoption("--local-ip", action="store", default="192.168.2.10")
     parser.addoption("--remote-ip", action="store", default="192.168.2.11")
     parser.addoption("--radio", action="store", default="radio1")
     parser.addoption("--channels", action="store", default="36,50")
     parser.addoption("--powers", action="store", default="9,10,11")
-    parser.addoption("--frequency_band", action="store", default="5GHz", help="Frequency band: 5GHz or 6GHz")
