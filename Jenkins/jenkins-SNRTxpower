@@ -73,10 +73,14 @@ pipeline {
                     def remote_fw_version = "N/A"
                     try {
                         local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (e) {}
+                    } catch (Exception e) {
+                        echo "Failed to get local FW version: ${e}"
+                    }
                     try {
                         remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (e) {}
+                    } catch (Exception e) {
+                        echo "Failed to get remote FW version: ${e}"
+                    }
 
                     def buildParams = [
                         "Local IP Address": localIP,
