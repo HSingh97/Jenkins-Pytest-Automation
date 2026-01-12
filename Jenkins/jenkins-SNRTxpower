@@ -9,6 +9,7 @@ pipeline {
 
     environment {
         LOG_FILE = "test_run.log"
+        FREQUENCY_BAND = "${params.FREQUENCY_BAND}"
     }
 
     stages {
@@ -22,7 +23,7 @@ pipeline {
                     echo "--- Radio        : ${params.Radio}"
                     echo "--- Channels     : ${params.Channels}"
                     echo "--- Powers       : ${params.Powers}"
-                    echo "--- Frequency Band: ${params.FREQUENCY_BAND}"
+                    echo "--- Frequency Band: ${env.FREQUENCY_BAND}"
                     echo "----------------------------------------"
 
                     if (!params['Local IP Address'] || !params['Remote IP Address']) {
@@ -47,8 +48,7 @@ pipeline {
                         --remote-ip '${params['Remote IP Address']}' \
                         --radio '${params.Radio}' \
                         --channels '${params.Channels}' \
-                        --powers '${params.Powers}' \
-                        --frequency_band '${params.FREQUENCY_BAND}' 2>&1 | tee ${env.LOG_FILE}
+                        --powers '${params.Powers}' 2>&1 | tee ${env.LOG_FILE}
                     """
                 }
             }
@@ -78,7 +78,7 @@ pipeline {
                         "Radio": params.Radio,
                         "Channels": params.Channels,
                         "Powers": params.Powers,
-                        "Frequency Band": params.FREQUENCY_BAND,
+                        "Frequency Band": env.FREQUENCY_BAND,
                         "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
                     ]
 
@@ -86,10 +86,7 @@ pipeline {
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
                     def logContent = fileExists(env.LOG_FILE) ?
-                        readFile(file: env.LOG_FILE)
-                            .replace("&", "&amp;")
-                            .replace("<", "&lt;")
-                            .replace(">", "&gt;") :
+                        readFile(file: env.LOG_FILE).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") :
                         "No log available"
 
                     def lines = readFile(env.LOG_FILE).split('\n')
