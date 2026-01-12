@@ -111,7 +111,7 @@ pipeline {
                         echo "Running Firmware Upgrade test iteration ${i}"
                         try {
                             sh """
-                                export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade 2>&1 \
+                                export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_CLI_FW_Upgrade.py::test_Upgrade 2>&1 \
                                 --local-ip '$localIP' --remote-ip '$remoteIP' \
                                 --serialPort '$serialPort' --iter ${i} | tee \"${workspace}/artifacts/firmware-upgrade-device.log\"
                             """
