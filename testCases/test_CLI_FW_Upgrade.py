@@ -2,10 +2,7 @@ import time
 import warnings
 import pytest
 import json
-from pageObjects.HomePage import HomePage
-from pageObjects.UpgradePage import UpgradePage
-from preMadeFunctions import accessWeb, pingFunction, ssh_operations, ssh_netmiko
-from testCases.configsetup import setup
+from preMadeFunctions import pingFunction, ssh_netmiko
 from utilities import serial_logger
 
 
@@ -45,12 +42,13 @@ def append_result_to_json(result, filename="iteration_results.json"):
     print("=======================================\n", flush=True)
 
 
-def test_Upgrade(local_ip, remote_ip, serialPort, iter):
+def test_Upgrade(local_ip, remote_ip, serialPort, iter, local_pc_mgmt_ip):
     print("\n" + "="*60, flush=True)
     print(f"      STARTING CLI FIRMWARE UPGRADE - ITERATION {iter}     ".center(60), flush=True)
-    print(f"      Local IP  : {local_ip} ".center(60), flush=True)
-    print(f"      Remote IP : {remote_ip} ".center(60), flush=True)
-    print(f"      Serial    : {serialPort} ".center(60), flush=True)
+    print(f"      Local IP     : {local_ip} ".center(60), flush=True)
+    print(f"      Remote IP    : {remote_ip} ".center(60), flush=True)
+    print(f"      Local PC IP  : {local_pc_mgmt_ip} ".center(60), flush=True)
+    print(f"      Serial       : {serialPort} ".center(60), flush=True)
     print("="*60 + "\n", flush=True)
 
     result = {
@@ -67,7 +65,9 @@ def test_Upgrade(local_ip, remote_ip, serialPort, iter):
     serial_logger.start_logger(serialPort, f"test-{iter}.log")
 
     try:
-        ssh_netmiko.runcommand_CLI(local_ip, "show wireless radio1 all")
+        firmware_name = os.getenv('FW_PATH', 'fw.img.enc')
+
+        ssh_netmiko.runcommand_CLI(local_ip, f"download firmware TFTP {local_pc_mgmt_ip} {firmware_name}")
         time.sleep(3)
 
         perform_ping_check(local_ip, remote_ip, result)

@@ -77,6 +77,14 @@ pipeline {
                     env.FIRMWARE_FILE = targetTgzFile
 
                     archiveArtifacts(targetTgzFile)
+
+                    echo "----------------------------------------"
+                    echo "Copying firmware to TFTP Boot Directory"
+                    echo "----------------------------------------"
+                    sh "mkdir -p /tftpboot"
+                    sh "cp ${targetTgzFile} /tftpboot/"
+                    sh "ls -l /tftpboot/${targetTgzFile}"
+                    // ------------------------------------
                 }
             }
         }
@@ -84,6 +92,35 @@ pipeline {
         stage('Firmware Upgrade') {
             steps {
                 script {
+
+                    def localPC = params['TARGET_STAND']
+
+                    node(localPC) {
+                        localPCIP = sh(
+                            script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$4}' | cut -d'/' -f1 | head -n1",
+                            returnStdout: true
+                        ).trim()
+
+                        localPCInterface = sh(
+                            script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$2}' | head -n1",
+                            returnStdout: true
+                        ).trim()
+
+                        localPCmgmtIP = sh(
+                            script: "ip -4 -o addr show | awk '\$4 ~ /^10\\.0\\.150\\./ {print \$4}' | cut -d'/' -f1 | head -n1",
+                            returnStdout: true
+                        ).trim()
+
+                        if (!localPCIP) {
+                            error("❌ Could not find 192.168.1.x IP on node '$localPC' ")
+                        }
+
+                        echo "✅ Local PC IP       : ${localPCIP}"
+                        echo "✅ Local PC Interface: ${localPCInterface}"
+                        echo "✅ Local PC Mgmt IP  : ${localPCmgmtIP}"
+
+                    }
+
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
                     def model = params['Model']
@@ -113,6 +150,7 @@ pipeline {
                             sh """
                                 export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_CLI_FW_Upgrade.py::test_Upgrade 2>&1 \
                                 --local-ip '$localIP' --remote-ip '$remoteIP' \
+                                --local-pc-mgmt-ip '${localPCmgmtIP}'\
                                 --serialPort '$serialPort' --iter ${i} | tee \"${workspace}/artifacts/firmware-upgrade-device.log\"
                             """
                         } catch (Exception e) {
