@@ -248,8 +248,10 @@ pipeline {
                         </style>
                         <script>
                             function showLog(logDataId) {
-                                document.getElementById('log-content-pre').innerHTML = document.getElementById(logDataId).innerHTML;
+                                var logArea = document.getElementById('log-content-pre');
+                                logArea.innerHTML = document.getElementById(logDataId).innerHTML;
                                 document.getElementById('logModal').style.display = 'block';
+                                logArea.scrollTop = 0; // Force scroll to top
                             }
                             function closeModal() { document.getElementById('logModal').style.display = 'none'; }
                             window.onclick = function(event) { if (event.target == document.getElementById('logModal')) closeModal(); }
