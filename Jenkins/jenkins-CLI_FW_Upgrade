@@ -357,6 +357,7 @@ pipeline {
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
 
                 echo "Sending email to: ${userEmail}"
+                def buildURL = params['Build']
 
                 // Send email notification
                 emailext(
@@ -371,9 +372,9 @@ pipeline {
                                 ${currentBuild.currentResult}</span>
                             </p>
                             <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
-                            <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
-                            <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
-                            <p><strong>HTML Report:</strong> <a href="${env.BUILD_URL}artifact/${reportFilename}">Click here to view</a></p>
+                            <p><strong>Build URL:</strong> <a href="${buildURL}">${buildURL}</a></p>
+                            <p><strong>Console Output:</strong> <a href="${buildURL}console">${buildURL}console</a></p>
+                            <p><strong>HTML Report:</strong> <a href="${buildURL}artifact/${reportFilename}">Click here to view</a></p>
                             <br/>
                             <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
                         </body>
