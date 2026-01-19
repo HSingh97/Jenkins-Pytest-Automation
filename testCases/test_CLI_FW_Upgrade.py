@@ -2,6 +2,7 @@ import time
 import warnings
 import pytest
 import json
+import os
 from preMadeFunctions import pingFunction, ssh_netmiko
 from utilities import serial_logger
 
