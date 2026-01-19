@@ -70,52 +70,48 @@ def test_Upgrade(local_ip, remote_ip, serialPort, iter, local_pc_mgmt_ip):
 
     try:
         firmware_name = os.getenv('FW_PATH', 'fw.img.enc')
+        cmd = f"download firmware TFTP {local_pc_mgmt_ip} {firmware_name}"
 
-        print(f"Executing: download firmware TFTP {local_pc_mgmt_ip} {firmware_name}", flush=True)
-        print("NOTE: This command triggers a reboot. A 'Pattern not detected' error is EXPECTED.", flush=True)
+        print(f"Executing command: {cmd}", flush=True)
 
         try:
-            ssh_netmiko.runcommand_CLI(local_ip, f"download firmware TFTP {local_pc_mgmt_ip} {firmware_name}")
+            ssh_netmiko.runcommand_CLI(local_ip, cmd)
+
         except Exception as e:
-            print(f"Command sent. Caught expected session disconnect: {e}", flush=True)
+            error_msg = str(e)
+            if "Pattern not detected" in error_msg or "closed by remote host" in error_msg:
+                print("\n✅ Command sent successfully. Session closed by device as expected.", flush=True)
+            else:
+                print(f"\n❌ Unexpected Error sending command: {error_msg}", flush=True)
+                raise e
 
-        print("\n--- Verifying Upgrade Reboot Cycle ---", flush=True)
+        print("\n" + "-" * 40, flush=True)
+        print("FIRMWARE UPGRADE IN PROGRESS", flush=True)
+        print("Device upgrade takes ~7 mins. Sleeping for 400 seconds...", flush=True)
+        print("-" * 40, flush=True)
 
-        device_went_down = False
-        print("Waiting for device to go DOWN (confirming reboot)...", flush=True)
+        for i in range(40, 0, -1):
+            print(f"Waiting... {i * 10}s remaining", end='\r', flush=True)
+            time.sleep(10)
+        print("\nChecking connectivity now...", flush=True)
 
-        for i in range(24):
-            if not pingFunction.check_access(local_ip):
-                print(f"SUCCESS: Device {local_ip} is now DOWN.", flush=True)
-                device_went_down = True
-                break
-            time.sleep(5)
-            if i % 2 == 0: print(".", end="", flush=True)
-        print("")
-
-        if not device_went_down:
-            print("⚠️ WARNING: Device did not stop responding to ping within 120s.", flush=True)
-            print("It might have rebooted very fast, or the command failed.", flush=True)
-
-        print("Waiting for device to come back ONLINE...", flush=True)
         device_back_up = False
+        print("\nVerifying device is ONLINE...", flush=True)
 
-        for i in range(60):
+        for i in range(12):
             if pingFunction.check_access(local_ip):
-                print(f"SUCCESS: Device {local_ip} is back ONLINE.", flush=True)
                 device_back_up = True
+                print(f"SUCCESS: Device {local_ip} is ONLINE.", flush=True)
                 break
+            print(".", end="", flush=True)
             time.sleep(5)
-            if i % 2 == 0: print(".", end="", flush=True)
-        print("")
 
         if not device_back_up:
             result["status"] = "FAIL"
-            result["Device Logs"] = "Device failed to come back online after upgrade."
-            print("CRITICAL: Device failed to recover.", flush=True)
+            result["Device Logs"] = "Device failed to come back online after 460s."
+            print("\nCRITICAL: Device failed to recover.", flush=True)
             pytest.fail("Device failed to recover after firmware upgrade.")
 
-        time.sleep(10)
         perform_ping_check(local_ip, remote_ip, result)
 
         if result["Ping Results"]["Local"]:
