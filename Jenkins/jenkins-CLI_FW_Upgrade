@@ -3,12 +3,11 @@ def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
+def dateStamp = new Date().format("yyyyMMdd", TimeZone.getTimeZone("Asia/Kolkata"))
+def reportFilename = "CLI_FW_test_report_${env.BUILD_NUMBER}_${dateStamp}.html"
+
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
-
-    environment {
-        REPORT_FILE_NAME = "${env.JOB_BASE_NAME}.html"
-    }
 
     stages {
         stage('Prepare tests') {
@@ -312,7 +311,8 @@ pipeline {
                         ${logDataBlocks}
                     </body></html>
                     """
-                    writeFile file: env.REPORT_FILE_NAME, text: htmlContent
+                    writeFile file: reportFilename, text: htmlContent
+                    echo "📄 HTML report generated: ${reportFilename}"
                 }
             }
         }
@@ -320,23 +320,83 @@ pipeline {
 
     post {
         always {
-            publishHTML(target: [
-                allowMissing: false, alwaysLinkToLastBuild: true, keepAll: true,
-                reportDir: '.', reportFiles: env.REPORT_FILE_NAME, reportName: 'Test Report'
+            publishHTML (target: [
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: '.',
+                reportFiles: 'report.html',
+                reportName: "CLI FW Test Report - Build ${env.BUILD_NUMBER}"
             ])
-            sh 'rm -f test-*.log || true'
+            echo "-----------------------------------------"
+            echo 'Script Done!'
+            echo "-----------------------------------------"
             script {
-                def userEmails = [ "puneet": "puneet.sharma@senao.com", "harman": "harmanjot.singh@senao.com" ]
-                def buildUserId = currentBuild.getBuildCauses().find { it._class == 'hudson.model.Cause$UserIdCause' }?.userId ?: "unknown"
+                def buildCauses = currentBuild.getBuildCauses()
+                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+
+                def buildUserName = userCause?.userName ?: "Unknown User"
+                def buildUserId = userCause?.userId ?: "unknown"
+
+                echo "Build started by: ${buildUserName} (${buildUserId})"
+
+                // Define a mapping of user IDs to emails (update as needed)
+                def userEmails = [
+                    "puneet": "puneet.sharma@senao.com",
+                    "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@senao.com",
+                    "sandeep": "sandeep.manchikanti@senao.com",
+                    "sampath": "sampath.marella@senao.com",
+                    "jayanth": "jayanth.munnaluru@senao.com",
+                    "srilatha": "srilatha.tadiboina@senao.com",
+                    "phani": "phani.darla@senao.com",
+                    "dinesh": "dinesh.redddy@senao.com"
+                ]
+
+                // Get email from predefined mapping, else use default
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+
+                echo "Sending email to: ${userEmail}"
+
+                // Send email notification
                 emailext(
-                    subject: "${env.JOB_BASE_NAME} #${BUILD_NUMBER} - ${currentBuild.currentResult}",
-                    body: "See attached report.",
+                    subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    body: """
+                        <html>
+                        <body>
+                            <h2 style="color:blue;">Jenkins Build Notification</h2>
+                            <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
+                            <p><strong>Status:</strong>
+                                <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
+                                ${currentBuild.currentResult}</span>
+                            </p>
+                            <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
+                            <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                            <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                            <p><strong>HTML Report:</strong> <a href="${env.BUILD_URL}artifact/${reportFilename}">Click here to view</a></p>
+                            <br/>
+                            <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
+                        </body>
+                        </html>
+                    """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: "${env.REPORT_FILE_NAME}"
+                    attachmentsPattern: "${reportFilename}"
                 )
+
             }
+        }
+
+        success {
+            echo "-----------------------------------------"
+            echo 'Script Success'
+            echo "-----------------------------------------"
+        }
+
+        failure {
+            echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
         }
     }
 }
