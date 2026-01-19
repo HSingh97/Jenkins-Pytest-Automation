@@ -87,10 +87,10 @@ def test_Upgrade(local_ip, remote_ip, serialPort, iter, local_pc_mgmt_ip):
 
         print("\n" + "-" * 40, flush=True)
         print("FIRMWARE UPGRADE IN PROGRESS", flush=True)
-        print("Device upgrade takes ~7 mins. Sleeping for 400 seconds...", flush=True)
+        print("Device upgrade takes ~7 mins. Sleeping for 500 seconds...", flush=True)
         print("-" * 40, flush=True)
 
-        for i in range(40, 0, -1):
+        for i in range(50, 0, -1):
             print(f"Waiting... {i * 10}s remaining", end='\r', flush=True)
             time.sleep(10)
         print("\nChecking connectivity now...", flush=True)
