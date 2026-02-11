@@ -322,7 +322,6 @@ pipeline {
                 def reportJsonFile = "test_results.json"
                 def debugArtifacts = "debug_tables/*"
 
-                // --- FIX: Read JSON using the whitelisted readJSON step ---
                 def data = readJSON(file: reportJsonFile)
                 def total = data.iterations?.size() ?: 0
                 def pass = data.iterations?.count { it.overall_status == 'PASS' } ?: 0
@@ -332,7 +331,6 @@ pipeline {
                 // 1. Archive artifacts: Using the global function which you confirmed works for archiving.
                 archiveArtifacts(pattern: "${resultFile}, ${debugArtifacts}, test-*.log, report.html")
 
-                // 2. Publish the HTML report
                 publishHTML(target: [
                     allowMissing: false,
                     alwaysLinkToLastBuild: true,
@@ -368,7 +366,6 @@ pipeline {
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
                 echo "Sending email to: ${userEmail}"
 
-                // --- ENHANCED EMAIL BODY FOR BETTER DELIVERABILITY AND CLARITY ---
                 def emailBody = """
                     <html><body>
                         <h2 style="color:blue;">Jenkins Build Notification: Ethernet Speed/Duplex Test</h2>

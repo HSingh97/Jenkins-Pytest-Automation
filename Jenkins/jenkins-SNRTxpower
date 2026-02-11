@@ -75,7 +75,7 @@ pipeline {
                     def buildParams = [
                         "Local IP Address": localIP,
                         "Remote IP Address": remoteIP,
-                        "Radio": params.Radio,
+                        //"Radio": params.Radio,
                         "Channels": params.Channels,
                         "Powers": params.Powers,
                         //"Frequency Band": env.FREQUENCY_BAND,
