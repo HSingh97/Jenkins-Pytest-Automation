@@ -16,6 +16,8 @@ pipeline {
         SCRIPT_PATH_ON_JENKINS = "master_script_extended_16SU.py"
         TREX_REMOTE_PATH      = "/opt/v3.06"
         PYTHONPATH_EXPORT     = "export PYTHONPATH=/opt/v3.06/automation/trex_control_plane/interactive/"
+        // ← Added this to avoid "Host key verification failed"
+        SSH_COMMON_OPTS       = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
     }
 
     stages {
@@ -94,14 +96,14 @@ pipeline {
                         echo "→ Processing TRex server: ${ip}"
 
                         // Set hugepages
-                        sh "ssh root@${ip} 'echo 1024 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages || true'"
+                        sh "ssh ${SSH_COMMON_OPTS} root@${ip} 'echo 1024 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages || true'"
 
                         // Kill any old instance
-                        sh "ssh root@${ip} 'pkill -9 t-rex-64 || true'"
+                        sh "ssh ${SSH_COMMON_OPTS} root@${ip} 'pkill -9 t-rex-64 || true'"
 
                         // Start TRex in background
                         sh """
-                            ssh root@${ip} '
+                            ssh ${SSH_COMMON_OPTS} root@${ip} '
                                 cd /opt/v3.06 &&
                                 nohup ./t-rex-64 -i --no-scapy-server --no-ofed-check > trex.log 2>&1 &
                             '
@@ -109,11 +111,10 @@ pipeline {
 
                         sleep 8  // give time to start
 
-                        // Basic health check - port 4501 should be listening
                         sh """
                             nc -z -w 4 ${ip} 4501 || {
                                 echo "ERROR: TRex port 4501 not open on ${ip}"
-                                cat <(ssh root@${ip} 'cat /opt/v3.06/trex.log || true')
+                                ssh ${SSH_COMMON_OPTS} root@${ip} 'cat /opt/v3.06/trex.log || true'
                                 exit 1
                             }
                         """
@@ -130,7 +131,7 @@ pipeline {
                     echo "Copying test script to BSU TRex server (${params.TREX_BSU_IP})..."
 
                     sh """
-                        scp ${SCRIPT_PATH_ON_JENKINS} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/
+                        scp ${SSH_COMMON_OPTS} ${SCRIPT_PATH_ON_JENKINS} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/
                     """
 
                     def su_args = ""
@@ -142,7 +143,7 @@ pipeline {
                     echo "Launching test on BSU TRex server..."
 
                     sh """
-                        ssh root@${params.TREX_BSU_IP} '
+                        ssh ${SSH_COMMON_OPTS} root@${params.TREX_BSU_IP} '
                             cd ${TREX_REMOTE_PATH} &&
                             ${PYTHONPATH_EXPORT} &&
                             python3 master_script_extended_16SU.py \
@@ -157,12 +158,10 @@ pipeline {
                                 2>&1 | tee test_run.log
                         '
                     """
-
-                    // Try to bring back interesting artifacts
                     sh """
-                        scp root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/throughput_*.png    . || true
-                        scp root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/trex_test_results.csv . || true
-                        scp root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/test_run.log         . || true
+                        scp ${SSH_COMMON_OPTS} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/throughput_*.png    . || true
+                        scp ${SSH_COMMON_OPTS} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/trex_test_results.csv . || true
+                        scp ${SSH_COMMON_OPTS} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/test_run.log         . || true
                     """
 
                     archiveArtifacts artifacts: '*.png, *.csv, test_run.log', allowEmptyArchive: true
