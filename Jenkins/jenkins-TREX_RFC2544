@@ -4,194 +4,206 @@ pipeline {
             label "${params.TARGET_STAND}"
         }
     }
+
+    parameters {
+        string(name: 'TARGET_STAND', defaultValue: 'test-puneet', description: 'Jenkins node label')
+        string(name: 'TREX_BSU_IP', defaultValue: '192.168.1.6', description: 'TRex server IP with BSU connected')
+        string(name: 'TREX_SU_IP', defaultValue: '', description: 'TRex SU server IP (4-7 SUs)')
+        string(name: 'TREX_SU2_IP', defaultValue: '', description: 'TRex SU2 server IP (8-11 SUs)')
+        string(name: 'TREX_SU3_IP', defaultValue: '', description: 'TRex SU3 server IP (12-15 SUs)')
+        string(name: 'TREX_SU4_IP', defaultValue: '', description: 'TRex SU4 server IP (16-19 SUs)')
+        string(name: 'SU_COUNT', defaultValue: '1', description: 'Total number of SUs')
+        string(name: 'DL_BW', defaultValue: '250M', description: 'Total downlink bandwidth e.g. 250M 1G')
+        string(name: 'UL_BW', defaultValue: '250M', description: 'Total uplink bandwidth e.g. 250M 1G')
+        string(name: 'PACKET_SIZE', defaultValue: '1500', description: 'Packet size (64 128 1500 imix ...)')
+        string(name: 'DURATION', defaultValue: '60', description: 'Duration in seconds (0 = indefinite)')
+        string(name: 'BSU_IP', defaultValue: '192.168.2.10', description: 'BSU device IP for pinging')
+        string(name: 'SU_IPS', defaultValue: '192.168.2.11', description: 'Comma separated SU IPs for pinging')
+        string(
+            name: 'SCRIPT_LOCAL_PATH',
+            defaultValue: '/home/senao/master_script_extended_16SU.py',
+            description: 'Full path to master_script_extended_16SU.py on the agent machine'
+        )
+    }
+
     options {
         timestamps()
         timeout(time: 8, unit: 'HOURS')
         buildDiscarder(logRotator(numToKeepStr: '30', daysToKeepStr: '90'))
         disableConcurrentBuilds()
     }
+
     environment {
-        SCRIPT_NAME = "master_script_extended_16SU.py"
-        TREX_REMOTE_PATH = "/opt/v3.06"
-        PYTHONPATH_EXPORT = "export PYTHONPATH=/opt/v3.06/automation/trex_control_plane/interactive/"
-        SSH_OPTS = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-        ROOT_PASSWORD = "ubuntu"
-        TREX_PORT = "4501"
-        MAX_HEALTH_CHECKS = "6"
-        HEALTH_CHECK_INTERVAL = "10"
+        SCRIPT_NAME           = 'master_script_extended_16SU.py'
+        TREX_REMOTE_PATH      = '/opt/v3.06'
+        PYTHONPATH_EXPORT     = 'export PYTHONPATH=/opt/v3.06/automation/trex_control_plane/interactive/'
+        SSH_OPTS              = '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+        ROOT_PASSWORD         = 'ubuntu'
+        TREX_PORT             = '4501'
+        MAX_HEALTH_CHECKS     = '8'
+        HEALTH_CHECK_INTERVAL = '8'
     }
+
     stages {
-        stage('Prepare Workspace') {
+        stage('Copy Script to Workspace') {
             steps {
                 script {
-                    echo "┌───────────────────────────────────────────────┐"
-                    echo "│ Preparing Workspace                           │"
-                    echo "└───────────────────────────────────────────────┘"
-                    // Assuming the script is in a fixed location on the agent; adjust if needed
-                    // If it's in Git, this stage can be removed
-                    def localScriptPath = "/home/senao/Jenkins/${SCRIPT_NAME}"  // Adjust this path based on your setup
-                    if (fileExists(localScriptPath)) {
-                        sh "cp ${localScriptPath} ."
-                        echo "✓ Copied ${SCRIPT_NAME} from ${localScriptPath} to workspace."
+                    echo "──────────────────────────────────────────────────────"
+                    echo "Copying test script from agent to workspace..."
+                    echo "Expected location: ${params.SCRIPT_LOCAL_PATH}"
+                    echo "──────────────────────────────────────────────────────"
+
+                    if (fileExists(params.SCRIPT_LOCAL_PATH)) {
+                        sh "cp -v '${params.SCRIPT_LOCAL_PATH}' ./${SCRIPT_NAME}"
+                        echo "Script copied successfully."
                     } else {
-                        error "Cannot find ${SCRIPT_NAME} at ${localScriptPath}. Ensure it's available on the agent."
+                        error """
+                        Cannot find the script at:
+                            ${params.SCRIPT_LOCAL_PATH}
+
+                        Actions:
+                        1. Verify the file exists in /home/senao/
+                        2. Correct the SCRIPT_LOCAL_PATH parameter in Build with Parameters
+                        3. Or move/rename the file to match the path
+                        """
                     }
+
+                    // Final check
+                    if (!fileExists(SCRIPT_NAME)) {
+                        error "Copy failed - ${SCRIPT_NAME} not present in workspace."
+                    }
+
+                    sh "ls -lh ${SCRIPT_NAME}"
+                    echo "Script is ready."
                 }
             }
         }
+
         stage('Validate Parameters') {
             steps {
                 script {
-                    echo "┌───────────────────────────────────────────────┐"
-                    echo "│ Parameter Validation                          │"
-                    echo "└───────────────────────────────────────────────┘"
-                    def requiredParams = ['TARGET_STAND', 'TREX_BSU_IP', 'SU_COUNT', 'DL_BW', 'UL_BW', 'PACKET_SIZE', 'DURATION', 'BSU_IP']
-                    requiredParams.each { param ->
-                        if (!params[param] || params[param].trim() == '') {
-                            error "Missing required parameter: ${param}"
+                    echo "──────────────────────────────────────────────────────"
+                    echo "Validating parameters"
+                    echo "──────────────────────────────────────────────────────"
+
+                    def required = ['TARGET_STAND','TREX_BSU_IP','SU_COUNT','DL_BW','UL_BW','PACKET_SIZE','DURATION','BSU_IP']
+                    required.each { p ->
+                        if (!params[p]?.trim()) {
+                            error "Parameter ${p} is missing or empty"
                         }
                     }
-                    echo "Validated Parameters:"
-                    echo "• Target Stand: ${params.TARGET_STAND}"
-                    echo "• TRex BSU IP: ${params.TREX_BSU_IP}"
-                    echo "• TRex SU IP: ${params.TREX_SU_IP ?: 'Not Set'}"
-                    echo "• TRex SU2 IP: ${params.TREX_SU2_IP ?: 'Not Set'}"
-                    echo "• TRex SU3 IP: ${params.TREX_SU3_IP ?: 'Not Set'}"
-                    echo "• TRex SU4 IP: ${params.TREX_SU4_IP ?: 'Not Set'}"
-                    echo "• SU Count: ${params.SU_COUNT}"
-                    echo "• Downlink BW: ${params.DL_BW}"
-                    echo "• Uplink BW: ${params.UL_BW}"
-                    echo "• Packet Size: ${params.PACKET_SIZE}"
-                    echo "• Duration: ${params.DURATION} seconds"
-                    echo "• BSU IP: ${params.BSU_IP}"
-                    echo "• SU IPs: ${params.SU_IPS ?: 'Not Provided'}"
-                    // Validate script presence after copy
-                    if (!fileExists("${SCRIPT_NAME}")) {
-                        error "${SCRIPT_NAME} not found in workspace after preparation."
-                    }
-                    echo "✓ ${SCRIPT_NAME} validated in workspace."
+
+                    echo "Parameters OK"
                 }
             }
         }
-        stage('Connectivity Check') {
+
+        stage('Ping Check') {
             steps {
                 script {
-                    echo "┌───────────────────────────────────────────────┐"
-                    echo "│ Connectivity Check                            │"
-                    echo "└───────────────────────────────────────────────┘"
-                    def trexIps = [params.TREX_BSU_IP]
-                    if (params.TREX_SU_IP) trexIps << params.TREX_SU_IP
-                    if (params.TREX_SU2_IP) trexIps << params.TREX_SU2_IP
-                    if (params.TREX_SU3_IP) trexIps << params.TREX_SU3_IP
-                    if (params.TREX_SU4_IP) trexIps << params.TREX_SU4_IP
-                    echo "Pinging TRex Servers..."
-                    trexIps.each { ip ->
-                        sh "ping -c 4 -W 3 ${ip} || exit 1"
-                        echo "✓ ${ip} reachable."
+                    echo "──────────────────────────────────────────────────────"
+                    echo "Pinging all devices"
+                    echo "──────────────────────────────────────────────────────"
+
+                    def trex_ips = [params.TREX_BSU_IP]
+                    [params.TREX_SU_IP, params.TREX_SU2_IP, params.TREX_SU3_IP, params.TREX_SU4_IP].each {
+                        if (it?.trim()) trex_ips << it.trim()
                     }
-                    echo "Pinging BSU..."
-                    sh "ping -c 4 -W 3 ${params.BSU_IP} || exit 1"
-                    echo "✓ BSU reachable."
+
+                    trex_ips.unique().each { ip ->
+                        sh "ping -c 4 -W 4 ${ip} || exit 1"
+                    }
+
+                    sh "ping -c 4 -W 4 ${params.BSU_IP} || exit 1"
+
                     if (params.SU_IPS?.trim()) {
-                        echo "Pinging SUs..."
-                        def suIps = params.SU_IPS.split(',').collect { it.trim() }
-                        suIps.each { ip ->
-                            sh "ping -c 4 -W 3 ${ip} || exit 1"
-                            echo "✓ SU ${ip} reachable."
+                        params.SU_IPS.split(',').collect{it.trim()}.each { ip ->
+                            sh "ping -c 4 -W 4 ${ip} || exit 1"
                         }
-                    } else {
-                        echo "No SU IPs provided; skipping SU pings."
                     }
                 }
             }
         }
-        stage('Setup SSH Keys') {
+
+        stage('Add SSH Known Hosts') {
             steps {
                 script {
-                    echo "┌───────────────────────────────────────────────┐"
-                    echo "│ Setting Up SSH Known Hosts                    │"
-                    echo "└───────────────────────────────────────────────┘"
-                    // To avoid host key issues, scan and add to known_hosts
-                    def knownHostsFile = "${env.WORKSPACE}/known_hosts"
-                    sh "touch ${knownHostsFile}"
-                    def trexIps = [params.TREX_BSU_IP]
-                    if (params.TREX_SU_IP) trexIps << params.TREX_SU_IP
-                    if (params.TREX_SU2_IP) trexIps << params.TREX_SU2_IP
-                    if (params.TREX_SU3_IP) trexIps << params.TREX_SU3_IP
-                    if (params.TREX_SU4_IP) trexIps << params.TREX_SU4_IP
-                    trexIps.each { ip ->
-                        sh "ssh-keyscan -H ${ip} >> ${knownHostsFile} || true"
-                        echo "Added host key for ${ip}."
+                    echo "Adding known hosts entries..."
+                    def kh = "${WORKSPACE}/known_hosts_temp"
+                    sh "touch ${kh}"
+
+                    def ips = [params.TREX_BSU_IP]
+                    [params.TREX_SU_IP, params.TREX_SU2_IP, params.TREX_SU3_IP, params.TREX_SU4_IP].each {
+                        if (it?.trim()) ips << it.trim()
                     }
-                    env.SSH_OPTS = "${SSH_OPTS} -o UserKnownHostsFile=${knownHostsFile}"
+
+                    ips.unique().each { ip ->
+                        sh "ssh-keyscan -H ${ip} >> ${kh} 2>/dev/null || true"
+                    }
+
+                    env.SSH_OPTS = "${SSH_OPTS} -o UserKnownHostsFile=${kh}"
                 }
             }
         }
-        stage('Prepare TRex Servers') {
+
+        stage('Prepare & Start TRex Servers') {
             steps {
                 script {
-                    echo "┌───────────────────────────────────────────────┐"
-                    echo "│ Preparing TRex Servers                        │"
-                    echo "└───────────────────────────────────────────────┘"
-                    def trexIps = [params.TREX_BSU_IP]
-                    if (params.TREX_SU_IP) trexIps << params.TREX_SU_IP
-                    if (params.TREX_SU2_IP) trexIps << params.TREX_SU2_IP
-                    if (params.TREX_SU3_IP) trexIps << params.TREX_SU3_IP
-                    if (params.TREX_SU4_IP) trexIps << params.TREX_SU4_IP
-                    trexIps.each { ip ->
-                        echo "Processing TRex Server: ${ip}"
-                        // Enable HugePages
-                        sh "sshpass -p '${ROOT_PASSWORD}' ssh ${SSH_OPTS} root@${ip} 'echo 1024 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages || true'"
-                        echo "✓ HugePages enabled."
-                        // Kill old processes
-                        sh "sshpass -p '${ROOT_PASSWORD}' ssh ${SSH_OPTS} root@${ip} 'pkill -9 t-rex-64 || true'"
-                        echo "✓ Old TRex processes killed."
-                        // Start TRex in background
-                        sh "sshpass -p '${ROOT_PASSWORD}' ssh ${SSH_OPTS} root@${ip} 'cd /opt/v3.06 && nohup ./t-rex-64 -i --no-scapy-server --no-ofed-check > trex.log 2>&1 &'"
-                        echo "✓ TRex started."
-                        // Health check with retries
+                    echo "──────────────────────────────────────────────────────"
+                    echo "Preparing TRex servers"
+                    echo "──────────────────────────────────────────────────────"
+
+                    def trex_ips = [params.TREX_BSU_IP]
+                    [params.TREX_SU_IP, params.TREX_SU2_IP, params.TREX_SU3_IP, params.TREX_SU4_IP].each {
+                        if (it?.trim()) trex_ips << it.trim()
+                    }
+
+                    trex_ips.unique().each { ip ->
+                        echo "→ ${ip}"
+
+                        sh "sshpass -p '${ROOT_PASSWORD}' ssh ${env.SSH_OPTS} root@${ip} 'echo 1024 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages || true'"
+                        sh "sshpass -p '${ROOT_PASSWORD}' ssh ${env.SSH_OPTS} root@${ip} 'pkill -9 t-rex-64 || true'"
+                        sh "sshpass -p '${ROOT_PASSWORD}' ssh ${env.SSH_OPTS} root@${ip} 'cd /opt/v3.06 && nohup ./t-rex-64 -i --no-scapy-server --no-ofed-check > trex.log 2>&1 &'"
+
                         def healthy = false
-                        for (int attempt = 1; attempt <= MAX_HEALTH_CHECKS.toInteger(); attempt++) {
-                            sleep HEALTH_CHECK_INTERVAL.toInteger()
-                            def status = sh(script: "nc -z -w 5 ${ip} ${TREX_PORT}", returnStatus: true)
-                            if (status == 0) {
-                                healthy = true
-                                break
-                            }
-                            echo "Attempt ${attempt}/${MAX_HEALTH_CHECKS}: Waiting for port ${TREX_PORT} on ${ip}..."
+                        for (int i = 1; i <= env.MAX_HEALTH_CHECKS.toInteger(); i++) {
+                            sleep env.HEALTH_CHECK_INTERVAL.toInteger()
+                            def rc = sh(script: "nc -z -w 5 ${ip} ${TREX_PORT}", returnStatus: true)
+                            if (rc == 0) { healthy = true; break }
+                            echo "   Waiting (${i}/${env.MAX_HEALTH_CHECKS})..."
                         }
+
                         if (!healthy) {
-                            sh "sshpass -p '${ROOT_PASSWORD}' ssh ${SSH_OPTS} root@${ip} 'cat /opt/v3.06/trex.log || true'"
-                            error "TRex failed to start on ${ip} after retries."
+                            sh "sshpass -p '${ROOT_PASSWORD}' ssh ${env.SSH_OPTS} root@${ip} 'cat /opt/v3.06/trex.log || true'"
+                            error "TRex not running on ${ip}"
                         }
-                        echo "✓ ${ip} healthy (port ${TREX_PORT} open)."
                     }
                 }
             }
         }
-        stage('Run TRex Test') {
+
+        stage('Run Test Script') {
             steps {
                 script {
-                    echo "┌───────────────────────────────────────────────┐"
-                    echo "│ Running TRex Test Script                      │"
-                    echo "└───────────────────────────────────────────────┘"
-                    // Copy script to BSU TRex
-                    sh "sshpass -p '${ROOT_PASSWORD}' scp ${SSH_OPTS} ${SCRIPT_NAME} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/"
-                    echo "✓ Script copied to ${params.TREX_BSU_IP}."
-                    // Build SU args
-                    def suArgs = ""
-                    if (params.TREX_SU_IP) suArgs += "--server-su ${params.TREX_SU_IP} "
-                    if (params.TREX_SU2_IP) suArgs += "--server-su2 ${params.TREX_SU2_IP} "
-                    if (params.TREX_SU3_IP) suArgs += "--server-su3 ${params.TREX_SU3_IP} "
-                    if (params.TREX_SU4_IP) suArgs += "--server-su4 ${params.TREX_SU4_IP} "
-                    // Run the script
+                    echo "──────────────────────────────────────────────────────"
+                    echo "Starting test on BSU TRex server"
+                    echo "──────────────────────────────────────────────────────"
+
+                    sh "sshpass -p '${ROOT_PASSWORD}' scp ${env.SSH_OPTS} ${SCRIPT_NAME} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/"
+
+                    def su_args = ""
+                    if (params.TREX_SU_IP?.trim())    su_args += "--server-su ${params.TREX_SU_IP} "
+                    if (params.TREX_SU2_IP?.trim())   su_args += "--server-su2 ${params.TREX_SU2_IP} "
+                    if (params.TREX_SU3_IP?.trim())   su_args += "--server-su3 ${params.TREX_SU3_IP} "
+                    if (params.TREX_SU4_IP?.trim())   su_args += "--server-su4 ${params.TREX_SU4_IP} "
+
                     sh """
-                        sshpass -p '${ROOT_PASSWORD}' ssh ${SSH_OPTS} root@${params.TREX_BSU_IP} '
+                        sshpass -p '${ROOT_PASSWORD}' ssh ${env.SSH_OPTS} root@${params.TREX_BSU_IP} '
                             cd ${TREX_REMOTE_PATH} &&
                             ${PYTHONPATH_EXPORT} &&
                             python3 ${SCRIPT_NAME} \
                                 --server-bsu ${params.TREX_BSU_IP} \
-                                ${suArgs} \
+                                ${su_args} \
                                 --su ${params.SU_COUNT} \
                                 --dl-bw ${params.DL_BW} \
                                 --ul-bw ${params.UL_BW} \
@@ -201,36 +213,32 @@ pipeline {
                                 2>&1 | tee test_run.log
                         '
                     """
-                    echo "✓ Test executed."
-                    // Fetch artifacts
-                    sh "sshpass -p '${ROOT_PASSWORD}' scp ${SSH_OPTS} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/throughput_*.png . || true"
-                    sh "sshpass -p '${ROOT_PASSWORD}' scp ${SSH_OPTS} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/trex_test_results.csv . || true"
-                    sh "sshpass -p '${ROOT_PASSWORD}' scp ${SSH_OPTS} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/test_run.log . || true"
-                    echo "✓ Artifacts fetched."
+
+                    // Fetch results
+                    sh "sshpass -p '${ROOT_PASSWORD}' scp ${env.SSH_OPTS} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/throughput_*.png   . || true"
+                    sh "sshpass -p '${ROOT_PASSWORD}' scp ${env.SSH_OPTS} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/trex_test_results.csv . || true"
+                    sh "sshpass -p '${ROOT_PASSWORD}' scp ${env.SSH_OPTS} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/test_run.log         . || true"
                 }
             }
         }
+
         stage('Archive Results') {
             steps {
                 archiveArtifacts artifacts: '**/*.png, **/*.csv, **/*.log', allowEmptyArchive: true
-                echo "✓ Results archived."
+                echo "Results archived."
             }
         }
     }
+
     post {
         always {
-            echo "┌───────────────────────────────────────────────┐"
-            echo "│ Pipeline Completed                            │"
-            echo "└───────────────────────────────────────────────┘"
+            echo "Pipeline finished."
         }
         success {
-            echo "✓ Success"
+            echo "SUCCESS"
         }
         failure {
-            echo "✗ Failure - Check logs"
-        }
-        aborted {
-            echo "Aborted"
+            echo "FAILED - check console"
         }
     }
 }
