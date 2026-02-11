@@ -17,8 +17,8 @@ pipeline {
         TREX_REMOTE_PATH      = "/opt/v3.06"
         PYTHONPATH_EXPORT     = "export PYTHONPATH=/opt/v3.06/automation/trex_control_plane/interactive/"
         SSH_COMMON_OPTS       = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-        // Password for root on all TRex servers
         ROOT_PASSWORD         = "ubuntu"
+        TREX_START_TIMEOUT    = "25"   // seconds to wait for TRex port to appear
     }
 
     stages {
@@ -37,19 +37,13 @@ pipeline {
                         }
                     }
 
-                    echo "• TARGET_STAND     = ${params.TARGET_STAND}"
-                    echo "• TREX_BSU_IP      = ${params.TREX_BSU_IP}"
-                    echo "• TREX_SU_IP       = ${params.TREX_SU_IP ?: 'not set'}"
-                    echo "• TREX_SU2_IP      = ${params.TREX_SU2_IP ?: 'not set'}"
-                    echo "• TREX_SU3_IP      = ${params.TREX_SU3_IP ?: 'not set'}"
-                    echo "• TREX_SU4_IP      = ${params.TREX_SU4_IP ?: 'not set'}"
-                    echo "• SU_COUNT         = ${params.SU_COUNT}"
-                    echo "• DL_BW            = ${params.DL_BW}"
-                    echo "• UL_BW            = ${params.UL_BW}"
-                    echo "• PACKET_SIZE      = ${params.PACKET_SIZE}"
-                    echo "• DURATION         = ${params.DURATION} sec"
-                    echo "• BSU_IP           = ${params.BSU_IP}"
-                    echo "• SU_IPS           = ${params.SU_IPS ?: 'not provided'}"
+                    echo "TARGET_STAND     = ${params.TARGET_STAND}"
+                    echo "TREX_BSU_IP      = ${params.TREX_BSU_IP}"
+                    echo "TREX_SU_IP       = ${params.TREX_SU_IP ?: 'not set'}"
+                    echo "TREX_SU2_IP      = ${params.TREX_SU2_IP ?: 'not set'}"
+                    echo "TREX_SU3_IP      = ${params.TREX_SU3_IP ?: 'not set'}"
+                    echo "TREX_SU4_IP      = ${params.TREX_SU4_IP ?: 'not set'}"
+                    echo "SU_COUNT         = ${params.SU_COUNT}"
                 }
             }
         }
@@ -57,27 +51,22 @@ pipeline {
         stage('Connectivity Check') {
             steps {
                 script {
-                    def trex_ips = [params.TREX_BSU_IP]
-                    if (params.TREX_SU_IP)    trex_ips << params.TREX_SU_IP
-                    if (params.TREX_SU2_IP)   trex_ips << params.TREX_SU2_IP
-                    if (params.TREX_SU3_IP)   trex_ips << params.TREX_SU3_IP
-                    if (params.TREX_SU4_IP)   trex_ips << params.TREX_SU4_IP
+                    def trex_ips = []
+                    if (params.TREX_BSU_IP?.trim()) trex_ips << params.TREX_BSU_IP.trim()
+                    if (params.TREX_SU_IP?.trim())  trex_ips << params.TREX_SU_IP.trim()
+                    if (params.TREX_SU2_IP?.trim()) trex_ips << params.TREX_SU2_IP.trim()
+                    if (params.TREX_SU3_IP?.trim()) trex_ips << params.TREX_SU3_IP.trim()
+                    if (params.TREX_SU4_IP?.trim()) trex_ips << params.TREX_SU4_IP.trim()
 
-                    echo "Pinging all TRex servers..."
+                    if (trex_ips.isEmpty()) error "No TRex server IPs provided!"
+
+                    echo "Found ${trex_ips.size()} TRex server(s): ${trex_ips.join(', ')}"
+
                     trex_ips.each { ip ->
-                        sh "ping -c 4 -W 3 ${ip} || exit 1"
+                        sh "ping -c 3 -W 4 ${ip} || error 'Cannot ping TRex server ${ip}'"
                     }
 
-                    echo "Pinging BSU..."
-                    sh "ping -c 4 -W 3 ${params.BSU_IP} || exit 1"
-
-                    if (params.SU_IPS?.trim()) {
-                        echo "Pinging SUs..."
-                        def suList = params.SU_IPS.split(',').collect { it.trim() }
-                        suList.each { ip ->
-                            sh "ping -c 4 -W 3 ${ip} || exit 1"
-                        }
-                    }
+                    sh "ping -c 3 -W 4 ${params.BSU_IP} || error 'Cannot ping BSU'"
                 }
             }
         }
@@ -85,43 +74,54 @@ pipeline {
         stage('Prepare TRex Servers') {
             steps {
                 script {
-                    def trex_ips = [params.TREX_BSU_IP]
-                    if (params.TREX_SU_IP)    trex_ips << params.TREX_SU_IP
-                    if (params.TREX_SU2_IP)   trex_ips << params.TREX_SU2_IP
-                    if (params.TREX_SU3_IP)   trex_ips << params.TREX_SU3_IP
-                    if (params.TREX_SU4_IP)   trex_ips << params.TREX_SU4_IP
+                    def trex_ips = []
+                    if (params.TREX_BSU_IP?.trim()) trex_ips << params.TREX_BSU_IP.trim()
+                    if (params.TREX_SU_IP?.trim())  trex_ips << params.TREX_SU_IP.trim()
+                    if (params.TREX_SU2_IP?.trim()) trex_ips << params.TREX_SU2_IP.trim()
+                    if (params.TREX_SU3_IP?.trim()) trex_ips << params.TREX_SU3_IP.trim()
+                    if (params.TREX_SU4_IP?.trim()) trex_ips << params.TREX_SU4_IP.trim()
 
-                    echo "Starting / restarting TRex on all servers..."
+                    echo "Preparing ${trex_ips.size()} TRex server(s)"
 
-                    trex_ips.each { ip ->
-                        echo "→ Processing TRex server: ${ip}"
+                    trex_ips.eachWithIndex { ip, idx ->
+                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                        echo "→ SERVER ${idx+1}/${trex_ips.size()}: ${ip}"
+                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-                        // Set hugepages
+                        // 1. Hugepages
+                        echo "Setting hugepages..."
                         sh "sshpass -p '${ROOT_PASSWORD}' ssh ${SSH_COMMON_OPTS} root@${ip} 'echo 1024 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages || true'"
 
-                        // Kill any old instance
+                        // 2. Kill old instances
+                        echo "Killing old TRex instances..."
                         sh "sshpass -p '${ROOT_PASSWORD}' ssh ${SSH_COMMON_OPTS} root@${ip} 'pkill -9 t-rex-64 || true'"
 
-                        // Start TRex in background
+                        // 3. Start TRex
+                        echo "Starting new TRex instance..."
                         sh """
                             sshpass -p '${ROOT_PASSWORD}' ssh ${SSH_COMMON_OPTS} root@${ip} '
-                                cd /opt/v3.06 &&
-                                nohup ./t-rex-64 -i --no-scapy-server --no-ofed-check > trex.log 2>&1 &
+                                cd ${TREX_REMOTE_PATH} &&
+                                nohup ./t-rex-64 -i --no-scapy-server --no-ofed-check > trex-start.log 2>&1 &
+                                echo \$! > trex.pid
                             '
                         """
 
-                        sleep 10  // give a bit more time
-
-                        // Basic health check - port 4501 should be listening
+                        echo "Waiting up to ${TREX_START_TIMEOUT} seconds for TRex to listen on port 4501..."
                         sh """
-                            nc -z -w 5 ${ip} 4501 || {
-                                echo "ERROR: TRex port 4501 not open on ${ip}"
-                                sshpass -p '${ROOT_PASSWORD}' ssh ${SSH_COMMON_OPTS} root@${ip} 'cat /opt/v3.06/trex.log || true'
-                                exit 1
-                            }
+                            for i in {1..${TREX_START_TIMEOUT}}; do
+                                if sshpass -p '${ROOT_PASSWORD}' ssh ${SSH_COMMON_OPTS} root@${ip} 'nc -z 127.0.0.1 4501 >/dev/null 2>&1'; then
+                                    echo "TRex port 4501 is now listening on ${ip}"
+                                    exit 0
+                                fi
+                                echo "Still waiting... (\$i/${TREX_START_TIMEOUT})"
+                                sleep 1
+                            done
+                            echo "ERROR: TRex did not start listening on port 4501 within ${TREX_START_TIMEOUT} seconds on ${ip}"
+                            sshpass -p '${ROOT_PASSWORD}' ssh ${SSH_COMMON_OPTS} root@${ip} 'cat ${TREX_REMOTE_PATH}/trex-start.log || true'
+                            exit 1
                         """
 
-                        echo "   → ${ip} appears healthy"
+                        echo "→ ${ip} looks healthy"
                     }
                 }
             }
@@ -130,10 +130,14 @@ pipeline {
         stage('Run TRex Test Script') {
             steps {
                 script {
-                    echo "Copying test script to BSU TRex server (${params.TREX_BSU_IP})..."
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    echo "Starting test execution on BSU server: ${params.TREX_BSU_IP}"
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
                     sh """
-                        sshpass -p '${ROOT_PASSWORD}' scp ${SSH_COMMON_OPTS} ${SCRIPT_PATH_ON_JENKINS} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/
+                        sshpass -p '${ROOT_PASSWORD}' scp ${SSH_COMMON_OPTS} \
+                            ${SCRIPT_PATH_ON_JENKINS} \
+                            root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/
                     """
 
                     def su_args = ""
@@ -141,8 +145,6 @@ pipeline {
                     if (params.TREX_SU2_IP)   su_args += "--server-su2 ${params.TREX_SU2_IP} "
                     if (params.TREX_SU3_IP)   su_args += "--server-su3 ${params.TREX_SU3_IP} "
                     if (params.TREX_SU4_IP)   su_args += "--server-su4 ${params.TREX_SU4_IP} "
-
-                    echo "Launching test on BSU TRex server..."
 
                     sh """
                         sshpass -p '${ROOT_PASSWORD}' ssh ${SSH_COMMON_OPTS} root@${params.TREX_BSU_IP} '
@@ -157,15 +159,13 @@ pipeline {
                                 --size ${params.PACKET_SIZE} \
                                 --duration ${params.DURATION} \
                                 --graph \
-                                2>&1 | tee test_run.log
+                                2>&1 | tee -a test_run.log
                         '
                     """
 
-                    // Fetch results back
+                    // Fetch artifacts
                     sh """
-                        sshpass -p '${ROOT_PASSWORD}' scp ${SSH_COMMON_OPTS} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/throughput_*.png    . || true
-                        sshpass -p '${ROOT_PASSWORD}' scp ${SSH_COMMON_OPTS} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/trex_test_results.csv . || true
-                        sshpass -p '${ROOT_PASSWORD}' scp ${SSH_COMMON_OPTS} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/test_run.log         . || true
+                        sshpass -p '${ROOT_PASSWORD}' scp ${SSH_COMMON_OPTS} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/{throughput_*.png,trex_test_results.csv,test_run.log} . || true
                     """
 
                     archiveArtifacts artifacts: '*.png, *.csv, test_run.log', allowEmptyArchive: true
@@ -176,25 +176,20 @@ pipeline {
         stage('Archive Logs & Results') {
             steps {
                 archiveArtifacts artifacts: '**/*.png, **/*.csv, **/*.log', allowEmptyArchive: true
-                echo "Results, graphs and console log archived."
+                echo "All available results archived."
             }
         }
     }
 
     post {
         always {
-            echo "───────────────────────────────────────────────"
-            echo "               Pipeline finished               "
-            echo "───────────────────────────────────────────────"
+            echo "Pipeline finished at \$(date)"
         }
         success {
-            echo "✓ Test completed successfully"
+            echo "✓ SUCCESS"
         }
         failure {
-            echo "✗ Test failed - check console output and artifacts"
-        }
-        aborted {
-            echo "Test was aborted by user"
+            echo "✗ FAILED – check console + artifacts"
         }
     }
 }
