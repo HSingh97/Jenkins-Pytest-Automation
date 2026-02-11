@@ -54,7 +54,7 @@ pipeline {
                     echo "──────────────────────────────────────────────────────"
 
                     if (fileExists(params.SCRIPT_LOCAL_PATH)) {
-                        sh "cp -v '${params.SCRIPT_LOCAL_PATH}' ./${SCRIPT_NAME}"
+                        sh "cp -v '${params.SCRIPT_LOCAL_PATH}' './${SCRIPT_NAME}'"
                         echo "Script copied successfully."
                     } else {
                         error """
@@ -63,17 +63,15 @@ pipeline {
 
                         Actions:
                         1. Verify the file exists in /home/senao/
-                        2. Correct the SCRIPT_LOCAL_PATH parameter in Build with Parameters
-                        3. Or move/rename the file to match the path
+                        2. Correct the SCRIPT_LOCAL_PATH parameter
                         """
                     }
 
-                    // Final check
                     if (!fileExists(SCRIPT_NAME)) {
-                        error "Copy failed - ${SCRIPT_NAME} not present in workspace."
+                        error "Copy failed - ${SCRIPT_NAME} not present."
                     }
 
-                    sh "ls -lh ${SCRIPT_NAME}"
+                    sh "ls -lh '${SCRIPT_NAME}'"
                     echo "Script is ready."
                 }
             }
@@ -111,14 +109,14 @@ pipeline {
                     }
 
                     trex_ips.unique().each { ip ->
-                        sh "ping -c 4 -W 4 ${ip} || exit 1"
+                        sh "ping -c 4 -W 4 '${ip}' || exit 1"
                     }
 
-                    sh "ping -c 4 -W 4 ${params.BSU_IP} || exit 1"
+                    sh "ping -c 4 -W 4 '${params.BSU_IP}' || exit 1"
 
                     if (params.SU_IPS?.trim()) {
                         params.SU_IPS.split(',').collect{it.trim()}.each { ip ->
-                            sh "ping -c 4 -W 4 ${ip} || exit 1"
+                            sh "ping -c 4 -W 4 '${ip}' || exit 1"
                         }
                     }
                 }
@@ -128,9 +126,14 @@ pipeline {
         stage('Add SSH Known Hosts') {
             steps {
                 script {
+                    echo "──────────────────────────────────────────────────────"
                     echo "Adding known hosts entries..."
+                    echo "──────────────────────────────────────────────────────"
+
                     def kh = "${WORKSPACE}/known_hosts_temp"
-                    sh "touch ${kh}"
+
+                    // Quote the path
+                    sh "touch '${kh}'"
 
                     def ips = [params.TREX_BSU_IP]
                     [params.TREX_SU_IP, params.TREX_SU2_IP, params.TREX_SU3_IP, params.TREX_SU4_IP].each {
@@ -138,10 +141,11 @@ pipeline {
                     }
 
                     ips.unique().each { ip ->
-                        sh "ssh-keyscan -H ${ip} >> ${kh} 2>/dev/null || true"
+                        sh "ssh-keyscan -H '${ip}' >> '${kh}' 2>/dev/null || true"
                     }
 
-                    env.SSH_OPTS = "${SSH_OPTS} -o UserKnownHostsFile=${kh}"
+                    env.SSH_OPTS = "${SSH_OPTS} -o UserKnownHostsFile='${kh}'"
+                    echo "Known hosts file created at: ${kh}"
                 }
             }
         }
@@ -168,7 +172,7 @@ pipeline {
                         def healthy = false
                         for (int i = 1; i <= env.MAX_HEALTH_CHECKS.toInteger(); i++) {
                             sleep env.HEALTH_CHECK_INTERVAL.toInteger()
-                            def rc = sh(script: "nc -z -w 5 ${ip} ${TREX_PORT}", returnStatus: true)
+                            def rc = sh(script: "nc -z -w 5 '${ip}' '${TREX_PORT}'", returnStatus: true)
                             if (rc == 0) { healthy = true; break }
                             echo "   Waiting (${i}/${env.MAX_HEALTH_CHECKS})..."
                         }
@@ -189,7 +193,7 @@ pipeline {
                     echo "Starting test on BSU TRex server"
                     echo "──────────────────────────────────────────────────────"
 
-                    sh "sshpass -p '${ROOT_PASSWORD}' scp ${env.SSH_OPTS} ${SCRIPT_NAME} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/"
+                    sh "sshpass -p '${ROOT_PASSWORD}' scp ${env.SSH_OPTS} '${SCRIPT_NAME}' root@${params.TREX_BSU_IP}:'${TREX_REMOTE_PATH}/'"
 
                     def su_args = ""
                     if (params.TREX_SU_IP?.trim())    su_args += "--server-su ${params.TREX_SU_IP} "
@@ -214,10 +218,9 @@ pipeline {
                         '
                     """
 
-                    // Fetch results
-                    sh "sshpass -p '${ROOT_PASSWORD}' scp ${env.SSH_OPTS} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/throughput_*.png   . || true"
-                    sh "sshpass -p '${ROOT_PASSWORD}' scp ${env.SSH_OPTS} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/trex_test_results.csv . || true"
-                    sh "sshpass -p '${ROOT_PASSWORD}' scp ${env.SSH_OPTS} root@${params.TREX_BSU_IP}:${TREX_REMOTE_PATH}/test_run.log         . || true"
+                    sh "sshpass -p '${ROOT_PASSWORD}' scp ${env.SSH_OPTS} root@${params.TREX_BSU_IP}:'${TREX_REMOTE_PATH}/throughput_*.png'   . || true"
+                    sh "sshpass -p '${ROOT_PASSWORD}' scp ${env.SSH_OPTS} root@${params.TREX_BSU_IP}:'${TREX_REMOTE_PATH}/trex_test_results.csv' . || true"
+                    sh "sshpass -p '${ROOT_PASSWORD}' scp ${env.SSH_OPTS} root@${params.TREX_BSU_IP}:'${TREX_REMOTE_PATH}/test_run.log'         . || true"
                 }
             }
         }
