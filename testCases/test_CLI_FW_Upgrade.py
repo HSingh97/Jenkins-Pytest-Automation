@@ -2,14 +2,15 @@ import time
 import warnings
 import pytest
 import json
-from pageObjects.HomePage import HomePage
-from pageObjects.UpgradePage import UpgradePage
-from preMadeFunctions import accessWeb, pingFunction, ssh_operations, ssh_netmiko
-from testCases.configsetup import setup
+import os
+from preMadeFunctions import pingFunction, ssh_netmiko
 from utilities import serial_logger
 
 
 def perform_ping_check(local_ip, remote_ip, result_dict):
+    """
+    Checks ping for Local and Remote devices and updates the result dictionary.
+    """
     print(f"--- Pinging local IP: {local_ip} ---", flush=True)
     if pingFunction.check_access(local_ip):
         result_dict["Ping Results"]["Local"] = True
@@ -45,13 +46,14 @@ def append_result_to_json(result, filename="iteration_results.json"):
     print("=======================================\n", flush=True)
 
 
-def test_Upgrade(local_ip, remote_ip, serialPort, iter):
-    print("\n" + "="*60, flush=True)
+def test_Upgrade(local_ip, remote_ip, serialPort, iter, local_pc_mgmt_ip):
+    print("\n" + "=" * 60, flush=True)
     print(f"      STARTING CLI FIRMWARE UPGRADE - ITERATION {iter}     ".center(60), flush=True)
-    print(f"      Local IP  : {local_ip} ".center(60), flush=True)
-    print(f"      Remote IP : {remote_ip} ".center(60), flush=True)
-    print(f"      Serial    : {serialPort} ".center(60), flush=True)
-    print("="*60 + "\n", flush=True)
+    print(f"      Local IP     : {local_ip} ".center(60), flush=True)
+    print(f"      Remote IP    : {remote_ip} ".center(60), flush=True)
+    print(f"      Local PC IP  : {local_pc_mgmt_ip} ".center(60), flush=True)
+    print(f"      Serial       : {serialPort} ".center(60), flush=True)
+    print("=" * 60 + "\n", flush=True)
 
     result = {
         "iteration": str(iter),
@@ -67,8 +69,48 @@ def test_Upgrade(local_ip, remote_ip, serialPort, iter):
     serial_logger.start_logger(serialPort, f"test-{iter}.log")
 
     try:
-        ssh_netmiko.runcommand_CLI(local_ip, "show wireless radio1 all")
-        time.sleep(3)
+        firmware_name = os.getenv('FW_PATH', 'fw.img.enc')
+        cmd = f"download firmware TFTP {local_pc_mgmt_ip} {firmware_name}"
+
+        print(f"Executing command: {cmd}", flush=True)
+
+        try:
+            ssh_netmiko.runcommand_CLI(local_ip, cmd)
+
+        except Exception as e:
+            error_msg = str(e)
+            if "Pattern not detected" in error_msg or "closed by remote host" in error_msg:
+                print("\n✅ Command sent successfully. Session closed by device as expected.", flush=True)
+            else:
+                print(f"\n❌ Unexpected Error sending command: {error_msg}", flush=True)
+                raise e
+
+        print("\n" + "-" * 40, flush=True)
+        print("FIRMWARE UPGRADE IN PROGRESS", flush=True)
+        print("Device upgrade takes ~7 mins. Sleeping for 500 seconds...", flush=True)
+        print("-" * 40, flush=True)
+
+        for i in range(50, 0, -1):
+            print(f"Waiting... {i * 10}s remaining", end='\r', flush=True)
+            time.sleep(10)
+        print("\nChecking connectivity now...", flush=True)
+
+        device_back_up = False
+        print("\nVerifying device is ONLINE...", flush=True)
+
+        for i in range(12):
+            if pingFunction.check_access(local_ip):
+                device_back_up = True
+                print(f"SUCCESS: Device {local_ip} is ONLINE.", flush=True)
+                break
+            print(".", end="", flush=True)
+            time.sleep(5)
+
+        if not device_back_up:
+            result["status"] = "FAIL"
+            result["Device Logs"] = "Device failed to come back online after 460s."
+            print("\nCRITICAL: Device failed to recover.", flush=True)
+            pytest.fail("Device failed to recover after firmware upgrade.")
 
         perform_ping_check(local_ip, remote_ip, result)
 
@@ -103,4 +145,6 @@ def test_Upgrade(local_ip, remote_ip, serialPort, iter):
 # Silence warnings
 def warn(*args, **kwargs):
     pass
+
+
 warnings.warn = warn

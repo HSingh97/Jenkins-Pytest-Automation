@@ -3,12 +3,11 @@ def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
 
+def dateStamp = new Date().format("yyyyMMdd", TimeZone.getTimeZone("Asia/Kolkata"))
+def reportFilename = "CLI_FW_test_report_${env.BUILD_NUMBER}_${dateStamp}.html"
+
 pipeline {
     agent { node { label "${TARGET_STAND}" } }
-
-    environment {
-        REPORT_FILE_NAME = "${env.JOB_BASE_NAME}.html"
-    }
 
     stages {
         stage('Prepare tests') {
@@ -77,6 +76,14 @@ pipeline {
                     env.FIRMWARE_FILE = targetTgzFile
 
                     archiveArtifacts(targetTgzFile)
+
+                    echo "----------------------------------------"
+                    echo "Copying firmware to TFTP Boot Directory"
+                    echo "----------------------------------------"
+                    sh "mkdir -p /tftpboot"
+                    sh "cp ${targetTgzFile} /tftpboot/"
+                    sh "ls -l /tftpboot/${targetTgzFile}"
+                    // ------------------------------------
                 }
             }
         }
@@ -84,6 +91,35 @@ pipeline {
         stage('Firmware Upgrade') {
             steps {
                 script {
+
+                    def localPC = params['TARGET_STAND']
+
+                    node(localPC) {
+                        localPCIP = sh(
+                            script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$4}' | cut -d'/' -f1 | head -n1",
+                            returnStdout: true
+                        ).trim()
+
+                        localPCInterface = sh(
+                            script: "ip -4 -o addr show | awk '\$4 ~ /^192\\.168\\.1\\./ {print \$2}' | head -n1",
+                            returnStdout: true
+                        ).trim()
+
+                        localPCmgmtIP = sh(
+                            script: "ip -4 -o addr show | awk '\$4 ~ /^10\\.0\\.150\\./ {print \$4}' | cut -d'/' -f1 | head -n1",
+                            returnStdout: true
+                        ).trim()
+
+                        if (!localPCIP) {
+                            error("❌ Could not find 192.168.1.x IP on node '$localPC' ")
+                        }
+
+                        echo "✅ Local PC IP       : ${localPCIP}"
+                        echo "✅ Local PC Interface: ${localPCInterface}"
+                        echo "✅ Local PC Mgmt IP  : ${localPCmgmtIP}"
+
+                    }
+
                     def localIP = params['Local IP Address']
                     def remoteIP = params['Remote IP Address']
                     def model = params['Model']
@@ -113,6 +149,7 @@ pipeline {
                             sh """
                                 export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_CLI_FW_Upgrade.py::test_Upgrade 2>&1 \
                                 --local-ip '$localIP' --remote-ip '$remoteIP' \
+                                --local-pc-mgmt-ip '${localPCIP}'\
                                 --serialPort '$serialPort' --iter ${i} | tee \"${workspace}/artifacts/firmware-upgrade-device.log\"
                             """
                         } catch (Exception e) {
@@ -211,8 +248,10 @@ pipeline {
                         </style>
                         <script>
                             function showLog(logDataId) {
-                                document.getElementById('log-content-pre').innerHTML = document.getElementById(logDataId).innerHTML;
+                                var logArea = document.getElementById('log-content-pre');
+                                logArea.innerHTML = document.getElementById(logDataId).innerHTML;
                                 document.getElementById('logModal').style.display = 'block';
+                                logArea.scrollTop = 0; // Force scroll to top
                             }
                             function closeModal() { document.getElementById('logModal').style.display = 'none'; }
                             window.onclick = function(event) { if (event.target == document.getElementById('logModal')) closeModal(); }
@@ -274,7 +313,8 @@ pipeline {
                         ${logDataBlocks}
                     </body></html>
                     """
-                    writeFile file: env.REPORT_FILE_NAME, text: htmlContent
+                    writeFile file: reportFilename, text: htmlContent
+                    echo "📄 HTML report generated: ${reportFilename}"
                 }
             }
         }
@@ -282,23 +322,84 @@ pipeline {
 
     post {
         always {
-            publishHTML(target: [
-                allowMissing: false, alwaysLinkToLastBuild: true, keepAll: true,
-                reportDir: '.', reportFiles: env.REPORT_FILE_NAME, reportName: 'Test Report'
+            publishHTML (target: [
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: '.',
+                reportFiles: 'report.html',
+                reportName: "CLI FW Test Report - Build ${env.BUILD_NUMBER}"
             ])
-            sh 'rm -f test-*.log || true'
+            echo "-----------------------------------------"
+            echo 'Script Done!'
+            echo "-----------------------------------------"
             script {
-                def userEmails = [ "puneet": "puneet.sharma@senao.com", "harman": "harmanjot.singh@senao.com" ]
-                def buildUserId = currentBuild.getBuildCauses().find { it._class == 'hudson.model.Cause$UserIdCause' }?.userId ?: "unknown"
+                def buildCauses = currentBuild.getBuildCauses()
+                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+
+                def buildUserName = userCause?.userName ?: "Unknown User"
+                def buildUserId = userCause?.userId ?: "unknown"
+
+                echo "Build started by: ${buildUserName} (${buildUserId})"
+
+                // Define a mapping of user IDs to emails (update as needed)
+                def userEmails = [
+                    "puneet": "puneet.sharma@senao.com",
+                    "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@senao.com",
+                    "sandeep": "sandeep.manchikanti@senao.com",
+                    "sampath": "sampath.marella@senao.com",
+                    "jayanth": "jayanth.munnaluru@senao.com",
+                    "srilatha": "srilatha.tadiboina@senao.com",
+                    "phani": "phani.darla@senao.com",
+                    "dinesh": "dinesh.redddy@senao.com"
+                ]
+
+                // Get email from predefined mapping, else use default
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+
+                echo "Sending email to: ${userEmail}"
+                def buildURL = params['Build']
+
+                // Send email notification
                 emailext(
-                    subject: "${env.JOB_BASE_NAME} #${BUILD_NUMBER} - ${currentBuild.currentResult}",
-                    body: "See attached report.",
+                    subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    body: """
+                        <html>
+                        <body>
+                            <h2 style="color:blue;">Jenkins Build Notification</h2>
+                            <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
+                            <p><strong>Status:</strong>
+                                <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
+                                ${currentBuild.currentResult}</span>
+                            </p>
+                            <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
+                            <p><strong>Build URL:</strong> <a href="${buildURL}">${buildURL}</a></p>
+                            <p><strong>Console Output:</strong> <a href="${buildURL}console">${buildURL}console</a></p>
+                            <p><strong>HTML Report:</strong> <a href="${buildURL}artifact/${reportFilename}">Click here to view</a></p>
+                            <br/>
+                            <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
+                        </body>
+                        </html>
+                    """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: "${env.REPORT_FILE_NAME}"
+                    attachmentsPattern: "${reportFilename}"
                 )
+
             }
+        }
+
+        success {
+            echo "-----------------------------------------"
+            echo 'Script Success'
+            echo "-----------------------------------------"
+        }
+
+        failure {
+            echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
         }
     }
 }
