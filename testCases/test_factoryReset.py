@@ -44,54 +44,50 @@ def enable_ssh_if_needed(driver):
 
     wait = WebDriverWait(driver, 20)
 
-    management_menu = wait.until(EC.element_to_be_clickable(
-        (By.XPATH, "//header//li[contains(.,'Management')]")
-    ))
-    management_menu.click()
-
     services_link = wait.until(EC.element_to_be_clickable(
-        (By.XPATH, "/html/body/header/div/div/div[1]/ul/li[4]/ul/li[2]/a")
+        (By.XPATH, '//*[@id="Management"]/li[2]/a')
     ))
     services_link.click()
     time.sleep(1.5)
 
-    # Click SSH
+    #SSH tab
     ssh_tab = wait.until(EC.element_to_be_clickable(
-        (By.XPATH, "/html/body/div/div/div[1]/ul/li[3]/a")
+        (By.XPATH, '//*[@id="maincontent"]/div/div[1]/ul/li[3]/a')
     ))
     ssh_tab.click()
     time.sleep(1.5)
 
-    # Check checkbox
-    checkbox_xpath = "/html/body/div/div/div[1]/fieldset/form/div/div[2]/input"
-    checkbox = driver.find_element(By.XPATH, checkbox_xpath)
+    # enable checkbox
+    checkbox_xpath = '//*[@id="ssh_stat2"]'
+    checkbox = wait.until(EC.presence_of_element_located((By.XPATH, checkbox_xpath)))
 
     if not checkbox.is_selected():
         print("SSH was disabled → enabling it...", flush=True)
         checkbox.click()
 
+        #  Save
         save_btn = wait.until(EC.element_to_be_clickable(
-            (By.XPATH, "/html/body/div/div/div[2]/input")
+            (By.XPATH, '//*[@id="maincontent"]/div/div[2]/input')
         ))
         save_btn.click()
         time.sleep(5)
     else:
         print("SSH was already enabled.", flush=True)
 
-    # Commit
+    #  Commit
     try:
         commit_btn = wait.until(EC.element_to_be_clickable(
-            (By.XPATH, "/html/body/header/div/div/div[2]/div[7]/ul/li/a/i")
+            (By.XPATH, '//*[@id="header_apply"]')
         ))
         commit_btn.click()
         time.sleep(1.5)
     except:
         print("Warning: Commit button not found or already applied", flush=True)
 
-    # Apply
+    # Apply ( apply)
     try:
         apply_btn = wait.until(EC.element_to_be_clickable(
-            (By.XPATH, "/html/body/div/div/div[2]/form/span/input[1]")
+            (By.XPATH, '//*[@id="super_apply"]')
         ))
         apply_btn.click()
         print("Applied SSH changes → waiting 30 seconds...", flush=True)
