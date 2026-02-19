@@ -15,8 +15,6 @@ from preMadeFunctions import ssh_operations
 
 username = "root"
 password = "admin"
-# serial_port = readConfig.getSerialPortDevice()
-# serial_port_log = readConfig.getSerialLogsDevice()
 driver = setup
 
 def test_configureparams(local_ip, retain, model):
@@ -39,8 +37,6 @@ def test_configureparams(local_ip, retain, model):
 
 
 def test_FactoryReset(driver, local_ip, retain, model):
-    # Start Serial Console logging for specific port
-    # serial_logging_start(serial_port, serial_port_log)
     print("Factory Reset params : {}".format(retain), flush=True)
     retained_params = retain.split(" ")
 
@@ -108,10 +104,6 @@ def test_FactoryReset(driver, local_ip, retain, model):
     else:
         assert True
 
-    # Stop Serial logging
-    # serial_logging_stop()
-
-    # Close the driver window
     driver.close()
 
 
