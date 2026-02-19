@@ -34,22 +34,22 @@ def snmp_get(ip, oid, community="public", version="2c"):
     except Exception as e:
         raise RuntimeError(f"SNMP error: {str(e)}")
 
-def test_configureparams(local_ip, retain, model):
-    print("Factory Reset Params : {}".format(retain), flush=True)
-    retained_params = retain.split(" ")
-
-    if "System" in retained_params:
-        ssh_operations.ssh_set(local_ip, "system.@system[0].email", "jenkins@mail.com")
-
-    if "Network" in retained_params:
-        ssh_operations.ssh_set(local_ip, "vlan.ath1.accessvlan", "23")
-
-    if "Wireless-Radio1" in retained_params:
-        ssh_operations.ssh_set(local_ip, "wireless.@wifi-iface[1].ssid", "jenkinstest_r1")
-
-    if model == "EOC655":
-        if "Wireless-Radio2" in retained_params:
-            ssh_operations.ssh_set(local_ip, "wireless.@wifi-iface[2].ssid", "jenkinstest_r2")
+# def test_configureparams(local_ip, retain, model):
+#     print("Factory Reset Params : {}".format(retain), flush=True)
+#     retained_params = retain.split(" ")
+#
+#     if "System" in retained_params:
+#         ssh_operations.ssh_set(local_ip, "system.@system[0].email", "jenkins@mail.com")
+#
+#     if "Network" in retained_params:
+#         ssh_operations.ssh_set(local_ip, "vlan.ath1.accessvlan", "23")
+#
+#     if "Wireless-Radio1" in retained_params:
+#         ssh_operations.ssh_set(local_ip, "wireless.@wifi-iface[1].ssid", "jenkinstest_r1")
+#
+#     if model == "EOC655":
+#         if "Wireless-Radio2" in retained_params:
+#             ssh_operations.ssh_set(local_ip, "wireless.@wifi-iface[2].ssid", "jenkinstest_r2")
 
 
 def test_FactoryReset(driver, local_ip, retain, model):
