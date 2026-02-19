@@ -12,7 +12,6 @@ from preMadeFunctions import pingFunction
 from preMadeFunctions import accessWeb
 from preMadeFunctions import ssh_operations
 
-
 username = "root"
 password = "admin"
 driver = setup
