@@ -133,8 +133,8 @@ def test_verifyparams(retain, model):
 
     OID_EMAIL     =".1.3.6.1.4.1.52619.1.2.2.8.0"     # nsExtendOutput1Line."sys_email"
     OID_VLAN      =".1.3.6.1.4.1.52619.1.1.4.18.1.3.1" # nsExtendOutput1Line."access_vlan"
-    OID_SSID_R1   =".1.3.6.1.4.1.52619.1.1.1.1.1.3.2"            # nsExtendOutput1Line."ssid_r1"
-    OID_SSID_R2   =".1.3.6.1.4.1.52619.1.1.1.1.1.3.3"          # nsExtendOutput1Line."ssid_r2"
+    OID_SSID_R1   =".1.3.6.1.4.1.52619.1.1.1.1.1.3.2"   # nsExtendOutput1Line."ssid_r1"
+    OID_SSID_R2   =".1.3.6.1.4.1.52619.1.1.1.1.1.3.3"  # nsExtendOutput1Line."ssid_r2"
 
     if "System" in retained_params:
         try:
