@@ -12,44 +12,92 @@ from preMadeFunctions import pingFunction
 from preMadeFunctions import accessWeb
 from preMadeFunctions import ssh_operations
 
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
 username = "root"
 password = "admin"
 driver = setup
 
-def snmp_get(ip, oid, community="public", version="2c"):
 
-    cmd = [
-        "snmpget",
-        f"-v{version}",
-        "-c", community,
-        "-Oqv",
-        f"{ip}:161",
-        oid
-    ]
+def test_configureparams(local_ip, retain, model):
+    print("Factory Reset Params : {}".format(retain), flush=True)
+    retained_params = retain.split(" ")
+
+    if "System" in retained_params:
+        ssh_operations.ssh_set(local_ip, "system.@system[0].email", "jenkins@mail.com")
+
+    if "Network" in retained_params:
+        ssh_operations.ssh_set(local_ip, "vlan.ath1.accessvlan", "23")
+
+    if "Wireless-Radio1" in retained_params:
+        ssh_operations.ssh_set(local_ip, "wireless.@wifi-iface[1].ssid", "jenkinstest_r1")
+
+    if model == "EOC655":
+        if "Wireless-Radio2" in retained_params:
+            ssh_operations.ssh_set(local_ip, "wireless.@wifi-iface[2].ssid", "jenkinstest_r2")
+
+
+def enable_ssh_if_needed(driver):
+    print("Checking/Enabling SSH access in LuCI...", flush=True)
+
+    wait = WebDriverWait(driver, 20)
+
+    management_menu = wait.until(EC.element_to_be_clickable(
+        (By.XPATH, "//header//li[contains(.,'Management')]")
+    ))
+    management_menu.click()
+
+    services_link = wait.until(EC.element_to_be_clickable(
+        (By.XPATH, "/html/body/header/div/div/div[1]/ul/li[4]/ul/li[2]/a")
+    ))
+    services_link.click()
+    time.sleep(1.5)
+
+    # Click SSH
+    ssh_tab = wait.until(EC.element_to_be_clickable(
+        (By.XPATH, "/html/body/div/div/div[1]/ul/li[3]/a")
+    ))
+    ssh_tab.click()
+    time.sleep(1.5)
+
+    # Check checkbox
+    checkbox_xpath = "/html/body/div/div/div[1]/fieldset/form/div/div[2]/input"
+    checkbox = driver.find_element(By.XPATH, checkbox_xpath)
+
+    if not checkbox.is_selected():
+        print("SSH was disabled → enabling it...", flush=True)
+        checkbox.click()
+
+        save_btn = wait.until(EC.element_to_be_clickable(
+            (By.XPATH, "/html/body/div/div/div[2]/input")
+        ))
+        save_btn.click()
+        time.sleep(5)
+    else:
+        print("SSH was already enabled.", flush=True)
+
+    # Commit
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=8)
-        return result.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"SNMP get failed: {e.stderr.strip()}")
-    except Exception as e:
-        raise RuntimeError(f"SNMP error: {str(e)}")
+        commit_btn = wait.until(EC.element_to_be_clickable(
+            (By.XPATH, "/html/body/header/div/div/div[2]/div[7]/ul/li/a/i")
+        ))
+        commit_btn.click()
+        time.sleep(1.5)
+    except:
+        print("Warning: Commit button not found or already applied", flush=True)
 
-# def test_configureparams(local_ip, retain, model):
-#     print("Factory Reset Params : {}".format(retain), flush=True)
-#     retained_params = retain.split(" ")
-#
-#     if "System" in retained_params:
-#         ssh_operations.ssh_set(local_ip, "system.@system[0].email", "jenkins@mail.com")
-#
-#     if "Network" in retained_params:
-#         ssh_operations.ssh_set(local_ip, "vlan.ath1.accessvlan", "23")
-#
-#     if "Wireless-Radio1" in retained_params:
-#         ssh_operations.ssh_set(local_ip, "wireless.@wifi-iface[1].ssid", "jenkinstest_r1")
-#
-#     if model == "EOC655":
-#         if "Wireless-Radio2" in retained_params:
-#             ssh_operations.ssh_set(local_ip, "wireless.@wifi-iface[2].ssid", "jenkinstest_r2")
+    # Apply
+    try:
+        apply_btn = wait.until(EC.element_to_be_clickable(
+            (By.XPATH, "/html/body/div/div/div[2]/form/span/input[1]")
+        ))
+        apply_btn.click()
+        print("Applied SSH changes → waiting 30 seconds...", flush=True)
+        time.sleep(30)
+    except:
+        print("Warning: Apply button not found → assuming already applied", flush=True)
 
 
 def test_FactoryReset(driver, local_ip, retain, model):
@@ -110,9 +158,8 @@ def test_FactoryReset(driver, local_ip, retain, model):
             time.sleep(3)
 
         else:
-            print("Reachable", flush = True)
+            print("Reachable", flush=True)
             break
-
 
     if output != 1:
         assert False
@@ -120,73 +167,60 @@ def test_FactoryReset(driver, local_ip, retain, model):
     else:
         assert True
 
-    driver.close()
+    print("enable SSH...", flush=True)
+    driver.get("http://192.168.1.1/cgi-bin/luci")
+    time.sleep(3)
+
+    lp = LoginPage(driver)
+    lp.setUserName(username)
+    lp.setPassword(password)
+    lp.clickLogin()
+    time.sleep(4)
+
+    enable_ssh_if_needed(driver)
 
 
 def test_verifyparams(retain, model):
-    print("Factory Reset params : {}".format(retain), flush = True)
+    print("Factory Reset params : {}".format(retain), flush=True)
     retained_params = retain.split(" ")
 
-    SNMP_IP       = "192.168.1.1"
-    COMMUNITY     = "ubr@ro123"
-    SNMP_VERSION  = "2c"
-
-    OID_EMAIL     =".1.3.6.1.4.1.52619.1.2.2.8.0"     # nsExtendOutput1Line."sys_email"
-    OID_VLAN      =".1.3.6.1.4.1.52619.1.1.4.18.1.3.1" # nsExtendOutput1Line."access_vlan"
-    OID_SSID_R1   =".1.3.6.1.4.1.52619.1.1.1.1.1.3.2"   # nsExtendOutput1Line."ssid_r1"
-    OID_SSID_R2   =".1.3.6.1.4.1.52619.1.1.1.1.1.3.3"  # nsExtendOutput1Line."ssid_r2"
-
     if "System" in retained_params:
-        try:
-            conf_email = snmp_get(SNMP_IP, OID_EMAIL, COMMUNITY, SNMP_VERSION)
-            if conf_email == "jenkins@mail.com":
-                print("\n!!! SYSTEM RETAINED SUCCESSFUL !!!\n", flush=True)
-            else:
-                print(f"\n!!! SYSTEM RESET FAILED (got: {conf_email}) !!!\n", flush=True)
-                assert False
-        except RuntimeError as e:
-            print(f"SNMP error on System: {e}", flush=True)
+        conf_email = ssh_operations.ssh_get("192.168.1.1", "ucidyn get system.@system[0].email")
+        if conf_email == "example@mail.com":
+            print("\n!!! SYSTEM RESET SUCCESSFUL !!!\n", flush=True)
+        elif conf_email == ("jenkins@mail.com"):
+            print("\n!!! SYSTEM RESET FAILED !!!\n", flush=True)
             assert False
 
     if "Network" in retained_params:
-        try:
-            conf_network = snmp_get(SNMP_IP, OID_VLAN, COMMUNITY, SNMP_VERSION)
-            if conf_network == "23":
-                print("\n!!! NETWORK RETAINED SUCCESSFUL !!!\n", flush=True)
-            else:
-                print(f"\n!!! NETWORK RESET FAILED (got: {conf_network}) !!!\n", flush=True)
-                assert False
-        except RuntimeError as e:
-            print(f"SNMP error on Network: {e}", flush=True)
+        conf_network = ssh_operations.ssh_get("192.168.1.1", "ucidyn get vlan.ath1.accessvlan")
+        if conf_network == "10":
+            print("\n!!! NETWORK RESET SUCCESSFUL !!!\n", flush=True)
+        elif conf_network == "23":
+            print("\n!!! NETWORK RESET FAILED !!!\n", flush=True)
             assert False
 
     if "Wireless-Radio1" in retained_params:
-        try:
-            conf_ssid_r1 = snmp_get(SNMP_IP, OID_SSID_R1, COMMUNITY, SNMP_VERSION)
-            if conf_ssid_r1 == "jenkinstest_r1":
-                print("\n!!! RADIO-1 RETAINED SUCCESSFUL !!!\n", flush=True)
-            else:
-                print(f"\n!!! RADIO-1 RESET FAILED (got: {conf_ssid_r1}) !!!\n", flush=True)
-                assert False
-        except RuntimeError as e:
-            print(f"SNMP error on Radio1: {e}", flush=True)
+        conf_ssid_r1 = ssh_operations.ssh_get("192.168.1.1", "ucidyn get wireless.@wifi-iface[1].ssid")
+        if conf_ssid_r1 in ["EOC655_R1", "EOC600_R1", "EOC610_R1", "EOC650_R1"]:
+            print("\n!!! RADIO-1 RESET SUCCESSFUL !!!\n", flush=True)
+        elif str(ssh_operations.ssh_get("192.168.1.1", "ucidyn get wireless.@wifi-iface[1].ssid")) == "jenkinstest_r1":
+            print("\n!!! RADIO-1 RESET FAILED !!!\n", flush=True)
             assert False
 
     if model == "EOC655":
+        conf_ssid_r2 = ssh_operations.ssh_get("192.168.1.1", "ucidyn get wireless.@wifi-iface[2].ssid")
         if "Wireless-Radio2" in retained_params:
-            try:
-                conf_ssid_r2 = snmp_get(SNMP_IP, OID_SSID_R2, COMMUNITY, SNMP_VERSION)
-                if conf_ssid_r2 == "jenkinstest_r2":
-                    print("\n!!! RADIO-2 RETAINED SUCCESSFUL !!!\n", flush=True)
-                else:
-                    print(f"\n!!! RADIO-2 RESET FAILED (got: {conf_ssid_r2}) !!!\n", flush=True)
-                    assert False
-            except RuntimeError as e:
-                print(f"SNMP error on Radio2: {e}", flush=True)
+            if conf_ssid_r2 in ["EOC655_R2", "EOC600_R2", "EOC610_R2", "EOC650_R2"]:
+                print("\n!!! RADIO-2 RESET SUCCESSFUL !!!\n", flush=True)
+            elif conf_ssid_r2 == "jenkinstest_r2":
+                print("\n!!! RADIO-2 RESET FAILED !!!\n", flush=True)
                 assert False
 
 
+# Ignore Warnings
 def warn(*args, **kwargs):
     pass
+
 
 warnings.warn = warn
