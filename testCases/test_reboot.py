@@ -10,13 +10,10 @@ from preMadeFunctions import accessWeb
 
 username = "root"
 password = "admin"
-# serial_port = readConfig.getSerialPortDevice()
-# serial_port_log = readConfig.getSerialLogsDevice()
 driver = setup
 
 
 def test_Reboot(driver, local_ip, remote_ip):
-    # serial_logging_start(serial_port, serial_port_log)
     print(f"Local IP Address: {local_ip}", flush=True)
     print(f"Remote IP Address: {remote_ip}", flush=True)
     URL = "http://" + local_ip + "/cgi-bin/luci"
@@ -45,7 +42,6 @@ def test_Reboot(driver, local_ip, remote_ip):
     else:
         assert True
 
-    # serial_logging_stop()
     driver.close()
 
 
