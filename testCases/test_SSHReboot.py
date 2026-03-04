@@ -74,7 +74,7 @@ def test_reboot(local_ip, remote_ip, iter):
     }
 
     # Trigger device reboot using root credentials
-    ssh_netmiko.runcommand(local_ip, "reboot &")
+    ssh_netmiko.runcommand(local_ip, "ucidyn reboot &")
 
     # Wait for device to complete reboot
     print("Waiting for device to reboot...",flush=True)
