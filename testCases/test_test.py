@@ -13,7 +13,12 @@ PASSWORD = "admin"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin"
 
+# Function to perform ping checks on local and remote IPs
 def perform_ping_check(local_ip, remote_ips, result_dict):
+    # Safety guard: if a raw string was passed instead of a list, split it now
+    if isinstance(remote_ips, str):
+        import re
+        remote_ips = [ip.strip() for ip in re.split(r'[,\n\r;]+', remote_ips) if ip.strip()]
     print(f"--- Pinging local IP: {local_ip}", flush=True)
     # Check if local IP is reachable
     if pingFunction.check_access(local_ip):
@@ -55,8 +60,10 @@ def append_result_to_json(result, filename="iteration_results.json"):
 
 # Test function to perform device reboot and verify functionality
 def test_reboot(local_ip, remote_ip, iter):
-    # Parse multiple remote IPs from comma-separated string
-    remote_ips = [ip.strip() for ip in remote_ip.split(",") if ip.strip()]
+    # Parse multiple remote IPs - handle comma, newline, semicolon, and space separators
+    import re
+    remote_ips = [ip.strip() for ip in re.split(r'[,\n\r;]+', str(remote_ip)) if ip.strip()]
+    print(f"--- Parsed remote IPs list: {remote_ips}", flush=True)
 
     # Print test iteration details
     print("\n****************************************************",flush=True)
