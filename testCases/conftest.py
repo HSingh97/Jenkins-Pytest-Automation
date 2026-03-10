@@ -3,7 +3,7 @@ import pytest
 def pytest_addoption(parser):
     parser.addoption("--radio", action="store", default="Radio1", help="Radio")
     parser.addoption("--local-ip", action="store", default="192.168.1.1", help="Local IP Address")
-    parser.addoption("--remote-ip", action="store", default="192.168.1.1", help="Remote IP Address")
+    parser.addoption("--remote-ip", action="store", default="192.168.1.1", help="Remote IP Address (comma-separated for multiple)")
     parser.addoption("--remote-pc-ip", action="store", default="192.168.1.1", help="Remote PC IP Address")
     parser.addoption("--local-pc-ip", action="store", default="192.168.1.1", help="Local PC IP Address")
     parser.addoption("--remote-pc-mgmt-ip", action="store", default="192.168.1.1", help="Remote PC Mgmt IP")
@@ -62,7 +62,9 @@ def local_ip(request):
 
 @pytest.fixture
 def remote_ip(request):
-    return request.config.getoption("--remote-ip")
+    # Split comma-separated IPs into a clean list so each IP is pinged individually
+    raw = request.config.getoption("--remote-ip")
+    return [ip.strip() for ip in raw.split(",") if ip.strip()]
 
 @pytest.fixture
 def remote_pc_ip(request):
@@ -103,8 +105,6 @@ def pdu_ip(request):
 @pytest.fixture
 def pdu_port(request):
     return request.config.getoption("--pdu-port")
-
-
 
 @pytest.fixture
 def reset_type(request):
@@ -173,4 +173,3 @@ def local_interface(request):
 @pytest.fixture
 def remote_interface(request):
     return request.config.getoption("--remote-interface")
-

@@ -14,16 +14,13 @@ ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin"
 
 # Function to perform ping checks on local and remote IPs
+# remote_ips is a list of IP strings e.g. ["192.168.1.21", "192.168.1.22", ...]
 def perform_ping_check(local_ip, remote_ips, result_dict):
-    # Safety guard: if a raw string was passed instead of a list, split it now
-    if isinstance(remote_ips, str):
-        import re
-        remote_ips = [ip.strip() for ip in re.split(r'[,\n\r;]+', remote_ips) if ip.strip()]
     print(f"--- Pinging local IP: {local_ip}", flush=True)
     # Check if local IP is reachable
     if pingFunction.check_access(local_ip):
         result_dict["Ping Results"]["Local"] = True
-        # Check each remote IP
+        # Check each remote IP individually
         all_remote_pass = True
         for remote_ip in remote_ips:
             print(f"--- Pinging remote IP: {remote_ip}", flush=True)
@@ -59,21 +56,19 @@ def append_result_to_json(result, filename="iteration_results.json"):
     print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}", flush=True)
 
 # Test function to perform device reboot and verify functionality
+# remote_ip arrives as a list from conftest fixture e.g. ["192.168.1.21", "192.168.1.22"]
 def test_reboot(local_ip, remote_ip, iter):
-    # Parse multiple remote IPs - handle comma, newline, semicolon, and space separators
-    import re
-    remote_ips = [ip.strip() for ip in re.split(r'[,\n\r;]+', str(remote_ip)) if ip.strip()]
-    print(f"--- Parsed remote IPs list: {remote_ips}", flush=True)
+    remote_ips = remote_ip  # Already a list from conftest
 
     # Print test iteration details
-    print("\n****************************************************",flush=True)
+    print("\n****************************************************", flush=True)
     print(f"\nLocal IP Address: {local_ip}", flush=True)
     print(f"Remote IP Address(es): {remote_ips}", flush=True)
     print(f"Running Iteration: {iter}", flush=True)
     print("****************************************************", flush=True)
 
     # Initialize result dictionary for this test iteration
-    # "Remote" is now a dict keyed by each remote IP
+    # "Remote" is a dict keyed by each remote IP
     test_iteration_result = {
         "iteration": iter,
         "test": "Test_Reboot",
@@ -91,7 +86,7 @@ def test_reboot(local_ip, remote_ip, iter):
     ssh_netmiko.runcommand(local_ip, "reboot &")
 
     # Wait for device to complete reboot
-    print("Waiting for device to reboot...",flush=True)
+    print("Waiting for device to reboot...", flush=True)
     time.sleep(180)
 
     # Perform ping checks after reboot
@@ -149,7 +144,7 @@ def test_reboot(local_ip, remote_ip, iter):
                 test_iteration_result["status"] = "FAIL" if test_iteration_result["status"] != "PASS" else "PARTIAL"
         except Exception as e:
             print(f"Failed to retrieve device logs: {e}", flush=True)
-            test_iteration_result["Device Logs"] = f"Error retrieving logs: {str(e) }"
+            test_iteration_result["Device Logs"] = f"Error retrieving logs: {str(e)}"
     else:
         print("Skipping device log check due to failed local ping", flush=True)
         test_iteration_result["Device Logs"] = "Skipped due to failed local ping"
