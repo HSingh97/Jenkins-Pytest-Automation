@@ -13,7 +13,6 @@ PASSWORD = "admin"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin"
 
-# Function to perform ping checks on local and remote IPs
 def perform_ping_check(local_ip, remote_ips, result_dict):
     print(f"--- Pinging local IP: {local_ip}", flush=True)
     # Check if local IP is reachable
