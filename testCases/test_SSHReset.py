@@ -34,17 +34,26 @@ def rundmesg(ip, timeout=20):
         return error
 
 
-def perform_ping_check(local_ip, remote_ip, result_dict):
+# remote_ips is a list of IP strings e.g. ["192.168.1.21", "192.168.1.22", ...]
+def perform_ping_check(local_ip, remote_ips, result_dict):
     print(f"--- Pinging local IP: {local_ip}", flush=True)
     if pingFunction.check_access(local_ip):
         result_dict["Ping Results"]["Local"] = True
         print(f"\n* Local Device is up after soft reset *", flush=True)
 
-        print(f"\n--- Pinging remote IP: {remote_ip}", flush=True)
-        if pingFunction.check_access(remote_ip):
-            result_dict["Ping Results"]["Remote"] = True
-            print(f"\n* Remote Device is up after soft reset *", flush=True)
+        # Ping each remote IP individually
+        all_remote_pass = True
+        for ip in remote_ips:
+            print(f"\n--- Pinging remote IP: {ip}", flush=True)
+            if pingFunction.check_access(ip):
+                result_dict["Ping Results"]["Remote"][ip] = True
+                print(f"\n* Remote Device {ip} is up after soft reset *", flush=True)
+            else:
+                result_dict["Ping Results"]["Remote"][ip] = False
+                all_remote_pass = False
+                print(f"\n* Remote Device {ip} did NOT respond *", flush=True)
 
+        if all_remote_pass:
             print(f"\nRunning 'dmesg' on {local_ip}...", flush=True)
             dmesg_output = ""
 
@@ -71,7 +80,7 @@ def perform_ping_check(local_ip, remote_ip, result_dict):
 
             result_dict["status"] = "PASS"
         else:
-            result_dict["Ping Results"]["Remote"] = False
+            result_dict["status"] = "FAIL"
     else:
         result_dict["Ping Results"]["Local"] = False
 
@@ -104,20 +113,26 @@ def wait_for_ping(ip, timeout=30, interval=3):
     return False
 
 
+# remote_ip arrives as a list from conftest fixture e.g. ["192.168.1.21", "192.168.1.22"]
 def test_soft_reset(local_ip, remote_ip, iter, local_ping=None, remote_ping=None, timeout=20):
+    remote_ips = remote_ip  # Already a clean list from conftest fixture
+
     print("\n" + "="*60, flush=True)
-    print(f"Local IP : {local_ip}", flush=True)
-    print(f"Remote IP: {remote_ip}", flush=True)
-    print(f"Iteration: {iter}", flush=True)
+    print(f"Local IP  : {local_ip}", flush=True)
+    print(f"Remote IPs: {remote_ips}", flush=True)
+    print(f"Iteration : {iter}", flush=True)
     print("="*60, flush=True)
 
     result = {
         "iteration": iter,
-        "test": "test_reset",
+        "test": "Test_Soft_Reset",
         "status": "FAIL",
         "Local IP": local_ip,
-        "Remote IP": remote_ip,
-        "Ping Results": {"Local": False, "Remote": False},
+        "Remote IPs": remote_ips,
+        "Ping Results": {
+            "Local": False,
+            "Remote": {ip: False for ip in remote_ips}
+        },
         "dmesg_output": []
     }
 
@@ -154,15 +169,17 @@ def test_soft_reset(local_ip, remote_ip, iter, local_ping=None, remote_ping=None
         append_result_to_json(result)
         pytest.fail(f"Iteration {iter}: Local device {local_ip} did not come back after network reload")
 
-    perform_ping_check(local_ip, remote_ip, result)
+    perform_ping_check(local_ip, remote_ips, result)
     append_result_to_json(result)
 
     if result["status"] != "PASS":
         fail_reason = []
         if not result["Ping Results"]["Local"]:
             fail_reason.append("Local ping failed")
-        if not result["Ping Results"]["Remote"]:
-            fail_reason.append("Remote ping failed")
+        # Check if any remote failed
+        failed_remotes = [ip for ip, ok in result["Ping Results"]["Remote"].items() if not ok]
+        if failed_remotes:
+            fail_reason.append(f"Remote ping failed: {failed_remotes}")
         if isinstance(result["dmesg_output"], list) and result["dmesg_output"] and result["dmesg_output"][0] == "ERROR":
             fail_reason.append("dmesg capture failed")
 
