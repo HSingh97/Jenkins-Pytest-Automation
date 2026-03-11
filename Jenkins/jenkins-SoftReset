@@ -54,10 +54,11 @@ pipeline {
                         echo "Running soft reset iteration ${i}"
                         try {
                             sh """#!/bin/bash
-                                pytest -v -s testCases/test_SSHReset.py::test_soft_reset \
-                                --local-ip '${localIP}' --remote-ip '${remoteIPsJoined}' \
-                                --iter ${i} 2>&1 | tee test-${i}.log; exit \${PIPESTATUS[0]}
-                            """
+set -o pipefail
+pytest -v -s testCases/test_SoftReset.py::test_soft_reset \
+--local-ip '${localIP}' --remote-ip '${remoteIPsJoined}' \
+--iter ${i} 2>&1 | tee test-${i}.log
+"""
                         } catch (Exception e) {
                             echo "Iteration ${i} failed: ${e.message}"
                         }
