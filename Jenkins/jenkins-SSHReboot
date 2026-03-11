@@ -116,9 +116,9 @@ pipeline {
                         passCount = jsonReport.iterations.count { it.status == 'PASS' }
                     }
                     def failCount = totalTests - passCount
-                    // Cast explicitly to double to avoid IllegalFormatConversionException
-                    def successPercentage = (totalTests > 0) ? (passCount / (double)totalTests) * 100 : 0.0d
-                    def successPercentageStr = String.format("%.1f", successPercentage.toDouble())
+                    // Cast explicitly to double - toDouble() is blocked by Jenkins sandbox
+                    double successPercentage = (totalTests > 0) ? (passCount / (double)totalTests) * 100 : 0.0d
+                    def successPercentageStr = String.format("%.1f", successPercentage)
 
                     def buildParams = [
                         "Local IP Address": params['Local IP Address'],
