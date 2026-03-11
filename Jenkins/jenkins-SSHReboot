@@ -38,7 +38,7 @@ pipeline {
                     // Support multiple remote IPs provided as comma-separated or newline-separated values
                     def rawRemoteIPs = params['Remote IP Addresses']
                     def remoteIPList = rawRemoteIPs.tokenize(',\n').collect { it.trim() }.findAll { it }
-                    def remoteIPsJoined = remoteIPList.join(',')  // Passed to pytest as comma-separated string
+                    def remoteIPsJoined = remoteIPList.join(',')
 
                     echo "Local IP Address: ${localIP}"
                     echo "Remote IP Address(es): ${remoteIPsJoined}"
@@ -52,15 +52,16 @@ pipeline {
                     echo "Testing Reboot - SSH"
                     echo "----------------------------------------"
 
-                    sh "echo [] > iteration_results.json"  // Initialize JSON array
+                    sh "echo [] > iteration_results.json"
 
                     for (int i = 1; i <= rebootCount.toInteger(); i++) {
                         echo "Running reboot test iteration ${i}"
                         try {
+                            // FIX: Pipe pytest output to test-{i}.log so "See Logs" works in report
                             sh """
                                 pytest -v -s testCases/test_SSHReboot.py::test_reboot \
                                 --local-ip '${localIP}' --remote-ip '${remoteIPsJoined}' \
-                                --iter ${i}
+                                --iter ${i} 2>&1 | tee test-${i}.log; exit \${PIPESTATUS[0]}
                             """
                         } catch (Exception e) {
                             echo "Reboot test iteration ${i} failed: ${e.message}"
@@ -85,7 +86,6 @@ pipeline {
                     }
 
                     def local_fw_version = "N/A"
-                    def remote_fw_versions = [:]
 
                     try {
                         local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
@@ -93,17 +93,16 @@ pipeline {
                         echo "⚠️ Failed to get local FW version from ${localIP}: ${e.message}"
                     }
 
-                    remoteIPList.each { remoteIP ->
+                    // FIX: All SUs share the same FW in PTMP - get version from first reachable SU only
+                    def remote_fw_version = "N/A"
+                    for (def remoteIP : remoteIPList) {
                         try {
-                            remote_fw_versions[remoteIP] = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
+                            remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
+                            break  // Got version from first reachable SU, stop
                         } catch (Exception e) {
                             echo "⚠️ Failed to get remote FW version from ${remoteIP}: ${e.message}"
-                            remote_fw_versions[remoteIP] = "N/A"
                         }
                     }
-
-                    // Build a display string: "192.168.1.21: v1.0, 192.168.1.22: v1.1"
-                    def remoteFwDisplay = remote_fw_versions.collect { ip, ver -> "${ip}: ${ver}" }.join(", ")
 
                     def jsonReport = readJSON file: 'iteration_results.json'
                     echo "JSON Report: ${jsonReport}"
@@ -116,15 +115,14 @@ pipeline {
                         passCount = jsonReport.iterations.count { it.status == 'PASS' }
                     }
                     def failCount = totalTests - passCount
-                    // Cast explicitly to double - toDouble() is blocked by Jenkins sandbox
                     double successPercentage = (totalTests > 0) ? (passCount / (double)totalTests) * 100 : 0.0d
                     def successPercentageStr = String.format("%.1f", successPercentage)
 
+                    // FIX: Match original script - single FW Version (Local / Remote) row
                     def buildParams = [
-                        "Local IP Address": params['Local IP Address'],
-                        "Remote IP Address(es)": remoteIPList.join(", "),
-                        "FW Version (Local)": local_fw_version,
-                        "FW Version (Remote)": remoteFwDisplay
+                        "Local IP Address"              : params['Local IP Address'],
+                        "Remote IP Address(es)"         : remoteIPList.join(", "),
+                        "FW Version (Local / Remote)"   : "${local_fw_version} / ${remote_fw_version}"
                     ]
 
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
@@ -367,6 +365,7 @@ pipeline {
                             <table>
                                 <tr>
                                     <th>Iteration</th>
+                                    <th>Test Name</th>
                                     <th style="text-align: center;">Status</th>
                                     <th style="text-align: center;">Logs</th>
                                 </tr>
@@ -378,6 +377,8 @@ pipeline {
                     if (jsonReport.iterations) {
                         jsonReport.iterations.each { result ->
                             def iteration = result.iteration ?: "-"
+                            // FIX: Show test name from JSON result
+                            def testName = result.test ?: "Test_Reboot"
                             def status = result.status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
 
                             def logFile = "test-${iteration}.log"
@@ -399,6 +400,7 @@ pipeline {
                             tableRows += """
                                 <tr>
                                     <td>${iteration}</td>
+                                    <td>${testName}</td>
                                     <td style="text-align: center;">${status}</td>
                                     <td style="text-align: center;">${logButton}</td>
                                 </tr>
@@ -406,7 +408,7 @@ pipeline {
                             logDataBlocks += "<div id='${logDataId}' style='display:none;'>${logContent}</div>\n"
                         }
                     } else {
-                        tableRows += "<tr><td colspan='3' style='text-align:center;'>No iteration results found.</td></tr>"
+                        tableRows += "<tr><td colspan='4' style='text-align:center;'>No iteration results found.</td></tr>"
                     }
 
                     htmlContent += tableRows
