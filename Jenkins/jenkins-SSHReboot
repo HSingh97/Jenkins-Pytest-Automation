@@ -15,8 +15,8 @@ pipeline {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${TARGET_STAND}"
                     echo "----------------------------------------"
-                    if (!params['Local IP Address'] || !params['Remote IP Address']) {
-                        error "Missing required parameters: Local IP Address or Remote IP Address"
+                    if (!params['Local IP Address'] || !params['Remote IP Addresses']) {
+                        error "Missing required parameters: Local IP Address or Remote IP Addresses"
                     }
                 }
             }
@@ -34,10 +34,14 @@ pipeline {
             steps {
                 script {
                     def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
+
+                    // Support multiple remote IPs provided as comma-separated or newline-separated values
+                    def rawRemoteIPs = params['Remote IP Addresses']
+                    def remoteIPList = rawRemoteIPs.tokenize(',\n').collect { it.trim() }.findAll { it }
+                    def remoteIPsJoined = remoteIPList.join(',')  // Passed to pytest as comma-separated string
 
                     echo "Local IP Address: ${localIP}"
-                    echo "Remote IP Address: ${remoteIP}"
+                    echo "Remote IP Address(es): ${remoteIPsJoined}"
 
                     def rebootCount = params.REBOOT_COUNT ?: 1
                     echo "Number of reboot iterations: ${rebootCount}"
@@ -55,7 +59,7 @@ pipeline {
                         try {
                             sh """
                                 pytest -v -s testCases/test_SSHReboot.py::test_reboot \
-                                --local-ip '${localIP}' --remote-ip '${remoteIP}' \
+                                --local-ip '${localIP}' --remote-ip '${remoteIPsJoined}' \
                                 --iter ${i}
                             """
                         } catch (Exception e) {
@@ -69,12 +73,19 @@ pipeline {
             steps {
                 script {
                     def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
+
+                    // Parse remote IPs again for report generation
+                    def rawRemoteIPs = params['Remote IP Addresses']
+                    def remoteIPList = rawRemoteIPs.tokenize(',\n').collect { it.trim() }.findAll { it }
+
+                    // Clean SSH known hosts for local and all remote IPs
                     sh "ssh-keygen -R ${localIP} || true"
-                    sh "ssh-keygen -R ${remoteIP} || true"
+                    remoteIPList.each { remoteIP ->
+                        sh "ssh-keygen -R ${remoteIP} || true"
+                    }
 
                     def local_fw_version = "N/A"
-                    def remote_fw_version = "N/A"
+                    def remote_fw_versions = [:]
 
                     try {
                         local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
@@ -82,11 +93,17 @@ pipeline {
                         echo "⚠️ Failed to get local FW version from ${localIP}: ${e.message}"
                     }
 
-                    try {
-                        remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (Exception e) {
-                        echo "⚠️ Failed to get remote FW version from ${remoteIP}: ${e.message}"
+                    remoteIPList.each { remoteIP ->
+                        try {
+                            remote_fw_versions[remoteIP] = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
+                        } catch (Exception e) {
+                            echo "⚠️ Failed to get remote FW version from ${remoteIP}: ${e.message}"
+                            remote_fw_versions[remoteIP] = "N/A"
+                        }
                     }
+
+                    // Build a display string: "192.168.1.21: v1.0, 192.168.1.22: v1.1"
+                    def remoteFwDisplay = remote_fw_versions.collect { ip, ver -> "${ip}: ${ver}" }.join(", ")
 
                     def jsonReport = readJSON file: 'iteration_results.json'
                     echo "JSON Report: ${jsonReport}"
@@ -99,13 +116,15 @@ pipeline {
                         passCount = jsonReport.iterations.count { it.status == 'PASS' }
                     }
                     def failCount = totalTests - passCount
-                    def successPercentage = (totalTests > 0) ? (passCount / (double)totalTests) * 100 : 0
-                    def successPercentageStr = String.format("%.1f", successPercentage)
+                    // Cast explicitly to double to avoid IllegalFormatConversionException
+                    def successPercentage = (totalTests > 0) ? (passCount / (double)totalTests) * 100 : 0.0d
+                    def successPercentageStr = String.format("%.1f", successPercentage.toDouble())
 
                     def buildParams = [
                         "Local IP Address": params['Local IP Address'],
-                        "Remote IP Address": params['Remote IP Address'],
-                        "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}"
+                        "Remote IP Address(es)": remoteIPList.join(", "),
+                        "FW Version (Local)": local_fw_version,
+                        "FW Version (Remote)": remoteFwDisplay
                     ]
 
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
@@ -124,7 +143,7 @@ pipeline {
                                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
                                 margin: 0;
                                 padding: 0;
-                                background-color: #f9fafb; /* Lighter gray background */
+                                background-color: #f9fafb;
                                 color: #1f2937;
                             }
                             .container {
@@ -136,33 +155,29 @@ pipeline {
                                 display: flex;
                                 justify-content: space-between;
                                 align-items: center;
-                                background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%); /* New gradient */
-                                padding: 28px 36px; /* Increased padding */
+                                background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%);
+                                padding: 28px 36px;
                                 border: 1px solid #e5e7eb;
                                 border-radius: 12px;
-                                box-shadow: 0 4px 6px rgba(0,0,0,0.04); /* Slightly stronger shadow */
+                                box-shadow: 0 4px 6px rgba(0,0,0,0.04);
                             }
                             .header img {
-                                height: 65px; /* Bigger logo */
+                                height: 65px;
                                 transition: transform 0.2s ease-in-out;
                             }
-                            .header img:hover {
-                                transform: scale(1.03); /* Subtle hover effect */
-                            }
+                            .header img:hover { transform: scale(1.03); }
                             .header-info { text-align: right; }
                             .header-info h1 {
                                 margin: 0;
-                                font-size: 30px; /* Bigger title */
-                                font-weight: 700; /* Bolder */
-                                color: #0a2540; /* Darker, more corporate blue/black */
+                                font-size: 30px;
+                                font-weight: 700;
+                                color: #0a2540;
                             }
                             .header-info p {
                                 margin: 5px 0;
-                                font-size: 15px; /* Slightly larger sub-text */
-                                color: #4a5568; /* Darker gray */
+                                font-size: 15px;
+                                color: #4a5568;
                             }
-                            /* ######## END: MODIFIED CSS (HEADER) ######## --> */
-
                             h2 {
                                 margin-top: 32px;
                                 font-size: 24px;
@@ -171,8 +186,6 @@ pipeline {
                                 border-bottom: 2px solid #e5e7eb;
                                 padding-bottom: 12px;
                             }
-
-                            /* --- Summary Cards --- */
                             .summary-container {
                                 display: grid;
                                 grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -199,23 +212,10 @@ pipeline {
                                 align-items: center;
                                 justify-content: center;
                             }
-                            .card-info {
-                                text-align: left;
-                            }
-                            .card-info-title {
-                                font-size: 16px;
-                                color: #6b7280;
-                                margin: 0 0 4px 0;
-                            }
-                            .card-info-value {
-                                font-size: 32px;
-                                font-weight: 700;
-                                color: #111827;
-                                margin: 0;
-                            }
+                            .card-info { text-align: left; }
+                            .card-info-title { font-size: 16px; color: #6b7280; margin: 0 0 4px 0; }
+                            .card-info-value { font-size: 32px; font-weight: 700; color: #111827; margin: 0; }
                             .percent .percent-sign { font-size: 20px; font-weight: 600; }
-
-                            /* Card-specific Colors */
                             .card-percent { border-color: #6b7280; }
                             .card-percent .card-icon { background-color: #f3f4f6; color: #6b7280; }
                             .card-total { border-color: #3b82f6; }
@@ -224,8 +224,6 @@ pipeline {
                             .card-pass .card-icon { background-color: #d1fae5; color: #10b981; }
                             .card-fail { border-color: #ef4444; }
                             .card-fail .card-icon { background-color: #fee2e2; color: #ef4444; }
-
-                            /* --- Table Style --- */
                             table {
                                 width: 100%;
                                 border-collapse: collapse;
@@ -252,106 +250,47 @@ pipeline {
                             }
                             tr:last-child td { border-bottom: none; }
                             tr:hover { background-color: #f9fafb; }
-
                             .status-pass {
-                                color: #059669;
-                                font-weight: 600;
-                                background-color: #d1fae5;
-                                padding: 5px 10px;
-                                border-radius: 99px;
-                                display: inline-block;
+                                color: #059669; font-weight: 600; background-color: #d1fae5;
+                                padding: 5px 10px; border-radius: 99px; display: inline-block;
                             }
                             .status-fail {
-                                color: #dc2626;
-                                font-weight: 600;
-                                background-color: #fee2e2;
-                                padding: 5px 10px;
-                                border-radius: 99px;
-                                display: inline-block;
+                                color: #dc2626; font-weight: 600; background-color: #fee2e2;
+                                padding: 5px 10px; border-radius: 99px; display: inline-block;
                             }
-
-                            /* --- Log Button --- */
                             .log-button {
-                                background-color: #3b82f6;
-                                color: white;
-                                padding: 8px 16px;
-                                text-decoration: none;
-                                border-radius: 8px;
-                                font-weight: 600;
-                                font-size: 14px;
-                                transition: background-color 0.2s ease, box-shadow 0.2s ease;
-                                display: inline-block;
-                                border: none;
-                                cursor: pointer;
+                                background-color: #3b82f6; color: white; padding: 8px 16px;
+                                text-decoration: none; border-radius: 8px; font-weight: 600;
+                                font-size: 14px; transition: background-color 0.2s ease, box-shadow 0.2s ease;
+                                display: inline-block; border: none; cursor: pointer;
                                 box-shadow: 0 1px 2px rgba(0,0,0,0.05);
                             }
-                            .log-button:hover {
-                                background-color: #2563eb;
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                            }
-
-                            /* --- Modal Styles --- */
+                            .log-button:hover { background-color: #2563eb; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
                             .modal {
-                                display: none;
-                                position: fixed;
-                                z-index: 100;
-                                left: 0;
-                                top: 0;
-                                width: 100%;
-                                height: 100%;
-                                overflow: auto;
-                                background-color: rgba(0,0,0,0.6);
+                                display: none; position: fixed; z-index: 100; left: 0; top: 0;
+                                width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6);
                             }
                             .modal-content {
-                                background-color: #ffffff;
-                                margin: 5% auto;
-                                border: 1px solid #e5e7eb;
-                                border-radius: 12px;
-                                width: 80%;
-                                max-width: 900px;
+                                background-color: #ffffff; margin: 5% auto; border: 1px solid #e5e7eb;
+                                border-radius: 12px; width: 80%; max-width: 900px;
                                 box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-                                animation-name: animatetop;
-                                animation-duration: 0.4s;
-                                overflow: hidden;
+                                animation-name: animatetop; animation-duration: 0.4s; overflow: hidden;
                             }
                             .modal-header {
-                                padding: 20px 32px;
-                                border-bottom: 1px solid #e5e7eb;
-                                display: flex;
-                                justify-content: space-between;
-                                align-items: center;
+                                padding: 20px 32px; border-bottom: 1px solid #e5e7eb;
+                                display: flex; justify-content: space-between; align-items: center;
                             }
-                            .modal-header h2 {
-                                margin: 0;
-                                padding: 0;
-                                border: none;
-                                font-size: 20px;
-                            }
+                            .modal-header h2 { margin: 0; padding: 0; border: none; font-size: 20px; }
                             .modal-close {
-                                color: #9ca3af;
-                                font-size: 28px;
-                                font-weight: bold;
-                                cursor: pointer;
-                                transition: color 0.2s ease;
+                                color: #9ca3af; font-size: 28px; font-weight: bold;
+                                cursor: pointer; transition: color 0.2s ease;
                             }
-                            .modal-close:hover,
-                            .modal-close:focus {
-                                color: #1f2937;
-                                text-decoration: none;
-                            }
-                            .modal-body {
-                                padding: 0;
-                            }
+                            .modal-close:hover, .modal-close:focus { color: #1f2937; text-decoration: none; }
+                            .modal-body { padding: 0; }
                             #log-content-pre {
-                                background-color: #1f2937; /* Dark background */
-                                color: #e5e7eb; /* Light text */
-                                padding: 24px 32px;
-                                max-height: 60vh;
-                                overflow: auto;
-                                white-space: pre-wrap;
-                                word-wrap: break-word;
-                                margin: 0;
-                                border-radius: 0 0 12px 12px;
+                                background-color: #1f2937; color: #e5e7eb; padding: 24px 32px;
+                                max-height: 60vh; overflow: auto; white-space: pre-wrap;
+                                word-wrap: break-word; margin: 0; border-radius: 0 0 12px 12px;
                                 font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
                                 font-size: 14px;
                             }
@@ -360,7 +299,6 @@ pipeline {
                                 to {transform: translateY(0); opacity: 1}
                             }
                         </style>
-
                         <script>
                             function showLog(logDataId) {
                                 var logContent = document.getElementById(logDataId).innerHTML;
@@ -372,9 +310,7 @@ pipeline {
                             }
                             window.onclick = function(event) {
                                 var modal = document.getElementById('logModal');
-                                if (event.target == modal) {
-                                    modal.style.display = 'none';
-                                }
+                                if (event.target == modal) { modal.style.display = 'none'; }
                             }
                         </script>
                     </head>
@@ -391,10 +327,7 @@ pipeline {
 
                             <h2>Build Parameters</h2>
                             <table>
-                                <tr>
-                                    <th>Parameter</th>
-                                    <th>Value</th>
-                                </tr>
+                                <tr><th>Parameter</th><th>Value</th></tr>
                                 ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
                             </table>
 
@@ -430,7 +363,6 @@ pipeline {
                                 </div>
                             </div>
 
-
                             <h2>Test Results</h2>
                             <table>
                                 <tr>
@@ -440,7 +372,6 @@ pipeline {
                                 </tr>
                     """
 
-                    // --- Read log files and build table rows + hidden log data ---
                     def tableRows = ""
                     def logDataBlocks = ""
 
@@ -454,9 +385,7 @@ pipeline {
                             def logContent = ""
 
                             try {
-                                // Read the log file from the workspace
                                 logContent = readFile(file: logFile)
-                                // Manually escape HTML characters
                                 logContent = logContent.replace("&", "&amp;")
                                                      .replace("<", "&lt;")
                                                      .replace(">", "&gt;")
@@ -474,18 +403,17 @@ pipeline {
                                     <td style="text-align: center;">${logButton}</td>
                                 </tr>
                             """
-
                             logDataBlocks += "<div id='${logDataId}' style='display:none;'>${logContent}</div>\n"
                         }
                     } else {
-                         tableRows += "<tr><td colspan='3' style='text-align:center;'>No iteration results found.</td></tr>"
+                        tableRows += "<tr><td colspan='3' style='text-align:center;'>No iteration results found.</td></tr>"
                     }
 
                     htmlContent += tableRows
-
                     htmlContent += """
                             </table>
-                        </div> <div id="logModal" class="modal">
+                        </div>
+                        <div id="logModal" class="modal">
                           <div class="modal-content">
                             <div class="modal-header">
                                 <h2>Iteration Log</h2>
@@ -496,9 +424,7 @@ pipeline {
                             </div>
                           </div>
                         </div>
-
                         ${logDataBlocks}
-
                     </body>
                     </html>
                     """
@@ -519,7 +445,6 @@ pipeline {
                 reportName: 'Test Report'
             ])
 
-            // Clean up the log files after all stages are complete
             echo "Cleaning up test log files..."
             sh 'rm -f test-*.log || true'
 
@@ -535,7 +460,6 @@ pipeline {
 
                 echo "Build started by: ${buildUserName} (${buildUserId})"
 
-                // Define a mapping of user IDs to emails (update as needed)
                 def userEmails = [
                     "puneet": "puneet.sharma@senao.com",
                     "harman": "harmanjot.singh@senao.com",
@@ -548,12 +472,8 @@ pipeline {
                     "dinesh": "dinesh.redddy@senao.com"
                 ]
 
-                // Get email from predefined mapping, else use default
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
-
                 echo "Sending email to: ${userEmail}"
-
-                // Send email notification
 
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
@@ -574,7 +494,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html,iteration_results.json' // Fixed comma placement
+                    attachmentsPattern: 'report.html,iteration_results.json'
                 )
             }
         }
