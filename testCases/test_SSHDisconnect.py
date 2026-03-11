@@ -30,18 +30,25 @@ def runcommand(ip, cmd, return_output=False):
         raise
 
 
-def perform_ping_check(local_ip, remote_ip, result_dict):
+def perform_ping_check(local_ip, remote_ips, result_dict):
     print(f"\n--- Pinging local IP: {local_ip}", flush=True)
     if pingFunction.check_access(local_ip):
         result_dict["Ping Results"]["Local"] = True
         print("\n* Local Device is up *", flush=True)
-        print(f"\n--- Pinging remote IP: {remote_ip}", flush=True)
-        if pingFunction.check_access(remote_ip):
-            result_dict["Ping Results"]["Remote"] = True
-            print("\n* Remote Device is up *", flush=True)
+
+        all_remote_up = True
+        for ip in remote_ips:
+            print(f"\n--- Pinging remote IP: {ip}", flush=True)
+            if pingFunction.check_access(ip):
+                result_dict["Ping Results"]["Remote"][ip] = True
+                print(f"\n* Remote Device {ip} is up *", flush=True)
+            else:
+                result_dict["Ping Results"]["Remote"][ip] = False
+                all_remote_up = False
+                print(f"\n* Remote Device {ip} is DOWN *", flush=True)
+
+        if all_remote_up:
             result_dict["status"] = "PASS"
-        else:
-            result_dict["Ping Results"]["Remote"] = False
     else:
         result_dict["Ping Results"]["Local"] = False
 
@@ -73,21 +80,27 @@ def wait_for_ping(ip, timeout=15, interval=3):
 
 
 def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
-    print("\n" + "*" * 52, flush=True)
-    print(f"Local IP Address : {local_ip}", flush=True)
-    print(f"Remote IP Address : {remote_ip}", flush=True)
-    print(f"Model : {model}", flush=True)
-    print(f"Radio : {radio}", flush=True)
-    print(f"Running Iteration: {iter}", flush=True)
-    print("*" * 52, flush=True)
+    # remote_ip is a list of IPs from conftest
+    remote_ips = remote_ip
+
+    print("\n" + "=" * 60, flush=True)
+    print(f"Local IP   : {local_ip}", flush=True)
+    print(f"Remote IPs : {remote_ips}", flush=True)
+    print(f"Model      : {model}", flush=True)
+    print(f"Radio      : {radio}", flush=True)
+    print(f"Iteration  : {iter}", flush=True)
+    print("=" * 60, flush=True)
 
     result = {
         "iteration": iter,
         "test": "Test_Disconnect",
         "status": "FAIL",
         "Local IP": local_ip,
-        "Remote IP": remote_ip,
-        "Ping Results": {"Local": False, "Remote": False},
+        "Remote IPs": remote_ips,
+        "Ping Results": {
+            "Local": False,
+            "Remote": {ip: False for ip in remote_ips}
+        },
     }
 
     print(f"get_radio_index('{radio}') returned: {get_radio_index(radio)}", flush=True)
@@ -135,15 +148,16 @@ def test_Disconnect_Connect(local_ip, remote_ip, model, radio, iter):
         append_result_to_json(result)
         pytest.fail(f"Iteration {iter}: Local device {local_ip} did not come back after kickmac")
 
-    perform_ping_check(local_ip, remote_ip, result)
+    perform_ping_check(local_ip, remote_ips, result)
     append_result_to_json(result)
 
     if result["status"] != "PASS":
         fail_reasons = []
         if not result["Ping Results"]["Local"]:
             fail_reasons.append("Local ping failed")
-        if not result["Ping Results"]["Remote"]:
-            fail_reasons.append("Remote ping failed")
+        failed_remotes = [ip for ip, ok in result["Ping Results"]["Remote"].items() if not ok]
+        if failed_remotes:
+            fail_reasons.append(f"Remote ping failed for: {', '.join(failed_remotes)}")
         if "notes" in result:
             fail_reasons.append(result["notes"])
 
