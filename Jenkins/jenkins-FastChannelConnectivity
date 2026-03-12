@@ -38,7 +38,7 @@ pipeline {
                     catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                         def localIP = params['Local IP Address']
 
-                        // Parse multiple remote IPs (comma or newline separated)
+                        // PTMP: Parse multiple remote IPs (comma or newline separated)
                         def rawRemoteIPs = params['Remote IP Addresses']
                         def remoteIPList = rawRemoteIPs.tokenize(',\n').collect { it.trim() }.findAll { it }
                         def remoteIPsJoined = remoteIPList.join(',')
@@ -134,6 +134,7 @@ pipeline {
                     }
                     def localIP = params['Local IP Address']
 
+                    // PTMP: Parse multiple remote IPs
                     def rawRemoteIPs = params['Remote IP Addresses']
                     def remoteIPList = rawRemoteIPs.tokenize(',\n').collect { it.trim() }.findAll { it }
 
@@ -148,7 +149,7 @@ pipeline {
                             returnStdout: true
                         ).trim()
                     } catch (e) {
-                        echo "⚠️ WARNING: Could not retrieve local firmware version from ${localIP}."
+                        echo "⚠️ WARNING: Could not retrieve local firmware version from ${localIP}. Device may be unreachable."
                         local_fw_version = "N/A (device unreachable)"
                     }
 
@@ -166,7 +167,7 @@ pipeline {
                             ).trim()
                             break
                         } catch (e) {
-                            echo "⚠️ WARNING: Could not retrieve remote firmware version from ${remoteIP}."
+                            echo "⚠️ WARNING: Could not retrieve remote firmware version from ${remoteIP}. Device may be unreachable."
                         }
                     }
 
@@ -276,58 +277,57 @@ pipeline {
 
                         resultFile.content.each { iteration ->
                             iteration["Tested Channels"].each { channel ->
-                                def remoteResultsMap = channel["remote_results"] ?: [:]
+                                def stats = channel["link_stats"]
+                                def status = channel["status"] == "PASS"
+                                    ? "<span class='pass'>✅ PASS</span>"
+                                    : "<span class='fail'>❌ FAIL</span>"
 
-                                remoteResultsMap.each { rip, rdata ->
-                                    def stats = rdata["link_stats"]
-                                    def status = channel["status"] == "PASS"
-                                        ? "<span class='pass'>✅ PASS</span>"
-                                        : "<span class='fail'>❌ FAIL</span>"
+                                def bw_mhz = bandwidth.replaceAll("[^\\d]", "")
+                                def extractHTWidth = { ht -> ht?.find(/\d+/) ?: "" }
 
-                                    def localHT = channel.local_htmode ?: "-"
-                                    def remoteHT = rdata["remote_htmode"] ?: "-"
-                                    def expectedBW = bandwidth.replaceAll("[^\\d]", "")
+                                def localHT = channel.local_htmode ?: "-"
+                                def remoteHT = channel.remote_htmode ?: "-"
+                                def expectedBW = bandwidth.replaceAll("[^\\d]", "")
 
-                                    def isHTMatch = { htmode, bw ->
-                                        def validMap = [
-                                            "20": ["11AHE20"],
-                                            "40": ["11AHE40PLUS", "11AHE40MINUS"],
-                                            "80": ["11AHE80"],
-                                            "160": ["11AHE160"]
-                                        ]
-                                        return validMap[bw]?.contains(htmode?.toUpperCase())
-                                    }
-
-                                    def bandwidthMismatchLocal  = !isHTMatch(localHT, expectedBW)
-                                    def bandwidthMismatchRemote = !isHTMatch(remoteHT, expectedBW)
-                                    def modeMismatch = localHT != remoteHT
-
-                                    def localStyle  = (bandwidthMismatchLocal  || modeMismatch) ? "color:red; font-weight:bold;" : ""
-                                    def remoteStyle = (bandwidthMismatchRemote || modeMismatch) ? "color:red; font-weight:bold;" : ""
-
-                                    htmlContent += """
-                                        <tr>
-                                          <td>${channel.channel}</td>
-                                          <td>${status}</td>
-                                          <td>${channel.local_active ?: '-'}</td>
-                                          <td>${rdata["remote_active_channel"] ?: '-'}</td>
-                                          <td>${channel.device_uptime ?: '-'}</td>
-                                          <td>${rip}</td>
-                                          <td>${stats?.link_uptime ?: '-'}</td>
-                                          <td>${stats?.local_SNR_A1 ?: '-'}</td>
-                                          <td>${stats?.local_SNR_A2 ?: '-'}</td>
-                                          <td>${stats?.remote_SNR_A1 ?: '-'}</td>
-                                          <td>${stats?.remote_SNR_A2 ?: '-'}</td>
-                                          <td>${stats?.local_noise ?: '-'}</td>
-                                          <td>${stats?.remote_noise ?: '-'}</td>
-                                          <td>${stats?.tx_rate ?: '-'}</td>
-                                          <td>${stats?.rx_rate ?: '-'}</td>
-                                          <td>${channel.conf_htmode ?: '-'}</td>
-                                          <td style="${localStyle}">${localHT}</td>
-                                          <td style="${remoteStyle}">${remoteHT}</td>
-                                        </tr>
-                                    """
+                                def isHTMatch = { htmode, bw ->
+                                    def validMap = [
+                                        "20": ["11AHE20"],
+                                        "40": ["11AHE40PLUS", "11AHE40MINUS"],
+                                        "80": ["11AHE80"],
+                                        "160": ["11AHE160"]
+                                    ]
+                                    return validMap[bw]?.contains(htmode?.toUpperCase())
                                 }
+
+                                def bandwidthMismatchLocal  = !isHTMatch(localHT, expectedBW)
+                                def bandwidthMismatchRemote = !isHTMatch(remoteHT, expectedBW)
+                                def modeMismatch = localHT != remoteHT
+
+                                def localStyle  = (bandwidthMismatchLocal  || modeMismatch) ? "color:red; font-weight:bold;" : ""
+                                def remoteStyle = (bandwidthMismatchRemote || modeMismatch) ? "color:red; font-weight:bold;" : ""
+
+                                htmlContent += """
+                                    <tr>
+                                      <td>${channel.channel}</td>
+                                      <td>${status}</td>
+                                      <td>${channel.local_active ?: '-'}</td>
+                                      <td>${channel.remote_active ?: '-'}</td>
+                                      <td>${channel.device_uptime ?: '-'}</td>
+                                      <td>${stats?.ip_address ?: 'N/A'}</td>
+                                      <td>${stats?.link_uptime ?: '-'}</td>
+                                      <td>${stats?.local_SNR_A1 ?: '-'}</td>
+                                      <td>${stats?.local_SNR_A2 ?: '-'}</td>
+                                      <td>${stats?.remote_SNR_A1 ?: '-'}</td>
+                                      <td>${stats?.remote_SNR_A2 ?: '-'}</td>
+                                      <td>${stats?.local_noise ?: '-'}</td>
+                                      <td>${stats?.remote_noise ?: '-'}</td>
+                                      <td>${stats?.tx_rate ?: '-'}</td>
+                                      <td>${stats?.rx_rate ?: '-'}</td>
+                                      <td>${channel.conf_htmode ?: '-'}</td>
+                                      <td style="${localStyle}">${localHT}</td>
+                                      <td style="${remoteStyle}">${remoteHT}</td>
+                                    </tr>
+                                    """
                             }
                         }
 
@@ -341,7 +341,6 @@ pipeline {
             }
         }
     }
-
     post {
         always {
             publishHTML (target: [
