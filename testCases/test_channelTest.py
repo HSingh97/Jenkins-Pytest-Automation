@@ -284,7 +284,10 @@ def test_changecountry(local_ip, remote_ip, radio, country):
         for ip in remote_ips:
             if pingFunction.check_access(ip):
                 print("\nConfiguring Country {} for Remote Device {} ".format(country_code, ip), flush=True)
-                snmp_operations.change_country(ip, radio_ind, country_code, 5)
+                # FIX: increased timeout from 5 to 60 seconds for remote SUs
+                snmp_operations.change_country(ip, radio_ind, country_code, 60)
+                print("Country configured for {}. Waiting 10s before next...".format(ip), flush=True)
+                time.sleep(10)
         print("\nConfiguring Country {} for Local Device ".format(country_code), flush=True)
         snmp_operations.change_country(local_ip, radio_ind, country_code, 120)
     else:
