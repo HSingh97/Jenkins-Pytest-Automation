@@ -11,9 +11,9 @@ apt-get install build-essential cargo
 pip3 install paramiko
 pip3 install pexpect
 pip3 install pytest pytest-html weasyprint
-pip install pytest-html
-pip install pytest-json-report
+pip3 install pytest-html
+pip3 install pytest-json-report
 apt-get install sshpass
 apt-get install python-setuptools -y
-pip install netmiko
-pip install prettytable
+pip3 install netmiko
+pip3 install prettytable
