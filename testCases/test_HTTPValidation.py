@@ -20,18 +20,18 @@ def test_Login(driver, local_ip):
 
     accessWeb.access_and_login(driver, URL, username, password)
     current_title = driver.title
+    print(current_title, flush=True)
 
     if current_title == "Sify - Home - LuCI" or "KeyWest - Home" or "EnGenius - Home":
         assert True
         time.sleep(2)
         driver.save_screenshot("Screenshots\\" + current_title + ".png")
         driver.close()
-        print("hi", flush=True)
 
     else:
         driver.save_screenshot("Screenshots\\" + "test_homePageTitle.png")
         driver.close()
-        print("bye", flush=True)
+
         assert False
 
 
