@@ -15,7 +15,7 @@ pipeline {
             steps {
                 script {
                     echo "----------------------------------------"
-                    echo "PYTEST Selected, Installing Dependencies"
+                    echo "Installing Dependencies"
                     echo "----------------------------------------"
                     sh "sh utilities/requirements.txt"
                 }

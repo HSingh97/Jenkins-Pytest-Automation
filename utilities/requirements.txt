@@ -17,3 +17,4 @@ apt-get install sshpass
 apt-get install python-setuptools -y
 pip3 install netmiko
 pip3 install prettytable
+sudo apt-get install snmp
