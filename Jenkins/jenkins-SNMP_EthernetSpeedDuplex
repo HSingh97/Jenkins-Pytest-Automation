@@ -45,10 +45,10 @@ pipeline {
             steps {
                 script {
                     echo "----------------------------------------"
-                    echo "Installing Dependencies (snmp, sshpass)"
+                    echo "Installing Dependencies "
                     echo "----------------------------------------"
+                    sh "sh utilities/requirements.txt"
                 }
-                // Your proven installation logic
                 sh '''
                     which snmpget >/dev/null 2>&1 || {
                         echo "--- Installing required tools via apt-get ---"
@@ -355,7 +355,7 @@ pipeline {
                 def userEmails = [
                     "puneet": "puneet.sharma@senao.com",
                     "harman": "harmanjot.singh@senao.com",
-                    "mahesh": "mahesh.battala@senao.com",
+                    "mahesh": "mahesh.battala@senao.com",                    // sh "pip install netmiko pysnmp"
                     "sandeep": "sandeep.manchikanti@senao.com",
                     "sampath": "sampath.marella@senao.com",
                     "jayanth": "jayanth.munnaluru@senao.com",

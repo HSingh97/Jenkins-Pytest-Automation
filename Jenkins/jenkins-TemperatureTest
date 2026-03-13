@@ -33,8 +33,7 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
-                    // Add any pip install or setup commands here if needed
-                    // sh "pip install netmiko pysnmp"  // Not needed anymore since we use snmpget
+                    sh "sh utilities/requirements.txt"
                 }
             }
         }

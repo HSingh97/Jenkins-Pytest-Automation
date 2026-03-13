@@ -36,6 +36,7 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
+                    sh "sh utilities/requirements.txt"
                 }
             }
         }

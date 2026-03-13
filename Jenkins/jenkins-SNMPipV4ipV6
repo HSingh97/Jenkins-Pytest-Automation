@@ -57,6 +57,7 @@ pipeline {
             steps {
                 // Installs snmp, ping utilities, and python3.
                 sh 'apt-get update && apt-get install -y snmp iputils-ping python3'
+                sh "sh utilities/requirements.txt"
             }
         }
 
