@@ -1,0 +1,70 @@
+pipeline {
+    agent { node { label "${TARGET_STAND}"} }
+
+    stages {
+        stage('Prepare tests') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "--- TARGET STAND: ${TARGET_STAND}"
+                    echo "----------------------------------------"
+      	        }
+      	    }
+        }
+        stage('Install Dependencies') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "PYTEST Selected, Installing Dependencies"
+                    echo "----------------------------------------"
+                    sh "sh utilities/requirements.txt"
+                }
+            }
+        }
+        stage('Access') {
+            steps {
+                script {
+                    echo "${IP_ADDRESS}"
+                    sh 'pytest -v -s testCases/test_login.py::test_HomePageTitle'
+                }
+            }
+        }
+        stage('Login') {
+            steps {
+                script {
+                    if ( PYTEST == "true" ){
+                        echo "----------------------------------------"
+                        echo "PYTEST Selected"
+                        echo "----------------------------------------"
+                        sh 'pytest -v -s testCases/test_login.py::test_Login'
+
+                        }
+                    else{
+                        echo "-----------------------------------------"
+                        echo 'Skipping'
+                        echo "-----------------------------------------"
+                        }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            echo "-----------------------------------------"
+            echo 'Script Done!'
+            echo "-----------------------------------------"
+        }
+
+        success {
+            echo "-----------------------------------------"
+            echo 'Script Success'
+            echo "-----------------------------------------"
+        }
+
+        failure {
+            echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
+        }
+    }
+}
