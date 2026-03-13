@@ -104,18 +104,8 @@ def channel_to_frequency(channel, band):
     except:
         return "?"
 
-def test_snr_tx_power(request):
-    radio_oid = "2" if request.config.getoption("--radio") == "radio1" else "3"
-    local_ip = request.config.getoption("--local-ip")
-    remote_ip = request.config.getoption("--remote-ip")
-
-    band = os.environ.get('FREQUENCY_BAND', '5GHz')
-
-    channels_str = request.config.getoption("--channels", "36,50")
-    powers_str = request.config.getoption("--powers", "9,10,11")
-
-    channels = [ch.strip() for ch in channels_str.split(',') if ch.strip()]
-    powers = [int(p.strip()) for p in powers_str.split(',') if p.strip()]
+def test_snr_tx_power(local_ip, remote_ip, radio, remote_interface, pow):
+    # get_radio_index(radio)["radio_ind"]
 
     print(f"\nSTARTING SNR vs TX POWER TEST at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", flush=True)
     print(f"Local IP: {local_ip} | Remote IP: {remote_ip} | Radio: {request.config.getoption('--radio')}", flush=True)
@@ -162,9 +152,5 @@ def test_snr_tx_power(request):
             else:
                 print("Link lost during test", flush=True)
 
-def pytest_addoption(parser):
-    parser.addoption("--local-ip", action="store", default="192.168.2.10")
-    parser.addoption("--remote-ip", action="store", default="192.168.2.11")
-    parser.addoption("--radio", action="store", default="radio1")
-    parser.addoption("--channels", action="store", default="36,50")
-    parser.addoption("--powers", action="store", default="9,10,11")
+def test_changeChannel(local_ip, radio, channels):
+    snmp_operations.change_channel(local_ip, get_radio_index(radio)["radio_ind"], "124")

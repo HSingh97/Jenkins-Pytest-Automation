@@ -126,7 +126,7 @@ def configureVLAN(vlan_mode, ip, vlanID, cvlan=None):
             print(f"Configured Access VLAN ID: {vlanID}", flush=True)
         elif vlan_mode == 2:
             connection.send_command(f"ucidyn set vlan.ath1.trunkoption 2")
-            connection.send_command(f"ucidyn set lan.ath1.trunkvlan {vlanID}")
+            connection.send_command(f"ucidyn set vlan.ath1.trunkvlan {vlanID}")
             print(f"Configured Trunk VLAN List: {vlanID}", flush=True)
         elif vlan_mode == 3:
             connection.send_command(f"ucidyn set vlan.ath1.svlan {vlanID}")
