@@ -1,0 +1,29 @@
+#!/bin/bash
+
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    python3-pip \
+    python3-setuptools \
+    build-essential \
+    sshpass \
+    snmp \
+    snmpd \
+    libsnmp-dev \
+    chromium-browser \
+    chromium-chromedriver
+
+pip3 install --break-system-packages --ignore-installed pip
+pip3 install --break-system-packages pytest
+pip3 install --break-system-packages "selenium==4.2.0"
+pip3 install --break-system-packages webdriver-manager
+pip3 install --break-system-packages configobj
+pip3 install --break-system-packages pyserial
+pip3 install --break-system-packages requests
+pip3 install --break-system-packages paramiko
+pip3 install --break-system-packages pexpect
+pip3 install --break-system-packages pytest-html weasyprint
+pip3 install --break-system-packages pytest-json-report
+pip3 install --break-system-packages netmiko
+pip3 install --break-system-packages prettytable
+pip3 install --break-system-packages pysnmp pysnmp-lextudio
+
+echo "All dependencies installed successfully."
