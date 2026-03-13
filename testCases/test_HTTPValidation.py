@@ -13,7 +13,7 @@ password = "admin"
 driver = setup
 
 
-def test_Login(driver, local_ip):
+def test_Login(local_ip):
 
     print(f"Local IP Address: {local_ip}", flush=True)
     URL = "http://" + local_ip + "/cgi-bin/luci"
