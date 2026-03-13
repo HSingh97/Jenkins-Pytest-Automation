@@ -37,7 +37,7 @@ def local_ip():
     return "192.168.1.1"
 
 
-def test_Login_and_Validate_Config(driver_setup, local_ip):
+def test_Validate_Config(driver_setup, local_ip):
     driver = driver_setup
     print(f"\nLocal IP Address: {local_ip}", flush=True)
     URL = f"http://{local_ip}/cgi-bin/luci"
