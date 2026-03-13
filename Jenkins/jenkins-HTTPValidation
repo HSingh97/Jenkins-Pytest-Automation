@@ -26,7 +26,10 @@ pipeline {
                 script {
                     def localIP = params['Local IP Address']
                     echo "Local IP Address: ${localIP}"
-                    sh 'pytest -v -s testCases/test_HTTPValidation.py::test_Login --local-ip '$localIP''
+                    sh """
+                        python3.10 -m  pytest -v -s testCases/test_HTTPValidation.py::test_Login \
+                        --local-ip '${localIP}' 2>&1
+                    """
                }
             }
         }
