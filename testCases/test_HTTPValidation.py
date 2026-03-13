@@ -30,13 +30,6 @@ def driver_setup():
     # This block executes after the test finishes, pass or fail
     driver.quit()
 
-
-# Mock fixture for local_ip (assuming you pass this via pytest hooks/CLI)
-@pytest.fixture()
-def local_ip():
-    return "192.168.1.1"
-
-
 def test_Validate_Config(driver_setup, local_ip):
     driver = driver_setup
     print(f"\nLocal IP Address: {local_ip}", flush=True)
