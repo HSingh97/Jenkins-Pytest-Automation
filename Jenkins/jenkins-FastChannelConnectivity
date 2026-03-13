@@ -36,10 +36,12 @@ pipeline {
                         echo "----------------------------------------"
                         echo "         Installing Dependencies"
                         echo "----------------------------------------"
-                        // Explicitly call with bash — NOT sh/dash.
-                        // dash does not support bashisms used in the script.
-                        // The script also self-re-execs under bash as a fallback.
-                        sh "bash utilities/requirements.txt"
+                        // The #!/bin/bash shebang in the heredoc forces Jenkins
+                        // to use bash, not sh/dash — regardless of system defaults.
+                        sh '''#!/bin/bash
+set -e
+bash utilities/requirements.txt
+'''
                     }
                 }
             }
