@@ -4,16 +4,9 @@
 # Dependency installer — Ubuntu 22/24 compatible
 # Handles PEP 668 "externally managed" pip restriction
 #
-# IMPORTANT: Must be run with bash, not sh/dash.
-# The self-re-exec block below handles this automatically even
-# if Jenkins calls it with "sh utilities/requirements.txt".
+# Must be run with:  bash utilities/requirements.txt
+# The Jenkinsfile calls it with bash explicitly.
 # ============================================================
-
-# Self-re-exec under bash if we were invoked with sh/dash
-# (dash does not support pipefail or some other bashisms)
-if [ -z "$BASH_VERSION" ]; then
-    exec bash "$0" "$@"
-fi
 
 set -e   # exit immediately on any unhandled error
 
@@ -30,7 +23,7 @@ if command -v python3.10 &>/dev/null; then
 else
     PYTHON=python3
     PIP="python3 -m pip"
-    echo "python3.10 not found — falling back to: $($PYTHON --version)"
+    echo "python3.10 not found — falling back to: $($PYTHON --version 2>&1)"
     echo ""
     echo "  NOTE: If test scripts call python3.10 explicitly, install it:"
     echo "        sudo add-apt-repository ppa:deadsnakes/ppa"
@@ -45,10 +38,10 @@ echo "========================================"
 
 sudo apt-get update -qq
 
-# Key fixes vs original:
+# Fixes vs original:
 #   python-setuptools   -> python3-setuptools   (renamed in Ubuntu 22+)
 #   chromium-driver     -> chromium-chromedriver (correct package name)
-#   cargo               -> REMOVED (pulls 400MB Rust interactively and aborts)
+#   cargo               -> REMOVED (pulls 400MB Rust interactively, then aborts)
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
     python3-pip \
     python3-setuptools \
@@ -62,12 +55,17 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
 echo ""
 echo "========================================"
 echo " Step 3: Python packages (pip)"
-echo " --break-system-packages required on Ubuntu 24 (PEP 668)"
+echo " --break-system-packages : bypass Ubuntu 24 PEP 668"
+echo " NOTE: pip itself is NOT upgraded — debian-managed pip"
+echo "       cannot be replaced via pip install --upgrade pip"
 echo "========================================"
 
-$PIP install --break-system-packages --upgrade pip
-
+# Install all packages in one call.
+# Do NOT run 'pip install --upgrade pip' on Ubuntu 24 —
+# the debian pip has no RECORD file so pip cannot uninstall itself.
+# --ignore-installed on pip ensures we skip that conflict cleanly.
 $PIP install --break-system-packages \
+    --ignore-installed pip \
     pytest \
     pytest-html \
     pytest-json-report \
