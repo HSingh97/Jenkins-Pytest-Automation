@@ -3,10 +3,19 @@
 # utilities/requirements.txt
 # Dependency installer — Ubuntu 22/24 compatible
 # Handles PEP 668 "externally managed" pip restriction
+#
+# IMPORTANT: Must be run with bash, not sh/dash.
+# The self-re-exec block below handles this automatically even
+# if Jenkins calls it with "sh utilities/requirements.txt".
 # ============================================================
 
-set -e          # exit immediately on any unhandled error
-set -o pipefail # catch errors in pipes too
+# Self-re-exec under bash if we were invoked with sh/dash
+# (dash does not support pipefail or some other bashisms)
+if [ -z "$BASH_VERSION" ]; then
+    exec bash "$0" "$@"
+fi
+
+set -e   # exit immediately on any unhandled error
 
 echo ""
 echo "========================================"
@@ -21,9 +30,9 @@ if command -v python3.10 &>/dev/null; then
 else
     PYTHON=python3
     PIP="python3 -m pip"
-    echo "python3.10 not found — falling back to system python3 ($(python3 --version))"
+    echo "python3.10 not found — falling back to: $($PYTHON --version)"
     echo ""
-    echo "  NOTE: If your test scripts call 'python3.10' explicitly, install it with:"
+    echo "  NOTE: If test scripts call python3.10 explicitly, install it:"
     echo "        sudo add-apt-repository ppa:deadsnakes/ppa"
     echo "        sudo apt-get install -y python3.10 python3.10-dev python3.10-distutils"
     echo ""
@@ -36,14 +45,10 @@ echo "========================================"
 
 sudo apt-get update -qq
 
-# Install all system packages in one non-interactive call.
-#
-# Fixes vs original requirements.txt:
+# Key fixes vs original:
 #   python-setuptools   -> python3-setuptools   (renamed in Ubuntu 22+)
 #   chromium-driver     -> chromium-chromedriver (correct package name)
-#   build-essential + cargo removed from same line — cargo triggers a 400MB
-#     interactive Rust install. build-essential alone is sufficient here.
-#
+#   cargo               -> REMOVED (pulls 400MB Rust interactively and aborts)
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
     python3-pip \
     python3-setuptools \
@@ -60,11 +65,8 @@ echo " Step 3: Python packages (pip)"
 echo " --break-system-packages required on Ubuntu 24 (PEP 668)"
 echo "========================================"
 
-# Upgrade pip first
 $PIP install --break-system-packages --upgrade pip
 
-# Install all packages in one call — avoids repeated resolver overhead.
-# selenium pinned to 4.2.0 to match original.
 $PIP install --break-system-packages \
     pytest \
     pytest-html \
