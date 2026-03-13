@@ -24,7 +24,8 @@ pipeline {
         stage('Login') {
             steps {
                 script {
-                   def localIP = params['Local IP Address']
+                    def localIP = params['Local IP Address']
+                    echo "Local IP Address: ${localIP}"
                     sh 'pytest -v -s testCases/test_login.py::test_Login --local-ip '$localIP''
                }
             }
