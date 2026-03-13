@@ -456,10 +456,10 @@ bash utilities/requirements.txt
                     "srilatha": "srilatha.tadiboina@senao.com",
                     "phani"   : "phani.darla@senao.com",
                     "dinesh"  : "dinesh.redddy@senao.com",
-                    "puneet"  : "puneet.sharma@senao.com"   // was missing — now fixed
+                    "puneet"  : "puneet.sharma@senao.com"
                 ]
 
-                def userEmail = userEmails.get(buildUserId, "harmanjot.singh@senao.com")
+                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
                 echo "Sending email to: ${userEmail}"
 
                 def remoteIPsRaw = params['Remote IP Addresses']
