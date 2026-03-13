@@ -25,6 +25,10 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
+                    sh '''
+                        python3 -m pip install --upgrade pip
+                        python3 -m pip install -r requirements.txt
+                    '''
                 }
             }
         }
@@ -209,7 +213,6 @@ pytest -v -s testCases/test_SoftReset.py::test_soft_reset \
                             <table>
                                 <tr>
                                     <th>Iteration</th>
-                                    <th>Test Name</th>
                                     <th style="text-align:center;">Status</th>
                                     <th style="text-align:center;">Logs</th>
                                 </tr>
