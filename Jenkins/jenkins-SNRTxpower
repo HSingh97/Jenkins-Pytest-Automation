@@ -36,6 +36,7 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 sh 'python3 -m pip install pytest || true'
+                sh "sh utilities/requirements.txt"
             }
         }
 
