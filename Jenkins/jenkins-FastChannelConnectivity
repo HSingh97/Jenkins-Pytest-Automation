@@ -10,36 +10,50 @@ def reportFilename = "channel_test_report_${env.BUILD_NUMBER}_${dateStamp}.html"
 // Main Pipeline
 
 pipeline {
-    agent { node { label "${TARGET_STAND}"} }
+    agent { node { label "${TARGET_STAND}" } }
 
     stages {
         stage('Prepare tests') {
             steps {
                 script {
                     echo "----------------------------------------"
-                    echo "---> TARGET STAND: ${TARGET_STAND} "
+                    echo "---> TARGET STAND: ${TARGET_STAND}"
                     echo "----------------------------------------"
                 }
             }
         }
 
+        // ----------------------------------------------------------------
+        // Install Dependencies
+        // Wrapped in catchError so a non-fatal pip warning does NOT kill
+        // downstream stages. Hard failures still surface as UNSTABLE
+        // rather than aborting Channel Testing and Generate Report.
+        // ----------------------------------------------------------------
         stage('Install Dependencies') {
             steps {
-                script {
-                    echo "----------------------------------------"
-                    echo "         Installing Dependencies"
-                    echo "----------------------------------------"
-                    sh "sh utilities/requirements.txt"
+                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                    script {
+                        echo "----------------------------------------"
+                        echo "         Installing Dependencies"
+                        echo "----------------------------------------"
+                        // Explicitly call with bash — NOT sh/dash.
+                        // dash does not support bashisms used in the script.
+                        // The script also self-re-execs under bash as a fallback.
+                        sh "bash utilities/requirements.txt"
+                    }
                 }
             }
         }
 
+        // ----------------------------------------------------------------
+        // Channel Testing  (PTMP — 1 local, N remotes)
+        // ----------------------------------------------------------------
         stage('Channel Testing') {
             steps {
                 script {
                     catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                         def localIP       = params['Local IP Address']
-                        // PTMP: Accept comma-separated Remote IPs
+                        // PTMP: comma-separated remote IPs e.g. "192.168.1.2,192.168.1.3"
                         def remoteIPsRaw  = params['Remote IP Addresses']
                         def remoteIPList  = remoteIPsRaw.split(',').collect { it.trim() }.findAll { it }
                         def selectedRadio = params['Radio']
@@ -47,17 +61,17 @@ pipeline {
                         def countries     = params.Countries.split(',')
 
                         echo "----------------------------------------"
-                        echo " PTMP Mode: ${remoteIPList.size()} Remote(s)"
+                        echo " PTMP Mode: 1 Master / ${remoteIPList.size()} Client(s)"
                         remoteIPList.eachWithIndex { ip, idx ->
                             echo "   Remote ${idx + 1}: ${ip}"
                         }
                         echo "----------------------------------------"
 
-                        // Clear old files
-                        sh 'rm -f *_HT*.json iteration_results.json'
-                        echo "✅ Cleared old workspace"
+                        // Clear old JSON files from previous build
+                        sh 'rm -f *_HT*.json iteration_results.json custom_results.json'
+                        echo "Cleared old workspace"
 
-                        // Init results file
+                        // Initialise master results file
                         sh "echo '{\"iterations\": []}' > iteration_results.json"
 
                         def iteration = 1
@@ -67,9 +81,9 @@ pipeline {
                             echo " Configuring Country : ${country}"
                             echo "--------------------------------------------------------------"
 
-                            // Pass all remote IPs as a comma-joined string
+                            // Change country on all devices (local + all remotes)
                             sh """
-                                pytest -v -s testCases/test_channelTest.py::test_changecountry \
+                                python3.10 -m pytest -v -s testCases/test_channelTest.py::test_changecountry \
                                 --local-ip '${localIP}' --remote-ip '${remoteIPsRaw}' \
                                 --radio '${selectedRadio}' --country '${country}' 2>&1
                             """
@@ -79,10 +93,12 @@ pipeline {
                                 echo " Testing: Country=${country}, Bandwidth=${bandwidth}"
                                 echo "----------------------------------------"
 
+                                // Reset per-run results file
                                 sh "echo '{\"iterations\": []}' > custom_results.json"
 
+                                // Skip HT160 for regions that do not support it
                                 if ((country == "Canada" || country == "US 5GHz Non-DFS") && bandwidth == "HT160") {
-                                    echo "⏭️  Skipping HT160 for ${country}"
+                                    echo "Skipping HT160 — not supported in ${country}"
                                     continue
                                 }
 
@@ -95,7 +111,7 @@ pipeline {
 
                                 echo "Pytest Output:\n${pytest_output}"
 
-                                def iterationResults = readJSON file: 'custom_results.json'
+                                def iterationResults    = readJSON file: 'custom_results.json'
                                 def normalizedBandwidth = bandwidth == "HT40" ? "HT40+" : bandwidth
 
                                 def newTests = iterationResults.iterations.findAll {
@@ -110,13 +126,13 @@ pipeline {
                                 def filename = "${country.trim().replaceAll("\\s+", "_")}_${bandwidth.trim()}.json"
                                 writeJSON file: filename, json: [iterations: newTests]
 
+                                // Console summary
                                 newTests.each { test ->
                                     echo "Iteration ${test.iteration} - ${test.test} => ${test.status}"
                                     echo "Country: ${test.Country}, Bandwidth: ${test.Bandwidth}"
                                     echo "Channels Tested:"
                                     test['Tested Channels'].each { ch ->
                                         echo "  - Channel: ${ch.channel}, Overall Status: ${ch.status}"
-                                        // Per-remote status summary
                                         if (ch.remotes) {
                                             ch.remotes.each { ip, data ->
                                                 echo "      Remote ${ip}: ${data.status}"
@@ -131,6 +147,9 @@ pipeline {
             }
         }
 
+        // ----------------------------------------------------------------
+        // Generate HTML Report
+        // ----------------------------------------------------------------
         stage('Generate Report') {
             steps {
                 script {
@@ -150,7 +169,7 @@ pipeline {
                     def remoteIPsRaw = params['Remote IP Addresses']
                     def remoteIPList = remoteIPsRaw.split(',').collect { it.trim() }.findAll { it }
 
-                    // ---- Firmware versions -----------------------------------------------
+                    // ---- Firmware version: local device ----------------------------------
                     def local_fw_version
                     try {
                         local_fw_version = sh(script: """
@@ -159,11 +178,11 @@ pipeline {
                             sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'
                         """, returnStdout: true).trim()
                     } catch (e) {
-                        echo "⚠️ WARNING: Could not retrieve local firmware version from ${localIP}."
+                        echo "WARNING: Could not retrieve local firmware version from ${localIP}."
                         local_fw_version = "N/A (device unreachable)"
                     }
 
-                    // Fetch FW for every remote IP
+                    // ---- Firmware version: each remote -----------------------------------
                     def remoteFWMap = [:]
                     remoteIPList.each { rip ->
                         try {
@@ -173,7 +192,7 @@ pipeline {
                                 sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${rip} 'cat /etc/version'
                             """, returnStdout: true).trim()
                         } catch (e) {
-                            echo "⚠️ WARNING: Could not retrieve firmware version from remote ${rip}."
+                            echo "WARNING: Could not retrieve firmware version from remote ${rip}."
                             remoteFWMap[rip] = "N/A (device unreachable)"
                         }
                     }
@@ -183,22 +202,22 @@ pipeline {
                     }.join('<br/>')
 
                     def buildParams = [
-                        "Local IP Address"           : localIP,
-                        "Remote IP Address(es)"      : remoteIPsRaw,
-                        "Radio"                      : params['Radio'],
-                        "Countries"                  : params['Countries'],
-                        "Bandwidths"                 : params['Bandwidth'],
-                        "FW Version (Local)"         : local_fw_version,
-                        "FW Version (Remote)"        : remoteFWDisplay
+                        "Local IP Address"      : localIP,
+                        "Remote IP Address(es)" : remoteIPsRaw,
+                        "Radio"                 : params['Radio'],
+                        "Countries"             : params['Countries'],
+                        "Bandwidths"            : params['Bandwidth'],
+                        "FW Version (Local)"    : local_fw_version,
+                        "FW Version (Remote)"   : remoteFWDisplay
                     ]
 
-                    def istZone        = TimeZone.getTimeZone("Asia/Kolkata")
-                    def istDate        = Calendar.getInstance(istZone).getTime()
+                    def istZone         = TimeZone.getTimeZone("Asia/Kolkata")
+                    def istDate         = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
-                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
-                    def pipelineName   = env.JOB_NAME
+                    def companyLogoUrl  = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+                    def pipelineName    = env.JOB_NAME
 
-                    // ---- HTML head + build params table ---------------------------------
+                    // ---- HTML head + build params table ----------------------------------
                     def htmlContent = """
                         <html>
                         <head>
@@ -217,6 +236,7 @@ pipeline {
                                     margin-top: 15px;
                                     background: #fff;
                                     box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+                                    table-layout: auto;
                                 }
                                 th, td {
                                     padding: 10px 12px;
@@ -224,21 +244,22 @@ pipeline {
                                     text-align: center;
                                     vertical-align: middle;
                                     font-size: 13px;
+                                    white-space: nowrap;
                                 }
                                 th { background: #2c3e50; color: white; }
-                                table.build-params td, table.build-params th { text-align: left !important; }
-                                tr:nth-child(even) { background-color: #f4f4f4; }
-                                .pass  { color: green;  font-weight: bold; }
-                                .fail  { color: red;    font-weight: bold; }
-                                .badge-pass   { background:#d4edda; color:green;  padding:2px 8px; border-radius:5px; font-weight:bold; }
-                                .badge-fail   { background:#f8d7da; color:red;    padding:2px 8px; border-radius:5px; font-weight:bold; }
-                                .badge-partial{ background:#fff3cd; color:orange; padding:2px 8px; border-radius:5px; font-weight:bold; }
                                 .remote-header { background: #1a252f !important; color: #aad4f5 !important; }
+                                table.build-params td, table.build-params th { text-align: left !important; white-space: normal; }
+                                tr:nth-child(even) { background-color: #f4f4f4; }
+                                .pass    { color: green;  font-weight: bold; }
+                                .fail    { color: red;    font-weight: bold; }
+                                .badge-pass    { background: #d4edda; color: green;  padding: 2px 8px; border-radius: 5px; font-weight: bold; }
+                                .badge-fail    { background: #f8d7da; color: red;    padding: 2px 8px; border-radius: 5px; font-weight: bold; }
+                                .badge-partial { background: #fff3cd; color: orange; padding: 2px 8px; border-radius: 5px; font-weight: bold; }
                             </style>
                         </head>
                         <body>
                             <div class="header">
-                                <img src="${companyLogoUrl}" />
+                                <img src="${companyLogoUrl}" alt="Senao Networks" />
                                 <div class="header-info">
                                     <h1>Automated Channel Connectivity Report</h1>
                                     <p><strong>Pipeline:</strong> ${pipelineName}</p>
@@ -253,18 +274,18 @@ pipeline {
                             </table>
                     """
 
-                    // ---- Per file (country+bandwidth) tables ----------------------------
+                    // ---- Per-file (country + bandwidth) section --------------------------
                     allResults.each { resultFile ->
-                        def parts     = resultFile.filename.replace('.json','').split('_')
+                        def parts     = resultFile.filename.replace('.json', '').split('_')
                         def country   = parts[0..-2].join(' ')
                         def bandwidth = parts[-1]
 
                         def statuses = resultFile.content.collect { it.status }
-                        def iterationStatus = statuses.every { it == "PASS" }    ? "PASS"    :
-                                              statuses.every { it == "FAIL" }    ? "FAIL"    : "PARTIAL"
+                        def iterationStatus = statuses.every { it == "PASS" } ? "PASS" :
+                                             (statuses.every { it == "FAIL" } ? "FAIL" : "PARTIAL")
 
                         def statusBadgeClass = iterationStatus == "PASS"    ? "badge-pass"    :
-                                               iterationStatus == "FAIL"    ? "badge-fail"    : "badge-partial"
+                                              (iterationStatus == "FAIL"    ? "badge-fail"    : "badge-partial")
 
                         htmlContent += """
                             <h2>
@@ -275,27 +296,25 @@ pipeline {
                             <table>
                         """
 
-                        // ---- Dynamic header: fixed cols + one group per remote ----------
-                        //   Row 1
+                        // ---- Table header row 1: fixed cols + one colspan per remote ----
                         htmlContent += "<tr>"
-                        htmlContent += "<th rowspan='3'>Channel</th>"
-                        htmlContent += "<th rowspan='3'>Overall<br/>Status</th>"
-                        htmlContent += "<th rowspan='3'>Local<br/>Active Ch</th>"
-                        htmlContent += "<th rowspan='3'>Local<br/>HTMODE</th>"
-                        htmlContent += "<th rowspan='3'>Conf<br/>HTMODE</th>"
-                        htmlContent += "<th rowspan='3'>Device<br/>Uptime</th>"
-                        htmlContent += "<th rowspan='3'>Local<br/>SNR A1</th>"
-                        htmlContent += "<th rowspan='3'>Local<br/>SNR A2</th>"
-                        htmlContent += "<th rowspan='3'>Local<br/>Noise</th>"
-                        htmlContent += "<th rowspan='3'>Tx Rate</th>"
-                        htmlContent += "<th rowspan='3'>Rx Rate</th>"
-                        // One colspan group per remote
+                        htmlContent += "<th rowspan='2'>Channel</th>"
+                        htmlContent += "<th rowspan='2'>Overall<br/>Status</th>"
+                        htmlContent += "<th rowspan='2'>Local<br/>Active Ch</th>"
+                        htmlContent += "<th rowspan='2'>Local<br/>HTMODE</th>"
+                        htmlContent += "<th rowspan='2'>Conf<br/>HTMODE</th>"
+                        htmlContent += "<th rowspan='2'>Device<br/>Uptime</th>"
+                        htmlContent += "<th rowspan='2'>Local<br/>SNR A1</th>"
+                        htmlContent += "<th rowspan='2'>Local<br/>SNR A2</th>"
+                        htmlContent += "<th rowspan='2'>Local<br/>Noise</th>"
+                        htmlContent += "<th rowspan='2'>Tx Rate</th>"
+                        htmlContent += "<th rowspan='2'>Rx Rate</th>"
                         remoteIPList.each { rip ->
                             htmlContent += "<th colspan='8' class='remote-header'>Remote: ${rip}</th>"
                         }
                         htmlContent += "</tr>"
 
-                        //   Row 2 — sub-headers per remote
+                        // ---- Table header row 2: per-remote sub-columns -----------------
                         htmlContent += "<tr>"
                         remoteIPList.each { rip ->
                             htmlContent += "<th>Status</th>"
@@ -304,39 +323,39 @@ pipeline {
                             htmlContent += "<th>SNR A1</th>"
                             htmlContent += "<th>SNR A2</th>"
                             htmlContent += "<th>Noise</th>"
-                            htmlContent += "<th>Link<br/>Uptime</th>"
+                            htmlContent += "<th>Link Uptime</th>"
                             htmlContent += "<th>Ping</th>"
                         }
                         htmlContent += "</tr>"
 
-                        // ---- Data rows -------------------------------------------------
+                        // ---- HT mode validator (reused per row) -------------------------
+                        def isHTMatch = { htmode, bw ->
+                            def validMap = [
+                                "20":  ["11AHE20"],
+                                "40":  ["11AHE40PLUS", "11AHE40MINUS"],
+                                "80":  ["11AHE80"],
+                                "160": ["11AHE160"]
+                            ]
+                            return validMap[bw]?.contains(htmode?.toUpperCase())
+                        }
+
+                        def expectedBW = bandwidth.replaceAll("[^\\d]", "")
+
+                        // ---- Data rows --------------------------------------------------
                         resultFile.content.each { iteration ->
                             iteration["Tested Channels"].each { channel ->
                                 def localStats = channel["link_stats"]
 
-                                // Overall status badge
-                                def overallStatus = channel["status"] == "PASS"
-                                    ? "<span class='pass'>✅ PASS</span>"
-                                    : "<span class='fail'>❌ FAIL</span>"
-
-                                // HT mode mismatch check (local)
-                                def expectedBW = bandwidth.replaceAll("[^\\d]", "")
-                                def isHTMatch = { htmode, bw ->
-                                    def validMap = [
-                                        "20":  ["11AHE20"],
-                                        "40":  ["11AHE40PLUS", "11AHE40MINUS"],
-                                        "80":  ["11AHE80"],
-                                        "160": ["11AHE160"]
-                                    ]
-                                    return validMap[bw]?.contains(htmode?.toUpperCase())
-                                }
+                                def overallStatusHtml = channel["status"] == "PASS"
+                                    ? "<span class='pass'>&#10003; PASS</span>"
+                                    : "<span class='fail'>&#10007; FAIL</span>"
 
                                 def localHT    = channel.local_htmode ?: "-"
                                 def localStyle = !isHTMatch(localHT, expectedBW) ? "color:red; font-weight:bold;" : ""
 
                                 htmlContent += "<tr>"
                                 htmlContent += "<td>${channel.channel}</td>"
-                                htmlContent += "<td>${overallStatus}</td>"
+                                htmlContent += "<td>${overallStatusHtml}</td>"
                                 htmlContent += "<td>${channel.local_active ?: '-'}</td>"
                                 htmlContent += "<td style='${localStyle}'>${localHT}</td>"
                                 htmlContent += "<td>${channel.conf_htmode ?: '-'}</td>"
@@ -347,18 +366,18 @@ pipeline {
                                 htmlContent += "<td>${localStats?.tx_rate ?: '-'}</td>"
                                 htmlContent += "<td>${localStats?.rx_rate ?: '-'}</td>"
 
-                                // Per-remote columns
+                                // Per-remote columns (one group of 8 per remote)
                                 remoteIPList.each { rip ->
-                                    def rd        = channel?.remotes?.get(rip)
-                                    def rStats    = rd?.link_stats ?: [:]
-                                    def rStatus   = rd?.status ?: "N/A"
-                                    def rHT       = rd?.remote_htmode ?: "-"
-                                    def rActive   = rd?.remote_active ?: "-"
-                                    def rPing     = rd?.ping != null ? (rd.ping ? "✅" : "❌") : "-"
+                                    def rd      = channel?.remotes?.get(rip)
+                                    def rStats  = rd?.link_stats ?: [:]
+                                    def rStatus = rd?.status ?: "N/A"
+                                    def rHT     = rd?.remote_htmode ?: "-"
+                                    def rActive = rd?.remote_active ?: "-"
+                                    def rPing   = rd?.ping != null ? (rd.ping ? "OK" : "FAIL") : "-"
 
                                     def rStatusHtml = rStatus == "PASS"
-                                        ? "<span class='pass'>✅ PASS</span>"
-                                        : (rStatus == "FAIL" ? "<span class='fail'>❌ FAIL</span>" : rStatus)
+                                        ? "<span class='pass'>&#10003; PASS</span>"
+                                        : (rStatus == "FAIL" ? "<span class='fail'>&#10007; FAIL</span>" : rStatus)
 
                                     def rHTStyle = !isHTMatch(rHT, expectedBW) ? "color:red; font-weight:bold;" : ""
 
@@ -381,7 +400,7 @@ pipeline {
 
                     htmlContent += "</body></html>"
                     writeFile file: reportFilename, text: htmlContent
-                    echo "📄 HTML report generated: ${reportFilename}"
+                    echo "HTML report generated: ${reportFilename}"
                 }
             }
         }
@@ -389,25 +408,28 @@ pipeline {
 
     post {
         always {
+            // allowMissing: true — report may not exist if an early stage aborted
             publishHTML(target: [
-                allowMissing         : false,
-                alwaysLinkToLastBuild: true,
-                keepAll              : true,
-                reportDir            : '.',
-                reportFiles          : "${reportFilename}",
-                reportName           : "Channel Test Report - Build ${env.BUILD_NUMBER}"
+                allowMissing          : true,
+                alwaysLinkToLastBuild : true,
+                keepAll               : true,
+                reportDir             : '.',
+                reportFiles           : "${reportFilename}",
+                reportName            : "Channel Test Report - Build ${env.BUILD_NUMBER}"
             ])
             echo "-----------------------------------------"
             echo 'Script Done!'
             echo "-----------------------------------------"
             script {
-                def buildCauses = currentBuild.getBuildCauses()
-                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+                def buildCauses   = currentBuild.getBuildCauses()
+                def userCause     = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
                 def buildUserName = userCause?.userName ?: "Unknown User"
                 def buildUserId   = userCause?.userId   ?: "unknown"
+
                 echo "Build started by: ${buildUserName} (${buildUserId})"
+
+                // ---- Email map — add new users here --------------------------------
                 def userEmails = [
-                    "puneet"  : "puneet.sharma@senao.com",
                     "harman"  : "harmanjot.singh@senao.com",
                     "mahesh"  : "mahesh.battala@senao.com",
                     "sandeep" : "sandeep.manchikanti@senao.com",
@@ -415,30 +437,56 @@ pipeline {
                     "jayanth" : "jayanth.munnaluru@senao.com",
                     "srilatha": "srilatha.tadiboina@senao.com",
                     "phani"   : "phani.darla@senao.com",
-                    "dinesh"  : "dinesh.redddy@senao.com"
+                    "dinesh"  : "dinesh.redddy@senao.com",
+                    "puneet"  : "puneet.sharma@senao.com"   // was missing — now fixed
                 ]
-                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+
+                def userEmail = userEmails.get(buildUserId, "harmanjot.singh@senao.com")
                 echo "Sending email to: ${userEmail}"
+
+                def remoteIPsRaw = params['Remote IP Addresses']
+
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
                     body: """
-                        <html><body>
+                        <html>
+                        <body>
                             <h2 style="color:blue;">Jenkins Build Notification</h2>
                             <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
-                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">${currentBuild.currentResult}</span></p>
+                            <p><strong>Status:</strong>
+                                <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
+                                    ${currentBuild.currentResult}
+                                </span>
+                            </p>
+                            <p><strong>Mode:</strong> PTMP</p>
+                            <p><strong>Local IP:</strong> ${params['Local IP Address']}</p>
+                            <p><strong>Remote IP(s):</strong> ${remoteIPsRaw}</p>
                             <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
                             <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
                             <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
-                            <br/><p style="color:gray;">--<br/>Jenkins Automated Notification</p>
-                        </body></html>
+                            <p><strong>HTML Report:</strong> <a href="${env.BUILD_URL}artifact/${reportFilename}">Click here to view</a></p>
+                            <br/>
+                            <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
+                        </body>
+                        </html>
                     """,
-                    to: userEmail,
-                    mimeType: 'text/html',
-                    attachmentsPattern: 'Test_Disconnect.html,iteration_results.json'
+                    to                : userEmail,
+                    mimeType          : 'text/html',
+                    attachmentsPattern: "${reportFilename}"
                 )
             }
         }
-        success { echo 'Script Success' }
-        failure { echo 'Script Failure' }
+
+        success {
+            echo "-----------------------------------------"
+            echo 'Script Success'
+            echo "-----------------------------------------"
+        }
+
+        failure {
+            echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
+        }
     }
 }
