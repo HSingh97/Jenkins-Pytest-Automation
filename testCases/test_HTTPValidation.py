@@ -21,10 +21,8 @@ username = "root"
 password = "admin"
 
 
-# 1. Setup and Teardown Fixture (Replaces your cleanup function)
-@pytest.fixture()
-def driver_setup():
-    driver = setup()  # Initializes your webdriver
+def driver_setup(setup):
+    driver = setup  # Initializes your webdriver
     yield driver
 
     # This block executes after the test finishes, pass or fail
