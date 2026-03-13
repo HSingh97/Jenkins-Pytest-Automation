@@ -13,10 +13,9 @@ password = "admin"
 driver = setup
 
 
-def test_Login(driver, local_ip, remote_ip):
+def test_Login(driver, local_ip):
 
     print(f"Local IP Address: {local_ip}", flush=True)
-    print(f"Remote IP Address: {remote_ip}", flush=True)
     URL = "http://" + local_ip + "/cgi-bin/luci"
 
     accessWeb.access_and_login(driver, URL, username, password)
