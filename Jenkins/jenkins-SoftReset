@@ -25,10 +25,8 @@ pipeline {
                     echo "----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
-                    sh '''
-                        python3 -m pip install --upgrade pip
-                        python3 -m pip install -r requirements.txt
-                    '''
+                    sh "sh utilities/requirements.txt"
+
                 }
             }
         }
