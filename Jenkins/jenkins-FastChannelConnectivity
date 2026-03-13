@@ -19,6 +19,22 @@ pipeline {
                     echo "----------------------------------------"
                     echo "---> TARGET STAND: ${TARGET_STAND}"
                     echo "----------------------------------------"
+
+                    // Detect the best available Python once and store in env var.
+                    // Used by all later stages — mirrors logic in requirements.txt
+                    // so both always agree on which interpreter to call.
+                    env.PYTHON_BIN = sh(
+                        script: '''#!/bin/bash
+if command -v python3.10 &>/dev/null; then
+    echo "python3.10"
+else
+    echo "python3"
+fi
+''',
+                        returnStdout: true
+                    ).trim()
+
+                    echo "Python binary detected: ${env.PYTHON_BIN}"
                 }
             }
         }
@@ -85,7 +101,7 @@ bash utilities/requirements.txt
 
                             // Change country on all devices (local + all remotes)
                             sh """
-                                python3.10 -m pytest -v -s testCases/test_channelTest.py::test_changecountry \
+                                ${PYTHON_BIN} -m pytest -v -s testCases/test_channelTest.py::test_changecountry \
                                 --local-ip '${localIP}' --remote-ip '${remoteIPsRaw}' \
                                 --radio '${selectedRadio}' --country '${country}' 2>&1
                             """
@@ -105,7 +121,7 @@ bash utilities/requirements.txt
                                 }
 
                                 def pytest_output = sh(script: """
-                                    python3.10 -m pytest -v -s testCases/test_channelTest.py::test_channelconnectivity \
+                                    ${PYTHON_BIN} -m pytest -v -s testCases/test_channelTest.py::test_channelconnectivity \
                                     --local-ip '${localIP}' --remote-ip '${remoteIPsRaw}' \
                                     --radio '${selectedRadio}' --bandwidth '${bandwidth}' \
                                     --country '${country}' --extra '1' 2>&1
