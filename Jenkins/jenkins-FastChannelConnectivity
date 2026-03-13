@@ -48,15 +48,13 @@ fi
         stage('Install Dependencies') {
             steps {
                 catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
-                    script {
-                        echo "----------------------------------------"
-                        echo "         Installing Dependencies"
-                        echo "----------------------------------------"
-                        // The #!/bin/bash shebang in the heredoc forces Jenkins
-                        // to use bash, not sh/dash — regardless of system defaults.
-                        sh '''#!/bin/bash
+                script {
+                    echo "----------------------------------------"
+                    echo "         Installing Dependencies"
+                    echo "----------------------------------------"
+                    sh '''#!/bin/bash
 set -e
-bash utilities/requirements.txt
+bash utilities/requirements1.txt
 '''
                     }
                 }
