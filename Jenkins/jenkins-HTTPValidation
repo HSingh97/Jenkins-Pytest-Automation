@@ -26,7 +26,7 @@ pipeline {
                 script {
                     def localIP = params['Local IP Address']
                     echo "Local IP Address: ${localIP}"
-                    sh 'pytest -v -s testCases/test_login.py::test_Login --local-ip '$localIP''
+                    sh 'pytest -v -s testCases/test_HTTPValidation.py::test_Login --local-ip '$localIP''
                }
             }
         }
