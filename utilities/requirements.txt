@@ -1,19 +1,100 @@
-apt-get -y install python3-pip
-pip3 install pytest
-pip3 install selenium==4.2.0
-pip3 install webdriver-manager
-pip3 install configobj
-sudo apt-get install -y chromium-browser
-sudo apt-get install chromium-driver -y
-pip3 install pyserial
-pip3 install requests
-apt-get install build-essential cargo
-pip3 install paramiko
-pip3 install pexpect
-pip3 install pytest pytest-html weasyprint
-pip3 install pytest-html
-pip3 install pytest-json-report
-apt-get install sshpass
-apt-get install python-setuptools -y
-pip3 install netmiko
-pip3 install prettytable
+#!/bin/bash
+# ============================================================
+# utilities/requirements.txt
+# Dependency installer — Ubuntu 22/24 compatible
+# Handles PEP 668 "externally managed" pip restriction
+#
+# Must be run with:  bash utilities/requirements.txt
+# The Jenkinsfile calls it with bash explicitly.
+# ============================================================
+
+set -e   # exit immediately on any unhandled error
+
+echo ""
+echo "========================================"
+echo " Step 1: Detect Python version"
+echo "========================================"
+
+# Use python3.10 if available, else fall back to system python3
+if command -v python3.10 &>/dev/null; then
+    PYTHON=python3.10
+    PIP="python3.10 -m pip"
+    echo "Found python3.10 — using it."
+else
+    PYTHON=python3
+    PIP="python3 -m pip"
+    echo "python3.10 not found — falling back to: $($PYTHON --version 2>&1)"
+    echo ""
+    echo "  NOTE: If test scripts call python3.10 explicitly, install it:"
+    echo "        sudo add-apt-repository ppa:deadsnakes/ppa"
+    echo "        sudo apt-get install -y python3.10 python3.10-dev python3.10-distutils"
+    echo ""
+fi
+
+echo ""
+echo "========================================"
+echo " Step 2: System packages (apt)"
+echo "========================================"
+
+sudo apt-get update -qq
+
+# Fixes vs original:
+#   python-setuptools   -> python3-setuptools   (renamed in Ubuntu 22+)
+#   chromium-driver     -> chromium-chromedriver (correct package name)
+#   cargo               -> REMOVED (pulls 400MB Rust interactively, then aborts)
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    python3-pip \
+    python3-setuptools \
+    python3-venv \
+    build-essential \
+    sshpass \
+    chromium-browser \
+    chromium-chromedriver \
+    net-tools
+
+echo ""
+echo "========================================"
+echo " Step 3: Python packages (pip)"
+echo " --break-system-packages : bypass Ubuntu 24 PEP 668"
+echo " NOTE: pip itself is NOT upgraded — debian-managed pip"
+echo "       cannot be replaced via pip install --upgrade pip"
+echo "========================================"
+
+# Install all packages in one call.
+# Do NOT run 'pip install --upgrade pip' on Ubuntu 24 —
+# the debian pip has no RECORD file so pip cannot uninstall itself.
+# --ignore-installed on pip ensures we skip that conflict cleanly.
+$PIP install --break-system-packages \
+    --ignore-installed pip \
+    pytest \
+    pytest-html \
+    pytest-json-report \
+    "selenium==4.2.0" \
+    webdriver-manager \
+    configobj \
+    pyserial \
+    requests \
+    paramiko \
+    pexpect \
+    netmiko \
+    prettytable \
+    weasyprint
+
+echo ""
+echo "========================================"
+echo " Step 4: Verify key tools"
+echo "========================================"
+
+echo -n "Python         : " && $PYTHON --version
+echo -n "pytest         : " && $PYTHON -m pytest --version
+echo -n "pip            : " && $PIP --version
+echo -n "sshpass        : " && sshpass -V 2>&1 | head -1
+echo -n "chromium       : " && (chromium-browser --version 2>/dev/null \
+                                || chromium --version 2>/dev/null \
+                                || echo "not found in PATH")
+echo -n "chromedriver   : " && (chromedriver --version 2>/dev/null \
+                                || echo "not found in PATH")
+
+echo ""
+echo "All dependencies installed successfully."
+echo ""
