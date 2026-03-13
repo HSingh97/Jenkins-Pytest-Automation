@@ -82,7 +82,14 @@ def fetch_remote_data(remote_ip, radio_ind, intf, expected_channel, results_dict
 
 def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, extra):
 
-    remote_ip_list = [ip.strip() for ip in remote_ip.split(',') if ip.strip()]
+    # ------------------------------------------------------------------ #
+    # Parse remote IPs — support single or comma-separated list
+    # ------------------------------------------------------------------ #
+    # conftest.py may already parse --remote-ip into a list; handle both cases
+    if isinstance(remote_ip, list):
+        remote_ip_list = [ip.strip() for ip in remote_ip if ip.strip()]
+    else:
+        remote_ip_list = [ip.strip() for ip in remote_ip.split(',') if ip.strip()]
 
     print("\n\n****************************************************", flush=True)
     print(f"Selected Radio       : {radio}", flush=True)
@@ -93,7 +100,9 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
     print(f"Short Test           : {extra}", flush=True)
     print("****************************************************\n\n", flush=True)
 
-
+    # ------------------------------------------------------------------ #
+    # Country code mapping
+    # ------------------------------------------------------------------ #
     country_code_map = {
         "US 5GHz All":     5012,
         "US 5GHz Non-DFS": 5011,
@@ -107,6 +116,9 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
         assert False
     country_code = country_code_map[country]
 
+    # ------------------------------------------------------------------ #
+    # Radio index / interface mapping
+    # ------------------------------------------------------------------ #
     if radio == "Radio1":
         radio_ind  = 2
         intf       = "ath1"
@@ -119,13 +131,18 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
         print("No Radio Selected", flush=True)
         assert False
 
+    # ------------------------------------------------------------------ #
+    # Bandwidth normalisation
+    # ------------------------------------------------------------------ #
     new_bandwidth = "HT40+" if bandwidth == "HT40" else bandwidth
 
-
+    # ------------------------------------------------------------------ #
+    # Fetch channel list from local device
+    # ------------------------------------------------------------------ #
     channel_list = fetch_ssh_values.fetch_channel_list(local_ip, radio_ind, country_code, new_bandwidth)
     time.sleep(2)
 
-
+    # Optional: reduce channel list to one representative per frequency group
     if int(extra) == 1:
         channel_groups = {}
         for channel in channel_list:
@@ -138,6 +155,9 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
 
     print(f"\nChannels available for current selection : {channel_list}", flush=True)
 
+    # ------------------------------------------------------------------ #
+    # Configure bandwidth on local device
+    # ------------------------------------------------------------------ #
     print(f"\nConfiguring Bandwidth : {new_bandwidth} for Local Device", flush=True)
     snmp_operations.change_bandwidth(local_ip, radio_ind, new_bandwidth)
 
@@ -153,6 +173,9 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
         else:
             print(f"Unable to access Remote Device: {rip}", flush=True)
 
+    # ------------------------------------------------------------------ #
+    # Per-channel testing loop
+    # ------------------------------------------------------------------ #
     channel_results = []
 
     for channels in channel_list:
@@ -194,6 +217,7 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
         print(f"[DEBUG] Configured HTMODE: {configured_htmode}", flush=True)
         print(f"[DEBUG] Local HTMODE: {local_htmode}", flush=True)
 
+        # ---- All remotes simultaneously via threads --------------------
         remote_results = {}
         threads = []
         for rip in remote_ip_list:
@@ -233,6 +257,9 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
         channel_results.append(result)
         print(f"\nChannel {channels} result: {result['status']}", flush=True)
 
+    # ------------------------------------------------------------------ #
+    # Overall test status
+    # ------------------------------------------------------------------ #
     print("Final Channel Results:", flush=True)
     print(channel_results, flush=True)
     print(f"Number of Channels: {len(channel_results)}", flush=True)
@@ -263,6 +290,9 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
     print("Test Result to append to JSON:", flush=True)
     print(test_result, flush=True)
 
+    # ------------------------------------------------------------------ #
+    # Write to custom_results.json
+    # ------------------------------------------------------------------ #
     json_report_file = "custom_results.json"
     try:
         with open(json_report_file, "r") as f:
@@ -283,7 +313,12 @@ def test_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, ext
 
 
 def test_changecountry(local_ip, remote_ip, radio, country):
-    remote_ip_list = [ip.strip() for ip in remote_ip.split(',') if ip.strip()]
+
+    # conftest.py may already parse --remote-ip into a list; handle both cases
+    if isinstance(remote_ip, list):
+        remote_ip_list = [ip.strip() for ip in remote_ip if ip.strip()]
+    else:
+        remote_ip_list = [ip.strip() for ip in remote_ip.split(',') if ip.strip()]
 
     country_code_map = {
         "US 5GHz All":     5012,
