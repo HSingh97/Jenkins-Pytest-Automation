@@ -14,18 +14,10 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 script {
-                    if ( PYTEST == "true" ){
-                        echo "----------------------------------------"
-                        echo "PYTEST Selected, Installing Dependencies"
-                        echo "----------------------------------------"
-                        sh "sh utilities/requirements.txt"
-
-                        }
-                    else{
-                        echo "-----------------------------------------"
-                        echo 'Skipping'
-                        echo "-----------------------------------------"
-                        }
+                    echo "----------------------------------------"
+                    echo "PYTEST Selected, Installing Dependencies"
+                    echo "----------------------------------------"
+                    sh "sh utilities/requirements.txt"
                 }
             }
         }
