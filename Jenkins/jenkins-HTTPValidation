@@ -78,9 +78,6 @@ pipeline {
                     String fileDate = Calendar.getInstance(istZone).getTime().format("yyyyMMdd", istZone)
                     String reportFileName = "HTTPValidation_report_${env.BUILD_ID}_${fileDate}.html"
 
-                    // Base64 Encoded Logo to bypass firewalls/hotlink protections
-                    String base64Logo = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgNjAiPjx0ZXh0IHk9IjQwIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iNDAiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjMWUzYThhIj5TRU5BTzwvdGV4dD48L3N2Zz4="
-
                     // Build Visibility Matrix Table
                     String currentConfigHTML = ""
                     def allKeys = [] as Set
@@ -219,7 +216,7 @@ pipeline {
                     <body>
                         <div class="container">
                             <div class="header">
-                                <img src="${base64Logo}" alt="Senao Networks"/>
+                                <img src="https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png" alt="Senao Networks, Inc."/>
                                 <div class="header-info">
                                     <h1>Automated Test Report</h1>
                                     <p><strong>Pipeline:</strong> ${env.JOB_NAME}</p>

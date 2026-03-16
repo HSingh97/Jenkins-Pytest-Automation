@@ -95,13 +95,11 @@ def test_Smart_Auto_Validator(setup, local_ip):
 
             visible_elements = {}
 
-            # --- EXTRACT EXACT UI LABELS ---
             for tag in soup.find_all(['input', 'select']):
                 name_attr = tag.get('name')
                 if not name_attr or tag.get('type') == 'hidden': continue
 
-                # Hunt for the UI Label text
-                ui_label = name_attr.split('.')[-1].upper()  # Fallback
+                ui_label = name_attr.split('.')[-1].upper()
                 try:
                     parent_div = tag.find_parent('div', class_='cbi-value')
                     if parent_div:
@@ -113,7 +111,6 @@ def test_Smart_Auto_Validator(setup, local_ip):
 
                 try:
                     if driver.find_element(By.NAME, name_attr).is_displayed():
-                        # Map using the EXACT UI Label instead of the backend name
                         visible_elements[ui_label] = all_configs.get(name_attr, "[Empty]")
                 except Exception:
                     pass
@@ -148,7 +145,10 @@ def test_Smart_Auto_Validator(setup, local_ip):
     for tag in soup.find_all('input'):
         name_attr = tag.get('name')
 
-        # Get UI Label for tests
+        # CRITICAL FIX: Skip if the element has no name or is hidden
+        if not name_attr or tag.get('type') == 'hidden':
+            continue
+
         ui_label = name_attr.split('.')[-1].upper()
         try:
             parent_div = tag.find_parent('div', class_='cbi-value')
@@ -159,6 +159,7 @@ def test_Smart_Auto_Validator(setup, local_ip):
         except Exception:
             pass
 
+        # We only generate tests for fields the main user can actually see
         if ui_label not in visible_configs_by_user.get(MAIN_USER, {}):
             continue
 
@@ -200,7 +201,6 @@ def test_Smart_Auto_Validator(setup, local_ip):
         test_name = f"Input: {display_input} (Expected: {'Pass' if is_valid_scenario else 'Fail'})"
         iteration_log = f"Validation for {ui_label}\nInput: '{test_input}'\nExpected to pass: {is_valid_scenario}\n\n"
 
-        # Inject the exact UI Label into the report
         test_iteration_result = {"iteration": index, "parameter": ui_label, "test": test_name, "status": "FAIL",
                                  "Local IP": local_ip}
 
