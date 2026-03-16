@@ -42,11 +42,11 @@ pipeline {
                     echo "Testing GUI HTTP Parameters"
                     echo "----------------------------------------"
 
-                    // The Python script natively creates iteration_results.json and all test-X.log files
                     try {
+                        // FIX: Added `bash -c` to support PIPESTATUS arrays
                         sh """
-                            python3.10 -m pytest -v -s testCases/test_HTTPValidation.py \
-                            --local-ip '${localIP}' 2>&1 | tee console_output.log; exit \${PIPESTATUS[0]}
+                            bash -c "python3.10 -m pytest -v -s testCases/test_HTTPValidation.py \
+                            --local-ip '${localIP}' 2>&1 | tee console_output.log; exit \\\${PIPESTATUS[0]}"
                         """
                     } catch (Exception e) {
                         echo "GUI Validation Suite encountered failures: ${e.message}"
@@ -54,7 +54,7 @@ pipeline {
                 }
             }
         }
-stage('Generate Report') {
+        stage('Generate Report') {
             steps {
                 script {
                     def localIP = params['Local IP Address']
