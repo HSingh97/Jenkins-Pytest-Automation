@@ -2,8 +2,11 @@ import pytest
 import requests
 import warnings
 import re
+from bs4 import BeautifulSoup  # NEW: Added BeautifulSoup import
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+
+# Assuming these exist in your project structure
 from pageObjects.LoginPage import LoginPage
 from testCases.configsetup import setup
 from preMadeFunctions import accessWeb
@@ -78,15 +81,41 @@ def test_Validate_Config(setup, local_ip):
 
     # Validate the actual configuration data
     try:
-        # Try to parse as JSON first (if you ever target a real API endpoint)
+        # Try to parse as JSON first
         config_data = response.json()
         print("Data configuration validation passed (JSON format).")
-    except ValueError:
-        # Fallback: The server returned HTML or raw text
-        print("Response was not JSON. Server returned HTML.")
 
-        # Example validation for HTML: Check if the string we care about is in the page source
-        # You can change "radio1" to a specific MAC address or SSID you expect to see on this page
-        expected_string = "radio1"
-        assert expected_string in response.text, f"Configuration string '{expected_string}' not found in the HTML source."
-        print(f"Data configuration validation passed (Found '{expected_string}' in HTML).")
+    except ValueError:
+        # Fallback: The server returned HTML
+        print("Response was not JSON. Parsing HTML with BeautifulSoup...")
+
+        # Initialize BeautifulSoup to parse the HTML text
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Example 1: Finding an input field value
+        # LuCI heavily uses 'cbid' in its input names/ids. You will need to inspect
+        # the webpage (F12) to find the exact name or ID of the element you want.
+
+        # Let's pretend we are looking for the Wi-Fi SSID input field
+        # We search for an <input> tag where the name attribute is what we expect
+        ssid_element = soup.find('input', {'name': 'cbid.wireless.default_radio1.ssid'})
+
+        if ssid_element:
+            actual_ssid = ssid_element.get('value')
+            expected_ssid = "My_Test_Network"  # Change this to your expected value
+
+            assert actual_ssid == expected_ssid, f"Config Mismatch! Expected SSID '{expected_ssid}', but found '{actual_ssid}'"
+            print(f"Successfully validated SSID configuration: {actual_ssid}")
+        else:
+            print("Warning: Could not find the SSID input element in the HTML. Check the element's 'name' attribute.")
+
+        # Example 2: Finding the selected option in a Dropdown (Select tag)
+        # Let's pretend we are looking for the selected wireless channel
+        channel_select = soup.find('select', {'id': 'cbid.wireless.radio1.channel'})
+
+        if channel_select:
+            # Find the <option> tag inside this select that has the 'selected' attribute
+            selected_option = channel_select.find('option', selected=True)
+            if selected_option:
+                actual_channel = selected_option.text.strip()
+                print(f"Successfully validated Channel configuration: {actual_channel}")
