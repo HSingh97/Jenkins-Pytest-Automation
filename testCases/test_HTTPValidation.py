@@ -23,13 +23,12 @@ def warn(*args, **kwargs):
 
 warnings.warn = warn
 
-# We will discover visible elements for all users, but run validations as root
 MAIN_USER = "root"
 MAIN_PASS = "admin"
 
 DISCOVERY_USERS = [
-    {"user": "root", "pass": "admin"},
     {"user": "admin", "pass": "admin"},
+    {"user": "root", "pass": "admin"},
     {"user": "develop", "pass": "ind655"}
 ]
 
@@ -63,7 +62,6 @@ def test_Smart_Auto_Validator(setup, local_ip):
     URL = f"http://{local_ip}/cgi-bin/luci"
     total_failures = 0
 
-    # Initialize clean JSON structure
     with open("iteration_results.json", "w") as f:
         json.dump({"current_configs": {}, "iterations": []}, f)
 
@@ -84,11 +82,9 @@ def test_Smart_Auto_Validator(setup, local_ip):
             radio1_url = f"http://{local_ip}/cgi-bin/luci/;stok={stok}/admin/wireless/radio1"
             driver.get(radio1_url)
 
-            # Wait for JS to render the page
             WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.NAME, "wireless.@wifi-iface[1].ssid")))
             time.sleep(1)
 
-            # Grab fully rendered HTML and JS config block
             rendered_html = driver.page_source
             soup = BeautifulSoup(rendered_html, 'html.parser')
 
@@ -97,40 +93,40 @@ def test_Smart_Auto_Validator(setup, local_ip):
             if js_block_match:
                 all_configs = dict(re.findall(r'"([^"]+)":\s*"([^"]*)"', js_block_match.group(1)))
 
-            # Map only elements that are actually visible on screen
             visible_elements = {}
 
-            # Check Inputs
-            for tag in soup.find_all('input'):
+            # --- EXTRACT EXACT UI LABELS ---
+            for tag in soup.find_all(['input', 'select']):
                 name_attr = tag.get('name')
                 if not name_attr or tag.get('type') == 'hidden': continue
+
+                # Hunt for the UI Label text
+                ui_label = name_attr.split('.')[-1].upper()  # Fallback
                 try:
-                    if driver.find_element(By.NAME, name_attr).is_displayed():
-                        visible_elements[name_attr] = all_configs.get(name_attr, "[Empty]")
+                    parent_div = tag.find_parent('div', class_='cbi-value')
+                    if parent_div:
+                        label_elem = parent_div.find('label', class_='cbi-value-title')
+                        if label_elem:
+                            ui_label = label_elem.text.strip()
                 except Exception:
                     pass
 
-            # Check Dropdowns (Selects)
-            for tag in soup.find_all('select'):
-                name_attr = tag.get('name')
-                if not name_attr: continue
                 try:
                     if driver.find_element(By.NAME, name_attr).is_displayed():
-                        visible_elements[name_attr] = all_configs.get(name_attr, "[Empty]")
+                        # Map using the EXACT UI Label instead of the backend name
+                        visible_elements[ui_label] = all_configs.get(name_attr, "[Empty]")
                 except Exception:
                     pass
 
             visible_configs_by_user[test_user] = visible_elements
             print(f"-> Found {len(visible_elements)} visible elements for user '{test_user}'.")
 
-            # Log out so the next user can log in
             logout_url = f"http://{local_ip}/cgi-bin/luci/;stok={stok}/admin/logout"
             driver.get(logout_url)
 
         except Exception as e:
             print(f"-> Failed to map user '{test_user}'. Check credentials. Error: {e}")
 
-    # Save the mapped configurations to JSON
     with open("iteration_results.json", "r") as f:
         json_data = json.load(f)
     json_data["current_configs"] = visible_configs_by_user
@@ -139,7 +135,6 @@ def test_Smart_Auto_Validator(setup, local_ip):
 
     print("\n--- Phase 3: Automated Validation (Running as Main User) ---")
 
-    # Log back in as the main user to perform actual validations
     accessWeb.access_and_login(driver, URL, MAIN_USER, MAIN_PASS)
     WebDriverWait(driver, 10).until(EC.url_contains(";stok="))
     stok_match = re.search(r';stok=([a-fA-F0-9]+)', driver.current_url)
@@ -147,14 +142,25 @@ def test_Smart_Auto_Validator(setup, local_ip):
     radio1_url = f"http://{local_ip}/cgi-bin/luci/;stok={stok}/admin/wireless/radio1"
     driver.get(radio1_url)
 
-    # We will use the dynamically scraped elements from the MAIN_USER to build rules
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     dynamic_test_cases = []
 
     for tag in soup.find_all('input'):
         name_attr = tag.get('name')
-        if name_attr not in visible_configs_by_user.get(MAIN_USER, {}):
-            continue  # Skip hidden fields
+
+        # Get UI Label for tests
+        ui_label = name_attr.split('.')[-1].upper()
+        try:
+            parent_div = tag.find_parent('div', class_='cbi-value')
+            if parent_div:
+                label_elem = parent_div.find('label', class_='cbi-value-title')
+                if label_elem:
+                    ui_label = label_elem.text.strip()
+        except Exception:
+            pass
+
+        if ui_label not in visible_configs_by_user.get(MAIN_USER, {}):
+            continue
 
         parent_text = tag.parent.text.strip()
         range_match = re.search(r'\((\d+)\s*-\s*(\d+)\)', parent_text)
@@ -164,36 +170,38 @@ def test_Smart_Auto_Validator(setup, local_ip):
             min_val, max_val = int(range_match.group(1)), int(range_match.group(2))
             if "char" in parent_text.lower():
                 dynamic_test_cases.extend([
-                    (name_attr, "A" * min_val, True),
-                    (name_attr, "A" * max_val, True),
-                    (name_attr, "A" * (max_val + 1), False)
+                    (name_attr, ui_label, "A" * min_val, True),
+                    (name_attr, ui_label, "A" * max_val, True),
+                    (name_attr, ui_label, "A" * (max_val + 1), False)
                 ])
-                if min_val > 0: dynamic_test_cases.append((name_attr, "", False))
+                if min_val > 0: dynamic_test_cases.append((name_attr, ui_label, "", False))
             else:
                 dynamic_test_cases.extend([
-                    (name_attr, str(min_val), True),
-                    (name_attr, str(max_val), True),
-                    (name_attr, str(max_val + 1), False),
-                    (name_attr, str(min_val - 1), False),
-                    (name_attr, "abc", False)
+                    (name_attr, ui_label, str(min_val), True),
+                    (name_attr, ui_label, str(max_val), True),
+                    (name_attr, ui_label, str(max_val + 1), False),
+                    (name_attr, ui_label, str(min_val - 1), False),
+                    (name_attr, ui_label, "abc", False)
                 ])
         elif exact_match:
             exact_val = int(exact_match.group(1))
             dynamic_test_cases.extend([
-                (name_attr, "A" * exact_val, True),
-                (name_attr, "A" * (exact_val + 1), False),
-                (name_attr, "A" * (exact_val - 1), False)
+                (name_attr, ui_label, "A" * exact_val, True),
+                (name_attr, ui_label, "A" * (exact_val + 1), False),
+                (name_attr, ui_label, "A" * (exact_val - 1), False)
             ])
 
     for index, data in enumerate(dynamic_test_cases, start=1):
-        locator_name, test_input, is_valid_scenario = data
-        param_name_clean = locator_name.split('.')[-1].upper()
+        locator_name, ui_label, test_input, is_valid_scenario = data
+
         display_input = str(test_input) if test_input != "" else "[EMPTY STRING]"
         if len(display_input) > 40: display_input = f"[String of length {len(test_input)}]"
 
         test_name = f"Input: {display_input} (Expected: {'Pass' if is_valid_scenario else 'Fail'})"
-        iteration_log = f"Validation for {param_name_clean}\nInput: '{test_input}'\nExpected to pass: {is_valid_scenario}\n\n"
-        test_iteration_result = {"iteration": index, "parameter": param_name_clean, "test": test_name, "status": "FAIL",
+        iteration_log = f"Validation for {ui_label}\nInput: '{test_input}'\nExpected to pass: {is_valid_scenario}\n\n"
+
+        # Inject the exact UI Label into the report
+        test_iteration_result = {"iteration": index, "parameter": ui_label, "test": test_name, "status": "FAIL",
                                  "Local IP": local_ip}
 
         try:
