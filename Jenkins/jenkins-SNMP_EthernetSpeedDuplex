@@ -13,14 +13,19 @@ pipeline {
                     def deviceIP       = params.Device_IP.toString().trim()
                     def readCommunity  = params.Read_Community.toString().trim()
                     def writeCommunity = params.Write_Community.toString().trim()
+                    // File Parameter: Jenkins places the uploaded file in workspace root
+                    def mibFileName    = params.MIB_File.toString().trim()
+                    def mibFilePath    = "${env.WORKSPACE}/${mibFileName}"
 
-                    echo "----------------------------------------"
-                    echo "DEVICE IP       : ${deviceIP}"
-                    echo "READ COMMUNITY  : ${readCommunity}"
-                    echo "WRITE COMMUNITY : ${writeCommunity}"
-                    echo "TARGET STAND    : ${params.TARGET_STAND}"
-                    echo "MIB FILE        : ${params.MIB_File}"
-                    echo "----------------------------------------"
+                    echo "========================================"
+                    echo " SNMP Validation — Preparation"
+                    echo "========================================"
+                    echo " DEVICE IP       : ${deviceIP}"
+                    echo " READ COMMUNITY  : ${readCommunity}"
+                    echo " WRITE COMMUNITY : ${writeCommunity}"
+                    echo " MIB FILE        : ${mibFilePath}"
+                    echo " TARGET STAND    : ${params.TARGET_STAND}"
+                    echo "========================================"
 
                     sh "rm -f SNMP_Validation.json SNMP_Validation.html snmp_validation.log || true"
                     echo "Workspace cleaned."
@@ -31,9 +36,9 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 script {
-                    echo "----------------------------------------"
-                    echo "Installing Dependencies"
-                    echo "----------------------------------------"
+                    echo "========================================"
+                    echo " Installing Dependencies"
+                    echo "========================================"
                     sh "sh utilities/requirements.txt"
                 }
                 sh '''
@@ -53,25 +58,25 @@ pipeline {
                     def deviceIP       = params.Device_IP.toString().trim()
                     def readCommunity  = params.Read_Community.toString().trim()
                     def writeCommunity = params.Write_Community.toString().trim()
-                    def mibFilePath    = params.MIB_File
+                    def mibFilePath    = "${env.WORKSPACE}/${params.MIB_File.toString().trim()}"
                     def scriptPath     = "testCases/test_SNMP_Validation.py"
 
-                    echo "----------------------------------------"
-                    echo "Running SNMP Validation on ${deviceIP}"
-                    echo "MIB FILE: ${mibFilePath}"
-                    echo "----------------------------------------"
+                    echo "========================================"
+                    echo " Running SNMP Validation on ${deviceIP}"
+                    echo "========================================"
 
                     try {
                         sh """
                             set -x
                             python3 ${scriptPath} \
-                                --device-ip '${deviceIP}' \
-                                --read-community '${readCommunity}' \
+                                --device-ip      '${deviceIP}'       \
+                                --read-community '${readCommunity}'  \
                                 --write-community '${writeCommunity}' \
-                                --mib-file '${mibFilePath}' | tee snmp_validation.log
+                                --mib-file       '${mibFilePath}'    \
+                                | tee snmp_validation.log
                         """
                     } catch (err) {
-                        echo "SNMP Validation encountered an error: ${err}"
+                        echo "SNMP Validation error: ${err}"
                     }
                 }
             }
@@ -80,12 +85,12 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def deviceIP      = params.Device_IP.toString().trim()
-                    def jsonReport    = readJSON file: 'SNMP_Validation.json'
-                    def istZone       = TimeZone.getTimeZone("Asia/Kolkata")
+                    def deviceIP        = params.Device_IP.toString().trim()
+                    def jsonReport      = readJSON file: 'SNMP_Validation.json'
+                    def istZone         = TimeZone.getTimeZone("Asia/Kolkata")
                     def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", istZone)
-                    def pipelineName  = env.JOB_NAME
-                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+                    def pipelineName    = env.JOB_NAME
+                    def companyLogoUrl  = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
                     def bp = jsonReport.build_params ?: [:]
                     def buildParams = [
@@ -95,24 +100,28 @@ pipeline {
                         "FW Version"  : bp["FW Version"]  ?: "N/A",
                     ]
 
-                    // Helper closure to build SNMP table rows
                     def buildSnmpRows = { dataList ->
                         def rows = ""
                         dataList.each { rec ->
-                            def rName = rec.name ?: ""
-                            def rOid  = rec.oid  ?: ""
-                            def rType = rec.type ?: ""
-                            def rData = rec.data?.toString() ?: ""
+                            def rName  = rec.name ?: ""
+                            def rOid   = rec.oid  ?: ""
+                            def rType  = rec.type ?: ""
+                            def rData  = rec.data?.toString() ?: ""
                             def rPrefix = "other"
                             if (rName) {
                                 def m = (rName =~ /^([a-z]+)/)
                                 if (m) rPrefix = m[0][1]
                             }
                             def badgeClass = [
-                                "STRING":"badge-string","INTEGER":"badge-integer",
-                                "Gauge32":"badge-gauge","Counter32":"badge-counter",
-                                "Counter64":"badge-counter","Timeticks":"badge-timeticks",
-                                "IpAddress":"badge-ip","OID":"badge-oid","Hex-STRING":"badge-hex"
+                                "STRING"    : "badge-string",
+                                "INTEGER"   : "badge-integer",
+                                "Gauge32"   : "badge-gauge",
+                                "Counter32" : "badge-counter",
+                                "Counter64" : "badge-counter",
+                                "Timeticks" : "badge-timeticks",
+                                "IpAddress" : "badge-ip",
+                                "OID"       : "badge-oid",
+                                "Hex-STRING": "badge-hex"
                             ].get(rType, "badge-oid")
                             def nameDisplay = rName ?: "<em class='no-name'>—</em>"
                             rows += """<tr data-prefix="${rPrefix}" data-type="${rType}">
@@ -125,8 +134,8 @@ pipeline {
                         return rows
                     }
 
-                    def readData  = jsonReport.read_community  ?: [:]
-                    def writeData = jsonReport.write_community ?: [:]
+                    def readData   = jsonReport.read_community  ?: [:]
+                    def writeData  = jsonReport.write_community ?: [:]
                     def readRows   = buildSnmpRows(readData.data   ?: [])
                     def writeRows  = buildSnmpRows(writeData.data  ?: [])
                     def readCount  = readData.oid_count  ?: 0
@@ -135,23 +144,23 @@ pipeline {
                     def writeCom   = writeData.community ?: params.Write_Community
 
                     def chipBar = """
-    <span class="chip active" data-prefix="all"      >All</span>
-    <span class="chip"        data-prefix="wireless"  >Wireless</span>
-    <span class="chip"        data-prefix="assoc"     >Assoc</span>
-    <span class="chip"        data-prefix="sys"       >System</span>
-    <span class="chip"        data-prefix="ethernet"  >Ethernet</span>
-    <span class="chip"        data-prefix="network"   >Network</span>
-    <span class="chip"        data-prefix="vlan"      >VLAN</span>
-    <span class="chip"        data-prefix="dcs"       >DCS</span>
-    <span class="chip"        data-prefix="dfs"       >DFS</span>
-    <span class="chip"        data-prefix="dhcp"      >DHCP</span>
-    <span class="chip"        data-prefix="snmp"      >SNMP</span>
-    <span class="chip"        data-prefix="radius"    >RADIUS</span>
-    <span class="chip"        data-prefix="link"      >Link</span>
-    <span class="chip"        data-prefix="gps"       >GPS</span>
-    <span class="chip"        data-prefix="ntp"       >NTP</span>
-    <span class="chip"        data-prefix="qinq"      >QinQ</span>
-    <span class="chip"        data-prefix="other"     >Other</span>"""
+    <span class="chip active" data-prefix="all"     >All</span>
+    <span class="chip"        data-prefix="wireless" >Wireless</span>
+    <span class="chip"        data-prefix="assoc"    >Assoc</span>
+    <span class="chip"        data-prefix="sys"      >System</span>
+    <span class="chip"        data-prefix="ethernet" >Ethernet</span>
+    <span class="chip"        data-prefix="network"  >Network</span>
+    <span class="chip"        data-prefix="vlan"     >VLAN</span>
+    <span class="chip"        data-prefix="dcs"      >DCS</span>
+    <span class="chip"        data-prefix="dfs"      >DFS</span>
+    <span class="chip"        data-prefix="dhcp"     >DHCP</span>
+    <span class="chip"        data-prefix="snmp"     >SNMP</span>
+    <span class="chip"        data-prefix="radius"   >RADIUS</span>
+    <span class="chip"        data-prefix="link"     >Link</span>
+    <span class="chip"        data-prefix="gps"      >GPS</span>
+    <span class="chip"        data-prefix="ntp"      >NTP</span>
+    <span class="chip"        data-prefix="qinq"     >QinQ</span>
+    <span class="chip"        data-prefix="other"    >Other</span>"""
 
                     def htmlContent = """<!DOCTYPE html>
 <html lang="en">
@@ -160,51 +169,51 @@ pipeline {
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>SNMP Validation Report</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f9fafb; color: #1f2937; }
-    .container { max-width: 1280px; margin: 24px auto; padding: 24px; }
-    .header { display: flex; justify-content: space-between; align-items: center; background: #ffffff; padding: 28px 36px; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04); margin-bottom: 0; }
-    .header img { height: 65px; }
-    .header-info { text-align: right; }
+    body            { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: #f9fafb; color: #1f2937; }
+    .container      { max-width: 1280px; margin: 24px auto; padding: 24px; }
+    .header         { display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 28px 36px; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04); }
+    .header img     { height: 65px; }
+    .header-info    { text-align: right; }
     .header-info h1 { margin: 0; font-size: 28px; font-weight: 700; color: #0a2540; }
-    .header-info p { margin: 5px 0; font-size: 14px; color: #4a5568; }
-    h2 { margin-top: 32px; font-size: 20px; font-weight: 600; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px; }
-    .section-badge { display: inline-block; padding: 3px 12px; border-radius: 99px; font-size: 12px; font-weight: 700; margin-left: 10px; vertical-align: middle; }
-    .badge-read  { background: #dbeafe; color: #1e40af; }
-    .badge-write { background: #dcfce7; color: #166534; }
-    table { width: 100%; border-collapse: collapse; margin-top: 16px; background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
-    th, td { padding: 13px 20px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle; }
-    th { background-color: #f9fafb; font-weight: 600; color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .header-info p  { margin: 4px 0; font-size: 14px; color: #4a5568; }
+    h2              { margin-top: 32px; font-size: 20px; font-weight: 600; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px; }
+    .section-badge  { display: inline-block; padding: 3px 12px; border-radius: 99px; font-size: 12px; font-weight: 700; margin-left: 10px; vertical-align: middle; }
+    .badge-read     { background: #dbeafe; color: #1e40af; }
+    .badge-write    { background: #dcfce7; color: #166534; }
+    table           { width: 100%; border-collapse: collapse; margin-top: 16px; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
+    th, td          { padding: 13px 20px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle; }
+    th              { background: #f9fafb; font-weight: 600; color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
     tr:last-child td { border-bottom: none; }
-    tr:hover td { background-color: #f0f7ff; }
+    tr:hover td     { background: #f0f7ff; }
     tr:hover .col-oid { color: #1a56db !important; }
-    .toolbar { display: flex; gap: 12px; align-items: center; margin: 16px 0 12px 0; flex-wrap: wrap; }
-    .search-wrap { flex: 1; min-width: 220px; position: relative; }
+    .toolbar        { display: flex; gap: 12px; align-items: center; margin: 16px 0 12px; flex-wrap: wrap; }
+    .search-wrap    { flex: 1; min-width: 220px; position: relative; }
     .search-wrap input { width: 100%; border: 1px solid #e5e7eb; border-radius: 9px; padding: 10px 14px 10px 40px; font-size: 14px; color: #1f2937; background: #fff; outline: none; transition: border-color 0.2s; }
     .search-wrap input:focus { border-color: #1a56db; box-shadow: 0 0 0 3px rgba(26,86,219,0.1); }
     .search-wrap svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #9ca3af; pointer-events: none; }
-    .type-select { border: 1px solid #e5e7eb; border-radius: 9px; padding: 10px 14px; font-size: 13px; color: #374151; background: #fff; outline: none; cursor: pointer; }
-    .count-pill { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 9px; padding: 9px 16px; font-size: 13px; font-weight: 700; color: #1a56db; white-space: nowrap; }
-    .chip-section { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; padding: 12px 16px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; }
-    .chip-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #9ca3af; margin-right: 4px; white-space: nowrap; }
-    .chip { border: 1.5px solid #e5e7eb; background: #f9fafb; border-radius: 99px; padding: 4px 14px; font-size: 12px; font-weight: 600; color: #6b7280; cursor: pointer; transition: all 0.15s; user-select: none; }
-    .chip:hover { border-color: #1a56db; color: #1a56db; background: #eff6ff; }
-    .chip.active { background: #1a56db; border-color: #1a56db; color: #fff; }
-    .table-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
-    .col-name { font-size: 13px; font-weight: 600; color: #111827; min-width: 160px; }
-    .col-oid { font-family: monospace; font-size: 12px; color: #9ca3af; }
-    .col-type { text-align: center; min-width: 110px; }
-    .col-val { font-size: 13px; color: #374151; max-width: 380px; word-break: break-all; }
-    .no-name { color: #9ca3af; font-style: italic; }
-    .no-results { text-align: center; padding: 48px; color: #9ca3af; font-size: 14px; }
-    .badge { display: inline-block; padding: 3px 11px; border-radius: 99px; font-size: 11px; font-weight: 700; }
-    .badge-string { background:#dbeafe; color:#1e40af; }
-    .badge-integer { background:#fef9c3; color:#92400e; }
-    .badge-gauge { background:#dcfce7; color:#166534; }
-    .badge-counter { background:#ede9fe; color:#5b21b6; }
-    .badge-timeticks { background:#ffedd5; color:#9a3412; }
-    .badge-ip { background:#fce7f3; color:#9d174d; }
-    .badge-oid { background:#f1f5f9; color:#475569; }
-    .badge-hex { background:#ecfdf5; color:#065f46; }
+    .type-select    { border: 1px solid #e5e7eb; border-radius: 9px; padding: 10px 14px; font-size: 13px; color: #374151; background: #fff; outline: none; cursor: pointer; }
+    .count-pill     { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 9px; padding: 9px 16px; font-size: 13px; font-weight: 700; color: #1a56db; white-space: nowrap; }
+    .chip-section   { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; padding: 12px 16px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; }
+    .chip-label     { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #9ca3af; margin-right: 4px; white-space: nowrap; }
+    .chip           { border: 1.5px solid #e5e7eb; background: #f9fafb; border-radius: 99px; padding: 4px 14px; font-size: 12px; font-weight: 600; color: #6b7280; cursor: pointer; transition: all 0.15s; user-select: none; }
+    .chip:hover     { border-color: #1a56db; color: #1a56db; background: #eff6ff; }
+    .chip.active    { background: #1a56db; border-color: #1a56db; color: #fff; }
+    .table-card     { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
+    .col-name       { font-size: 13px; font-weight: 600; color: #111827; min-width: 160px; }
+    .col-oid        { font-family: monospace; font-size: 12px; color: #9ca3af; }
+    .col-type       { text-align: center; min-width: 110px; }
+    .col-val        { font-size: 13px; color: #374151; max-width: 380px; word-break: break-all; }
+    .no-name        { color: #9ca3af; font-style: italic; }
+    .no-results     { text-align: center; padding: 48px; color: #9ca3af; font-size: 14px; }
+    .badge          { display: inline-block; padding: 3px 11px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+    .badge-string   { background: #dbeafe; color: #1e40af; }
+    .badge-integer  { background: #fef9c3; color: #92400e; }
+    .badge-gauge    { background: #dcfce7; color: #166534; }
+    .badge-counter  { background: #ede9fe; color: #5b21b6; }
+    .badge-timeticks { background: #ffedd5; color: #9a3412; }
+    .badge-ip       { background: #fce7f3; color: #9d174d; }
+    .badge-oid      { background: #f1f5f9; color: #475569; }
+    .badge-hex      { background: #ecfdf5; color: #065f46; }
   </style>
 </head>
 <body>
@@ -225,10 +234,13 @@ pipeline {
     ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
   </table>
 
-  <h2>SNMP Data <span class="section-badge badge-read">Read — ${readCom}</span></h2>
+  <!-- ═══ READ COMMUNITY ═══════════════════════════════════════════════════ -->
+  <h2>SNMP Data <span class="section-badge badge-read">Read &mdash; ${readCom}</span></h2>
   <div class="toolbar">
     <div class="search-wrap">
-      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
       <input type="text" id="searchRead" placeholder="Search name, OID, or value…" oninput="applyFilters('read')"/>
     </div>
     <select class="type-select" id="typeRead" onchange="applyFilters('read')">
@@ -240,21 +252,25 @@ pipeline {
     <div class="count-pill" id="countRead">${readCount} entries</div>
   </div>
   <div class="chip-section" id="chipRead">
-    <span class="chip-label">Category</span>
-    ${chipBar}
+    <span class="chip-label">Category</span>${chipBar}
   </div>
   <div class="table-card">
     <table>
-      <thead><tr><th>Name</th><th>OID</th><th style="text-align:center;">Type</th><th>Value</th></tr></thead>
+      <thead>
+        <tr><th>Name</th><th>OID</th><th style="text-align:center;">Type</th><th>Value</th></tr>
+      </thead>
       <tbody id="bodyRead">${readRows}</tbody>
     </table>
     <div class="no-results" id="noRead" style="display:none;">No matching entries found.</div>
   </div>
 
-  <h2>SNMP Data <span class="section-badge badge-write">Write — ${writeCom}</span></h2>
+  <!-- ═══ WRITE COMMUNITY ══════════════════════════════════════════════════ -->
+  <h2>SNMP Data <span class="section-badge badge-write">Write &mdash; ${writeCom}</span></h2>
   <div class="toolbar">
     <div class="search-wrap">
-      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
       <input type="text" id="searchWrite" placeholder="Search name, OID, or value…" oninput="applyFilters('write')"/>
     </div>
     <select class="type-select" id="typeWrite" onchange="applyFilters('write')">
@@ -266,12 +282,13 @@ pipeline {
     <div class="count-pill" id="countWrite">${writeCount} entries</div>
   </div>
   <div class="chip-section" id="chipWrite">
-    <span class="chip-label">Category</span>
-    ${chipBar}
+    <span class="chip-label">Category</span>${chipBar}
   </div>
   <div class="table-card">
     <table>
-      <thead><tr><th>Name</th><th>OID</th><th style="text-align:center;">Type</th><th>Value</th></tr></thead>
+      <thead>
+        <tr><th>Name</th><th>OID</th><th style="text-align:center;">Type</th><th>Value</th></tr>
+      </thead>
       <tbody id="bodyWrite">${writeRows}</tbody>
     </table>
     <div class="no-results" id="noWrite" style="display:none;">No matching entries found.</div>
@@ -289,8 +306,10 @@ pipeline {
   });
 
   function setChip(section, el) {
-    document.getElementById('chip' + section.charAt(0).toUpperCase() + section.slice(1))
-      .querySelectorAll('.chip').forEach(function(c) { c.classList.remove('active'); });
+    var cap = section.charAt(0).toUpperCase() + section.slice(1);
+    document.getElementById('chip' + cap).querySelectorAll('.chip').forEach(function(c) {
+      c.classList.remove('active');
+    });
     el.classList.add('active');
     activePrefixes[section] = el.dataset.prefix;
     applyFilters(section);
@@ -334,7 +353,7 @@ pipeline {
                                  allowEmptyArchive: true
 
                 publishHTML(target: [
-                    allowMissing         : false,
+                    allowMissing         : true,
                     alwaysLinkToLastBuild: true,
                     keepAll              : true,
                     reportDir            : '.',
@@ -342,39 +361,42 @@ pipeline {
                     reportName           : 'SNMP Validation Report'
                 ])
 
-                def jsonReport = readJSON file: 'SNMP_Validation.json'
-                def status     = jsonReport.overall_status ?: "UNKNOWN"
-                def readCount  = jsonReport.read_community?.oid_count  ?: 0
-                def writeCount = jsonReport.write_community?.oid_count ?: 0
+                // Guard: only read JSON if the file was actually created
+                def jsonFile = new File("${env.WORKSPACE}/SNMP_Validation.json")
+                if (jsonFile.exists()) {
+                    def jsonReport = readJSON file: 'SNMP_Validation.json'
+                    def status     = jsonReport.overall_status ?: "UNKNOWN"
+                    def readCount  = jsonReport.read_community?.oid_count  ?: 0
+                    def writeCount = jsonReport.write_community?.oid_count ?: 0
 
-                def buildCauses   = currentBuild.getBuildCauses()
-                def userCause     = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
-                def buildUserName = userCause?.userName ?: "Unknown User"
-                def buildUserId   = userCause?.userId   ?: "unknown"
+                    def buildCauses   = currentBuild.getBuildCauses()
+                    def userCause     = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+                    def buildUserName = userCause?.userName ?: "Unknown User"
+                    def buildUserId   = userCause?.userId   ?: "unknown"
 
-                def userEmails = [
-                    "puneet"  : "puneet.sharma@senao.com",
-                    "harman"  : "harmanjot.singh@senao.com",
-                    "mahesh"  : "mahesh.battala@senao.com",
-                    "sandeep" : "sandeep.manchikanti@senao.com",
-                    "sampath" : "sampath.marella@senao.com",
-                    "jayanth" : "jayanth.munnaluru@senao.com",
-                    "srilatha": "srilatha.tadiboina@senao.com",
-                    "phani"   : "phani.darla@senao.com",
-                    "dinesh"  : "dinesh.redddy@senao.com"
-                ]
-                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
-                echo "Sending report email to: ${userEmail}"
+                    def userEmails = [
+                        "puneet"  : "puneet.sharma@senao.com",
+                        "harman"  : "harmanjot.singh@senao.com",
+                        "mahesh"  : "mahesh.battala@senao.com",
+                        "sandeep" : "sandeep.manchikanti@senao.com",
+                        "sampath" : "sampath.marella@senao.com",
+                        "jayanth" : "jayanth.munnaluru@senao.com",
+                        "srilatha": "srilatha.tadiboina@senao.com",
+                        "phani"   : "phani.darla@senao.com",
+                        "dinesh"  : "dinesh.redddy@senao.com"
+                    ]
+                    def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+                    echo "Sending report email to: ${userEmail}"
 
-                def emailBody = """
+                    def emailBody = """
 <html><body>
   <h2 style="color:#1a56db;">Jenkins Notification: SNMP Validation</h2>
-  <p><strong>Build:</strong> ${currentBuild.fullDisplayName}</p>
-  <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'}; font-weight:bold;">${currentBuild.currentResult}</span></p>
-  <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
-  <p><strong>SNMP Status:</strong> ${status}</p>
-  <p><strong>OIDs Collected (Read):</strong> ${readCount}</p>
-  <p><strong>OIDs Collected (Write):</strong> ${writeCount}</p>
+  <p><strong>Build:</strong>        ${currentBuild.fullDisplayName}</p>
+  <p><strong>Status:</strong>       <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'}; font-weight:bold;">${currentBuild.currentResult}</span></p>
+  <p><strong>Started By:</strong>   ${buildUserName} (${buildUserId})</p>
+  <p><strong>SNMP Status:</strong>  ${status}</p>
+  <p><strong>OIDs (Read):</strong>  ${readCount}</p>
+  <p><strong>OIDs (Write):</strong> ${writeCount}</p>
   <h3 style="margin-top:20px;">Links</h3>
   <ul>
     <li><a href="${env.BUILD_URL}SNMP_Validation_Report">HTML Report</a></li>
@@ -384,13 +406,16 @@ pipeline {
   <p style="color:gray; margin-top:30px;">-- Jenkins Automated Notification</p>
 </body></html>"""
 
-                emailext(
-                    subject : "Jenkins: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
-                    body    : emailBody,
-                    to      : userEmail,
-                    mimeType: 'text/html',
-                    attachmentsPattern: "SNMP_Validation.html, SNMP_Validation.json"
-                )
+                    emailext(
+                        subject            : "Jenkins: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                        body               : emailBody,
+                        to                 : userEmail,
+                        mimeType           : 'text/html',
+                        attachmentsPattern : "SNMP_Validation.html, SNMP_Validation.json"
+                    )
+                } else {
+                    echo "SNMP_Validation.json not found — skipping email and report parsing."
+                }
 
                 sh 'rm -f snmp_validation.log || true'
             }
