@@ -28,8 +28,9 @@ MAIN_USER = "root"
 MAIN_PASS = "admin"
 
 DISCOVERY_USERS = [
-    {"user": "develop", "pass": "develop"},  # Update password if different
-    {"user": MAIN_USER, "pass": MAIN_PASS}
+    {"user": MAIN_USER, "pass": MAIN_PASS},
+    {"user": "admin", "pass": "admin"},  # Update password if different
+    {"user": "develop", "pass": "ind655"}
 ]
 
 
