@@ -345,8 +345,10 @@ pipeline {
                     reportName           : 'SNMP Validation Report'
                 ])
 
-                def jsonFile = new File("${env.WORKSPACE}/SNMP_Validation.json")
-                if (jsonFile.exists()) {
+                // ────────────────────────────────────────────────
+                //  FIXED PART — replaced new File().exists()
+                // ────────────────────────────────────────────────
+                if (fileExists('SNMP_Validation.json')) {
                     def jsonReport = readJSON file: 'SNMP_Validation.json'
                     def status     = jsonReport.overall_status ?: "UNKNOWN"
                     def readCount  = jsonReport.read_community?.oid_count  ?: 0
@@ -370,6 +372,25 @@ pipeline {
                     ]
                     def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
                     echo "Sending report email to: ${userEmail}"
+
+                    def emailBody = """
+<html><body>
+  <h2 style="color:#1a56db;">Jenkins Notification: SNMP Validation</h2>
+  <p><strong>Build:</strong>        ${currentBuild.fullDisplayName}</p>
+  <p><strong>Status:</strong>       <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'}; font-weight:bold;">${currentBuild.currentResult}</span></p>
+  <p><strong>Started By:</strong>   ${buildUserName} (${buildUserId})</p>
+  <p><strong>SNMP Status:</strong>  ${status}</p>
+  <p><strong>OIDs (Read):</strong>  ${readCount}</p>
+  <p><strong>OIDs (Write):</strong> ${writeCount}</p>
+  <h3 style="margin-top:20px;">Links</h3>
+  <ul>
+    <li><a href="${env.BUILD_URL}SNMP_Validation_Report">HTML Report</a></li>
+    <li><a href="${env.BUILD_URL}">Build URL</a></li>
+    <li><a href="${env.BUILD_URL}console">Console Output</a></li>
+  </ul>
+  <p style="color:gray; margin-top:30px;">-- Jenkins Automated Notification</p>
+</body></html>"""
+
                     emailext(
                         subject            : "Jenkins: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
                         body               : emailBody,
