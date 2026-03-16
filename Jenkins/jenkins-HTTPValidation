@@ -1,5 +1,12 @@
+import jenkins.model.Jenkins
+
+// Functions
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
 pipeline {
-    agent { node { label "${TARGET_STAND}"} }
+    agent { node { label "${TARGET_STAND}" } }
 
     stages {
         stage('Prepare tests') {
@@ -8,8 +15,11 @@ pipeline {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${TARGET_STAND}"
                     echo "----------------------------------------"
-      	        }
-      	    }
+                    if (!params['Local IP Address']) {
+                        error "Missing required parameters: Local IP Address"
+                    }
+                }
+            }
         }
         stage('Install Dependencies') {
             steps {
@@ -21,29 +31,345 @@ pipeline {
                 }
             }
         }
-        stage('Login') {
+        stage('GUI HTTP Validation') {
             steps {
                 script {
                     def localIP = params['Local IP Address']
                     echo "Local IP Address: ${localIP}"
-                    sh 'pytest -v -s testCases/test_login.py::test_Login --local-ip '$localIP''
-               }
+                    echo "✅ Cleared old workspace"
+
+                    echo "----------------------------------------"
+                    echo "Testing GUI HTTP Parameters"
+                    echo "----------------------------------------"
+
+                    // The Python script natively creates iteration_results.json and all test-X.log files
+                    try {
+                        sh """
+                            python3.10 -m pytest -v -s testCases/test_HTTPValidation.py \
+                            --local-ip '${localIP}' 2>&1 | tee console_output.log; exit \${PIPESTATUS[0]}
+                        """
+                    } catch (Exception e) {
+                        echo "GUI Validation Suite encountered failures: ${e.message}"
+                    }
+                }
+            }
+        }
+stage('Generate Report') {
+            steps {
+                script {
+                    def localIP = params['Local IP Address']
+
+                    sh "ssh-keygen -R ${localIP} || true"
+
+                    def local_fw_version = "N/A"
+                    try {
+                        local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
+                    } catch (Exception e) {
+                        echo "⚠️ Failed to get local FW version from ${localIP}: ${e.message}"
+                    }
+
+                    def jsonReport = readJSON file: 'iteration_results.json'
+
+                    def totalTests = 0
+                    def passCount = 0
+                    if (jsonReport.iterations) {
+                        totalTests = jsonReport.iterations.size()
+                        passCount = jsonReport.iterations.count { it.status == 'PASS' }
+                    }
+                    def failCount = totalTests - passCount
+                    double successPercentage = (totalTests > 0) ? (passCount / (double)totalTests) * 100 : 0.0d
+                    def successPercentageStr = String.format("%.1f", successPercentage)
+
+                    def buildParams = [
+                        "Local IP Address"  : params['Local IP Address'],
+                        "FW Version (Local)": local_fw_version
+                    ]
+
+                    def istZone = TimeZone.getTimeZone("Asia/Kolkata")
+                    def istDate = Calendar.getInstance(istZone).getTime()
+                    def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
+
+                    // NEW: Dynamic File Naming
+                    def fileDate = Calendar.getInstance(istZone).getTime().format("yyyyMMdd", istZone)
+                    def reportFileName = "HTTPValidation_report_${env.BUILD_ID}_${fileDate}.html"
+
+                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+                    def pipelineName = env.JOB_NAME
+
+                    def htmlContent = """
+                    <html>
+                    <head>
+                        <title>Test Report</title>
+                        <style>
+                            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f9fafb; color: #1f2937; }
+                            .container { max-width: 1200px; margin: 24px auto; padding: 24px; }
+                            .header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%); padding: 28px 36px; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04); }
+                            .header img { height: 65px; transition: transform 0.2s ease-in-out; }
+                            .header img:hover { transform: scale(1.03); }
+                            .header-info { text-align: right; }
+                            .header-info h1 { margin: 0; font-size: 30px; font-weight: 700; color: #0a2540; }
+                            .header-info p { margin: 5px 0; font-size: 15px; color: #4a5568; }
+                            h2 { margin-top: 32px; font-size: 24px; font-weight: 600; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; }
+                            .summary-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-top: 24px; }
+                            .summary-card { background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.04); display: flex; padding: 24px; align-items: center; border-top-width: 4px; border-top-style: solid; }
+                            .card-icon { font-size: 32px; margin-right: 20px; padding: 12px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+                            .card-info { text-align: left; }
+                            .card-info-title { font-size: 16px; color: #6b7280; margin: 0 0 4px 0; }
+                            .card-info-value { font-size: 32px; font-weight: 700; color: #111827; margin: 0; }
+                            .percent .percent-sign { font-size: 20px; font-weight: 600; }
+                            .card-percent { border-color: #6b7280; }
+                            .card-percent .card-icon { background-color: #f3f4f6; color: #6b7280; }
+                            .card-total { border-color: #3b82f6; }
+                            .card-total .card-icon { background-color: #dbeafe; color: #3b82f6; }
+                            .card-pass { border-color: #10b981; }
+                            .card-pass .card-icon { background-color: #d1fae5; color: #10b981; }
+                            .card-fail { border-color: #ef4444; }
+                            .card-fail .card-icon { background-color: #fee2e2; color: #ef4444; }
+                            table { width: 100%; border-collapse: collapse; margin-top: 24px; background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
+                            th, td { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle; }
+                            th { background-color: #f9fafb; font-weight: 600; color: #6b7280; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+                            tr:last-child td { border-bottom: none; }
+                            tr:hover { background-color: #f9fafb; }
+
+                            /* NEW: Interactive Subsection Header Styling */
+                            .subsection-header td { background-color: #e5e7eb !important; font-weight: 700; color: #1f2937; font-size: 15px; border-top: 2px solid #d1d5db; cursor: pointer; user-select: none; transition: background-color 0.2s; }
+                            .subsection-header td:hover { background-color: #d1d5db !important; }
+                            .toggle-icon { display: inline-block; width: 20px; text-align: center; color: #4b5563; }
+
+                            .status-pass { color: #059669; font-weight: 600; background-color: #d1fae5; padding: 5px 10px; border-radius: 99px; display: inline-block; }
+                            .status-fail { color: #dc2626; font-weight: 600; background-color: #fee2e2; padding: 5px 10px; border-radius: 99px; display: inline-block; }
+                            .log-button { background-color: #3b82f6; color: white; padding: 8px 16px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; border: none; cursor: pointer; }
+                            .log-button:hover { background-color: #2563eb; }
+                            .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); }
+                            .modal-content { background-color: #ffffff; margin: 5% auto; border-radius: 12px; width: 80%; max-width: 900px; animation-name: animatetop; animation-duration: 0.4s; overflow: hidden; }
+                            .modal-header { padding: 20px 32px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+                            .modal-header h2 { margin: 0; font-size: 20px; }
+                            .modal-close { color: #9ca3af; font-size: 28px; font-weight: bold; cursor: pointer; }
+                            .modal-close:hover { color: #1f2937; }
+                            .modal-body { padding: 0; }
+                            #log-content-pre { background-color: #1f2937; color: #e5e7eb; padding: 24px 32px; max-height: 60vh; overflow: auto; white-space: pre-wrap; word-wrap: break-word; margin: 0; font-family: monospace; }
+                            @keyframes animatetop { from {transform: translateY(-50px); opacity: 0} to {transform: translateY(0); opacity: 1} }
+                        </style>
+                        <script>
+                            function showLog(logDataId) { document.getElementById('log-content-pre').innerHTML = document.getElementById(logDataId).innerHTML; document.getElementById('logModal').style.display = 'block'; }
+                            function closeModal() { document.getElementById('logModal').style.display = 'none'; }
+                            window.onclick = function(event) { if (event.target == document.getElementById('logModal')) closeModal(); }
+
+                            // NEW: Show/Hide logic for the parameter rows
+                            function toggleSection(paramId) {
+                                var rows = document.querySelectorAll('.row-' + paramId);
+                                var icon = document.getElementById('icon-' + paramId);
+                                var isExpanded = icon.innerHTML.includes('9660'); // Checks for down-arrow
+
+                                rows.forEach(function(row) {
+                                    row.style.display = isExpanded ? 'none' : 'table-row';
+                                });
+
+                                icon.innerHTML = isExpanded ? '&#9658;' : '&#9660;'; // Toggle between right-arrow and down-arrow
+                            }
+                        </script>
+                    </head>
+                    <body>
+                        <div class="container">
+                            <div class="header">
+                                <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
+                                <div class="header-info">
+                                    <h1>Automated Test Report</h1>
+                                    <p><strong>Pipeline:</strong> ${pipelineName}</p>
+                                    <p><strong>Date & Time:</strong> ${currentDateTime}</p>
+                                </div>
+                            </div>
+
+                            <h2>Build Parameters</h2>
+                            <table>
+                                <tr><th>Parameter</th><th>Value</th></tr>
+                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
+                            </table>
+
+                            <h2>Test Summary</h2>
+                            <div class="summary-container">
+                                <div class="summary-card card-percent">
+                                    <div class="card-icon">🎯</div>
+                                    <div class="card-info"><p class="card-info-title">Success Rate</p><p class="card-info-value percent">${successPercentageStr}<span class="percent-sign">%</span></p></div>
+                                </div>
+                                <div class="summary-card card-total">
+                                    <div class="card-icon">📦</div>
+                                    <div class="card-info"><p class="card-info-title">Total Validations</p><p class="card-info-value">${totalTests}</p></div>
+                                </div>
+                                <div class="summary-card card-pass">
+                                    <div class="card-icon">✅</div>
+                                    <div class="card-info"><p class="card-info-title">Passed</p><p class="card-info-value">${passCount}</p></div>
+                                </div>
+                                <div class="summary-card card-fail">
+                                    <div class="card-icon">❌</div>
+                                    <div class="card-info"><p class="card-info-title">Failed</p><p class="card-info-value">${failCount}</p></div>
+                                </div>
+                            </div>
+
+                            <h2>Validation Results</h2>
+                            <table>
+                                <tr>
+                                    <th width="10%">Iter #</th>
+                                    <th width="60%">Scenario / Input</th>
+                                    <th width="15%" style="text-align: center;">Status</th>
+                                    <th width="15%" style="text-align: center;">Logs</th>
+                                </tr>
+                    """
+
+                    def tableRows = ""
+                    def logDataBlocks = ""
+
+                    if (jsonReport.iterations) {
+                        def groupedByParam = jsonReport.iterations.groupBy { it.parameter ?: "Unknown Parameter" }
+
+                        groupedByParam.each { paramName, results ->
+                            // Create a safe ID string without spaces for JavaScript mapping
+                            def safeParamId = paramName.replaceAll("\\s+","_").replaceAll("[^a-zA-Z0-9_]","")
+
+                            // NEW: Added onclick trigger and dynamic icon
+                            tableRows += """
+                                <tr class="subsection-header" onclick="toggleSection('${safeParamId}')">
+                                    <td colspan="4">
+                                        <span class="toggle-icon" id="icon-${safeParamId}">&#9660;</span>
+                                        Parameter: ${paramName}
+                                    </td>
+                                </tr>
+                            """
+
+                            results.each { result ->
+                                def iteration = result.iteration ?: "-"
+                                def testName = result.test ?: "Unknown"
+                                def status = result.status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
+
+                                def logFile = "test-${iteration}.log"
+                                def logDataId = "log-data-${iteration}"
+                                def logContent = ""
+
+                                try {
+                                    logContent = readFile(file: logFile)
+                                    logContent = logContent.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                                } catch (e) {
+                                    logContent = "Log file not found or generated (${logFile})."
+                                }
+
+                                def logButton = "<button class='log-button' onclick=\"showLog('${logDataId}')\">See Logs</button>"
+
+                                // NEW: Added the tracking class 'row-ID' so JS knows which rows to hide
+                                tableRows += """
+                                    <tr class="row-${safeParamId}">
+                                        <td>${iteration}</td>
+                                        <td>${testName}</td>
+                                        <td style="text-align: center;">${status}</td>
+                                        <td style="text-align: center;">${logButton}</td>
+                                    </tr>
+                                """
+                                logDataBlocks += "<div id='${logDataId}' style='display:none;'>${logContent}</div>\n"
+                            }
+                        }
+                    } else {
+                        tableRows += "<tr><td colspan='4' style='text-align:center;'>No validation results found.</td></tr>"
+                    }
+
+                    htmlContent += tableRows
+                    htmlContent += """
+                            </table>
+                        </div>
+                        <div id="logModal" class="modal">
+                          <div class="modal-content">
+                            <div class="modal-header">
+                                <h2>Validation Log</h2>
+                                <span class="modal-close" onclick="closeModal()">&times;</span>
+                            </div>
+                            <div class="modal-body"><pre id="log-content-pre"></pre></div>
+                          </div>
+                        </div>
+                        ${logDataBlocks}
+                    </body>
+                    </html>
+                    """
+
+                    // NEW: Saving as the dynamically generated filename
+                    writeFile file: reportFileName, text: htmlContent
+                }
             }
         }
     }
     post {
         always {
-            echo "-----------------------------------------"
-            echo 'Script Done!'
-            echo "-----------------------------------------"
-        }
+            // Re-generate the filename variable so the post block knows what to publish
+            script {
+                def istZone = TimeZone.getTimeZone("Asia/Kolkata")
+                def fileDate = Calendar.getInstance(istZone).getTime().format("yyyyMMdd", istZone)
+                def reportFileName = "HTTPValidation_report_${env.BUILD_ID}_${fileDate}.html"
 
+                publishHTML(target: [
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: '.',
+                    reportFiles: reportFileName,
+                    reportName: 'Test Report'
+                ])
+
+                echo "Cleaning up test log files..."
+                sh 'rm -f test-*.log || true'
+                sh 'rm -f console_output.log || true'
+
+                echo "-----------------------------------------"
+                echo 'Script Done!'
+                echo "-----------------------------------------"
+
+                def buildCauses = currentBuild.getBuildCauses()
+                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+
+                def buildUserName = userCause?.userName ?: "Unknown User"
+                def buildUserId = userCause?.userId ?: "unknown"
+
+                echo "Build started by: ${buildUserName} (${buildUserId})"
+
+                def userEmails = [
+                    "puneet": "puneet.sharma@senao.com",
+                    "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@senao.com",
+                    "sandeep": "sandeep.manchikanti@senao.com",
+                    "sampath": "sampath.marella@senao.com",
+                    "jayanth": "jayanth.munnaluru@senao.com",
+                    "srilatha": "srilatha.tadiboina@senao.com",
+                    "phani": "phani.darla@senao.com",
+                    "dinesh": "dinesh.redddy@senao.com"
+                ]
+
+                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+                echo "Sending email to: ${userEmail}"
+
+                emailext(
+                    subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    body: """
+                        <html>
+                        <body>
+                            <h2 style="color:blue;">Jenkins Build Notification</h2>
+                            <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
+                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
+                                ${currentBuild.currentResult}</span></p>
+                            <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
+                            <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                            <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                            <br/>
+                            <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
+                        </body>
+                        </html>
+                    """,
+                    to: userEmail,
+                    mimeType: 'text/html',
+                    attachmentsPattern: "${reportFileName},iteration_results.json" // Updated pattern
+                )
+            }
+        }
         success {
             echo "-----------------------------------------"
             echo 'Script Success'
             echo "-----------------------------------------"
         }
-
         failure {
             echo "-----------------------------------------"
             echo 'Script Failure'
