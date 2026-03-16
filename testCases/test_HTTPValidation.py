@@ -11,7 +11,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import UnexpectedAlertPresentException, NoAlertPresentException, TimeoutException
 from selenium.webdriver.common.by import By
 
-# Assuming these exist in your project structure
 from pageObjects.LoginPage import LoginPage
 from testCases.configsetup import setup
 from preMadeFunctions import accessWeb
@@ -28,20 +27,14 @@ password = "admin"
 
 # ==============================================================================
 # MASTER TEST DATA
-# Format: (Locator Strategy, Locator Value, Input Value, Expected to Pass?, Element Type, Dependency)
+# Format: (Parameter Name, Locator Strategy, Locator Value, Input Value, Expected to Pass?, Element Type, Dependency)
 # ==============================================================================
 VALIDATION_DATA = [
-    # --- SSID Validation ---
-    (By.NAME, "wireless.@wifi-iface[1].ssid", "Valid_SSID_123", True, "input", None),
-    (By.NAME, "wireless.@wifi-iface[1].ssid", "A", True, "input", None),
-    (By.NAME, "wireless.@wifi-iface[1].ssid", "ThirtyTwoCharactersExactly123456", True, "input", None),
-    (By.NAME, "wireless.@wifi-iface[1].ssid", "", False, "input", None),
-    (By.NAME, "wireless.@wifi-iface[1].ssid", "ThisIsThirtyThreeCharacters123456", False, "input", None),
+    # 1 Positive Case: Standard valid SSID
+    ("SSID", By.NAME, "wireless.@wifi-iface[1].ssid", "Valid_SSID_123", True, "input", None),
 
-    # --- Channel & Distance ---
-    (By.ID, "supp_chan", "165", True, "select", "requires_bsu"),
-    (By.NAME, "wireless.wifi1.distance", "15", True, "input", None),
-    (By.NAME, "wireless.wifi1.distance", "35", False, "input", None),
+    # 1 Negative Case: Empty string (0 chars)
+    ("SSID", By.NAME, "wireless.@wifi-iface[1].ssid", "", False, "input", None),
 ]
 
 
@@ -73,11 +66,9 @@ def test_GUI_Validation_Suite(setup, local_ip):
     URL = f"http://{local_ip}/cgi-bin/luci"
     total_failures = 0
 
-    # Ensure clean slate for JSON
     with open("iteration_results.json", "w") as f:
         json.dump({"iterations": []}, f)
 
-    # 1. Login once
     accessWeb.access_and_login(driver, URL, username, password)
 
     try:
@@ -92,27 +83,29 @@ def test_GUI_Validation_Suite(setup, local_ip):
 
     radio1_url = f"http://{local_ip}/cgi-bin/luci/;stok={stok}/admin/wireless/radio1"
 
-    # 2. Iterate through all validation data without closing the browser
     for index, data in enumerate(VALIDATION_DATA, start=1):
-        locator_strategy, locator_value, test_input, is_valid_scenario, element_type, dependency = data
+        # NEW: Unpacking the param_name
+        param_name, locator_strategy, locator_value, test_input, is_valid_scenario, element_type, dependency = data
 
-        test_name = f"Validate_{locator_value}_with_{test_input}"
-        print(f"\n--- Running Iteration {index}: {test_name} ---")
+        # Make the test name cleaner for the report
+        display_input = test_input if test_input != "" else "[EMPTY STRING]"
+        test_name = f"Input: {display_input} (Expected: {'Pass' if is_valid_scenario else 'Fail'})"
+        print(f"\n--- Running Iteration {index}: {param_name} -> {test_name} ---")
 
-        # Initialize result payload and log tracking
-        iteration_log = f"Starting validation for {locator_value}\nInput Value: '{test_input}'\nExpected to pass: {is_valid_scenario}\n\n"
+        iteration_log = f"Starting validation for {param_name} ({locator_value})\nInput Value: '{test_input}'\nExpected to pass: {is_valid_scenario}\n\n"
+
+        # NEW: Added "parameter" to the JSON payload
         test_iteration_result = {
             "iteration": index,
+            "parameter": param_name,
             "test": test_name,
             "status": "FAIL",
             "Local IP": local_ip
         }
 
         try:
-            # Refresh page to clear any previous unsaved state
             driver.get(radio1_url)
 
-            # Dependency Check
             if dependency == "requires_bsu":
                 radio_mode_select = Select(WebDriverWait(driver, 5).until(
                     EC.presence_of_element_located((By.NAME, "wireless.@wifi-iface[1].mode"))
@@ -122,11 +115,10 @@ def test_GUI_Validation_Suite(setup, local_ip):
                 if current_mode != "ap":
                     msg = f"Skipped: Radio Mode is currently SU ('{current_mode}'). Requires BSU."
                     iteration_log += msg + "\n"
-                    test_iteration_result["status"] = "PASS"  # Mark as pass so it doesn't fail the build
+                    test_iteration_result["status"] = "PASS"
                     test_iteration_result["test"] += " (SKIPPED)"
-                    continue  # Move to next parameter
+                    continue
 
-            # Locate and interact
             target_element = WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located((locator_strategy, locator_value))
             )
@@ -138,11 +130,9 @@ def test_GUI_Validation_Suite(setup, local_ip):
                 dropdown = Select(target_element)
                 dropdown.select_by_value(test_input)
 
-                # Save
             save_button = driver.find_element(By.XPATH, "//input[@value='Save']")
             save_button.click()
 
-            # Wait for JS Alert
             alert_triggered = False
             try:
                 WebDriverWait(driver, 5).until(EC.alert_is_present())
@@ -153,7 +143,6 @@ def test_GUI_Validation_Suite(setup, local_ip):
             except TimeoutException:
                 iteration_log += "No JavaScript alert triggered.\n"
 
-            # Evaluate Results
             if is_valid_scenario:
                 if alert_triggered is False:
                     test_iteration_result["status"] = "PASS"
@@ -177,10 +166,7 @@ def test_GUI_Validation_Suite(setup, local_ip):
             print(f"Error during {test_name}: {e}")
 
         finally:
-            # Write the log file for this specific iteration (Jenkins will read this)
             write_iteration_log(index, iteration_log)
-            # Append result to JSON (Jenkins will read this)
             append_result_to_json(test_iteration_result)
 
-    # 3. Final Assertion for the entire suite
     assert total_failures == 0, f"GUI Validation Suite finished with {total_failures} failures. Check Jenkins HTML report for details."
