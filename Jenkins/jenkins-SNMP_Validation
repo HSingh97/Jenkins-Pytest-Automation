@@ -32,7 +32,7 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                script {
+            script {
                     echo "----------------------------------------"
                     echo "Installing Dependencies "
                     echo "----------------------------------------"
@@ -40,7 +40,6 @@ pipeline {
                 }
                 sh '''
                     which snmpget >/dev/null 2>&1 || {
-                        echo "--- Installing SNMP tools ---"
                         sudo apt-get update -qq
                         sudo apt-get install -y snmp snmp-mibs-downloader
                     }
@@ -103,7 +102,6 @@ pipeline {
                         ? jsonReport.iterations[0].build_params : [:]
                     def buildParams = [
                         "Device Name" : bp["Device Name"] ?: "N/A",
-                        "HW Version"  : bp["HW Version"]  ?: "N/A",
                         "Serial No"   : bp["Serial No"]   ?: "N/A",
                         "IP Address"  : bp["IP Address"]  ?: deviceIP,
                         "FW Version"  : bp["FW Version"]  ?: "N/A",
@@ -138,6 +136,35 @@ pipeline {
     .modal-close { color: #9ca3af; font-size: 26px; font-weight: bold; cursor: pointer; }
     .modal-close:hover { color: #1f2937; }
     #log-content-pre { background-color: #1f2937; color: #e5e7eb; padding: 24px 32px; max-height: 60vh; overflow: auto; white-space: pre-wrap; word-wrap: break-word; margin: 0; font-family: monospace; font-size: 13px; }
+    .toolbar { display: flex; gap: 12px; align-items: center; margin: 16px 0 12px 0; flex-wrap: wrap; }
+    .search-wrap { flex: 1; min-width: 240px; position: relative; }
+    .search-wrap input { width: 100%; border: 1px solid #e5e7eb; border-radius: 9px; padding: 10px 14px 10px 40px; font-size: 14px; color: #1f2937; background: #fff; outline: none; }
+    .search-wrap input:focus { border-color: #1a56db; box-shadow: 0 0 0 3px rgba(26,86,219,0.1); }
+    .search-wrap svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #9ca3af; pointer-events: none; }
+    .type-select { border: 1px solid #e5e7eb; border-radius: 9px; padding: 10px 14px; font-size: 13px; color: #374151; background: #fff; outline: none; cursor: pointer; }
+    .count-pill { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 9px; padding: 9px 16px; font-size: 13px; font-weight: 700; color: #1a56db; white-space: nowrap; }
+    .chip-section { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; padding: 12px 16px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; }
+    .chip-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #9ca3af; margin-right: 4px; white-space: nowrap; }
+    .chip { border: 1.5px solid #e5e7eb; background: #f9fafb; border-radius: 99px; padding: 4px 14px; font-size: 12px; font-weight: 600; color: #6b7280; cursor: pointer; transition: all 0.15s; user-select: none; }
+    .chip:hover { border-color: #1a56db; color: #1a56db; background: #eff6ff; }
+    .chip.active { background: #1a56db; border-color: #1a56db; color: #fff; }
+    .table-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
+    .col-name { font-size: 13px; font-weight: 600; color: #111827; }
+    .col-oid { font-family: monospace; font-size: 12px; color: #9ca3af; }
+    tr:hover .col-oid { color: #1a56db; }
+    .col-type { text-align: center; }
+    .col-val { font-size: 13px; color: #374151; max-width: 380px; word-break: break-all; }
+    .no-name { color: #9ca3af; font-style: italic; }
+    .no-results { text-align: center; padding: 48px; color: #9ca3af; font-size: 14px; }
+    .badge { display: inline-block; padding: 3px 11px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+    .badge-string { background:#dbeafe; color:#1e40af; }
+    .badge-integer { background:#fef9c3; color:#92400e; }
+    .badge-gauge { background:#dcfce7; color:#166534; }
+    .badge-counter { background:#ede9fe; color:#5b21b6; }
+    .badge-timeticks { background:#ffedd5; color:#9a3412; }
+    .badge-ip { background:#fce7f3; color:#9d174d; }
+    .badge-oid { background:#f1f5f9; color:#475569; }
+    .badge-hex { background:#ecfdf5; color:#065f46; }
   </style>
   <script>
     function showLog(id) {
@@ -208,8 +235,80 @@ pipeline {
                         tableRows = "<tr><td colspan='5' style='text-align:center;'>No results found.</td></tr>"
                     }
 
+                    // Build SNMP data rows from all iterations
+                    def snmpRows = ""
+                    if (jsonReport.iterations) {
+                        jsonReport.iterations.each { iter ->
+                            if (iter.data) {
+                                iter.data.each { rec ->
+                                    def rName = rec.name ?: ""
+                                    def rOid  = rec.oid  ?: ""
+                                    def rType = rec.type ?: ""
+                                    def rData = rec.data?.toString() ?: ""
+                                    def rPrefix = rName ? (rName =~ /^([a-z]+)/)[0][1] : "other"
+                                    def badgeClass = [
+                                        "STRING":"badge-string","INTEGER":"badge-integer",
+                                        "Gauge32":"badge-gauge","Counter32":"badge-counter",
+                                        "Counter64":"badge-counter","Timeticks":"badge-timeticks",
+                                        "IpAddress":"badge-ip","OID":"badge-oid","Hex-STRING":"badge-hex"
+                                    ].get(rType, "badge-oid")
+                                    def nameDisplay = rName ?: "<em class='no-name'>—</em>"
+                                    snmpRows += """<tr data-prefix="${rPrefix}" data-type="${rType}">
+  <td class="col-name">${nameDisplay}</td>
+  <td class="col-oid">${rOid}</td>
+  <td class="col-type"><span class="badge ${badgeClass}">${rType}</span></td>
+  <td class="col-val">${rData}</td>
+</tr>"""
+                                }
+                            }
+                        }
+                    }
+
                     htmlContent += tableRows + """
   </table>
+
+  <h2>SNMP Data</h2>
+  <div class="toolbar">
+    <div class="search-wrap">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="text" id="searchInput" placeholder="Search name, OID, or value…" oninput="applyFilters()"/>
+    </div>
+    <select class="type-select" id="typeFilter" onchange="applyFilters()">
+      <option value="">All Types</option>
+      <option>STRING</option><option>INTEGER</option><option>Gauge32</option>
+      <option>Counter32</option><option>Counter64</option><option>Timeticks</option>
+      <option>IpAddress</option><option>OID</option><option>Hex-STRING</option>
+    </select>
+    <div class="count-pill" id="entryCount">${snmpRows.count("<tr data-")} entries</div>
+  </div>
+  <div class="chip-section">
+    <span class="chip-label">Category</span>
+    <span class="chip active" data-prefix="all"      onclick="setChip(this)">All</span>
+    <span class="chip"        data-prefix="wireless" onclick="setChip(this)">Wireless</span>
+    <span class="chip"        data-prefix="assoc"    onclick="setChip(this)">Assoc</span>
+    <span class="chip"        data-prefix="sys"      onclick="setChip(this)">System</span>
+    <span class="chip"        data-prefix="ethernet" onclick="setChip(this)">Ethernet</span>
+    <span class="chip"        data-prefix="network"  onclick="setChip(this)">Network</span>
+    <span class="chip"        data-prefix="vlan"     onclick="setChip(this)">VLAN</span>
+    <span class="chip"        data-prefix="dcs"      onclick="setChip(this)">DCS</span>
+    <span class="chip"        data-prefix="dfs"      onclick="setChip(this)">DFS</span>
+    <span class="chip"        data-prefix="dhcp"     onclick="setChip(this)">DHCP</span>
+    <span class="chip"        data-prefix="snmp"     onclick="setChip(this)">SNMP</span>
+    <span class="chip"        data-prefix="radius"   onclick="setChip(this)">RADIUS</span>
+    <span class="chip"        data-prefix="link"     onclick="setChip(this)">Link</span>
+    <span class="chip"        data-prefix="gps"      onclick="setChip(this)">GPS</span>
+    <span class="chip"        data-prefix="ntp"      onclick="setChip(this)">NTP</span>
+    <span class="chip"        data-prefix="qinq"     onclick="setChip(this)">QinQ</span>
+    <span class="chip"        data-prefix="other"    onclick="setChip(this)">Other</span>
+  </div>
+  <div class="table-card">
+    <table>
+      <thead><tr><th>Name</th><th>OID</th><th style="text-align:center;">Type</th><th>Value</th></tr></thead>
+      <tbody id="snmpTableBody">${snmpRows}</tbody>
+    </table>
+    <div class="no-results" id="noResults" style="display:none;">No matching entries found.</div>
+  </div>
+
 </div>
 <div id="logModal" class="modal">
   <div class="modal-content">
@@ -221,6 +320,33 @@ pipeline {
   </div>
 </div>
 ${logDataBlocks}
+<script>
+  let activePrefix = 'all';
+  function setChip(el) {
+    document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    activePrefix = el.dataset.prefix;
+    applyFilters();
+  }
+  function applyFilters() {
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    const type   = document.getElementById('typeFilter').value;
+    const rows   = document.querySelectorAll('#snmpTableBody tr');
+    let visible  = 0;
+    rows.forEach(row => {
+      const rp = row.dataset.prefix || 'other';
+      const rt = row.dataset.type   || '';
+      const tx = row.textContent.toLowerCase();
+      const ok = (activePrefix === 'all' || rp === activePrefix)
+              && (!type   || rt === type)
+              && (!search || tx.includes(search));
+      row.style.display = ok ? '' : 'none';
+      if (ok) visible++;
+    });
+    document.getElementById('entryCount').textContent = visible + ' entries';
+    document.getElementById('noResults').style.display = visible === 0 ? 'block' : 'none';
+  }
+</script>
 </body>
 </html>"""
 
