@@ -78,14 +78,14 @@ pipeline {
                     String fileDate = Calendar.getInstance(istZone).getTime().format("yyyyMMdd", istZone)
                     String reportFileName = "HTTPValidation_report_${env.BUILD_ID}_${fileDate}.html"
 
-                    // =========================================================
-                    // NEW: Consolidated Visibility Matrix Table
-                    // =========================================================
+                    // Base64 Encoded Logo to bypass firewalls/hotlink protections
+                    String base64Logo = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgNjAiPjx0ZXh0IHk9IjQwIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iNDAiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjMWUzYThhIj5TRU5BTzwvdGV4dD48L3N2Zz4="
+
+                    // Build Visibility Matrix Table
                     String currentConfigHTML = ""
                     def allKeys = [] as Set
                     def userRoles = ["root", "admin", "develop"]
 
-                    // Gather all unique parameter keys discovered across all users
                     if (jsonReport.current_configs) {
                         jsonReport.current_configs.each { role, configs ->
                             if (configs) allKeys.addAll(configs.keySet())
@@ -105,15 +105,12 @@ pipeline {
                     """
 
                     if (sortedKeys.size() > 0) {
-                        sortedKeys.each { rawKey ->
-                            // Clean the key (e.g., "advwireless.ath1.amsdu_count" -> "AMSDU COUNT")
-                            def cleanKey = rawKey.tokenize('.')[-1].toUpperCase().replaceAll("_", " ")
-
+                        sortedKeys.each { uiName ->
                             currentConfigHTML += "<tr>\n"
-                            currentConfigHTML += "<td><strong>${cleanKey}</strong></td>\n"
+                            currentConfigHTML += "<td><strong>${uiName}</strong></td>\n"
 
                             userRoles.each { role ->
-                                boolean isVisible = jsonReport.current_configs[role] && jsonReport.current_configs[role].containsKey(rawKey)
+                                boolean isVisible = jsonReport.current_configs[role] && jsonReport.current_configs[role].containsKey(uiName)
                                 def icon = isVisible ? "<span style='color:#10b981; font-size:18px; font-weight:bold;'>&#10003;</span>" : "<span style='color:#ef4444; font-size:18px; font-weight:bold;'>&#10007;</span>"
                                 currentConfigHTML += "<td style='text-align:center;'>${icon}</td>\n"
                             }
@@ -123,9 +120,7 @@ pipeline {
                         currentConfigHTML += "<tr><td colspan='4' style='text-align:center; color:#64748b;'>No configurations found.</td></tr>"
                     }
                     currentConfigHTML += "</table>"
-                    // =========================================================
 
-                    // Build HTML
                     String htmlContent = """
                     <html>
                     <head>
@@ -224,6 +219,7 @@ pipeline {
                     <body>
                         <div class="container">
                             <div class="header">
+                                <img src="${base64Logo}" alt="Senao Networks"/>
                                 <div class="header-info">
                                     <h1>Automated Test Report</h1>
                                     <p><strong>Pipeline:</strong> ${env.JOB_NAME}</p>
