@@ -1,4 +1,8 @@
 pipeline {
+    options {
+        disableConcurrentBuilds()
+        skipDefaultCheckout(false)
+    }
     agent {
         node {
             label "${params.TARGET_STAND}"
@@ -10,11 +14,11 @@ pipeline {
         stage('Preparation') {
             steps {
                 script {
-                    def deviceIP       = params.Device_IP.toString().trim()
-                    def readCommunity  = params.Read_Community.toString().trim()
-                    def writeCommunity = params.Write_Community.toString().trim()
+                    def deviceIP       = (params.Device_IP       ?: '').toString().trim()
+                    def readCommunity  = (params.Read_Community  ?: '').toString().trim()
+                    def writeCommunity = (params.Write_Community ?: '').toString().trim()
                     // File Parameter: Jenkins places the uploaded file in workspace root
-                    def mibFileName    = params.MIB_File.toString().trim()
+                    def mibFileName    = (params.MIB_File        ?: '').toString().trim()
                     def mibFilePath    = "${env.WORKSPACE}/${mibFileName}"
 
                     echo "========================================"
@@ -55,10 +59,10 @@ pipeline {
         stage('Run SNMP Validation') {
             steps {
                 script {
-                    def deviceIP       = params.Device_IP.toString().trim()
-                    def readCommunity  = params.Read_Community.toString().trim()
-                    def writeCommunity = params.Write_Community.toString().trim()
-                    def mibFilePath    = "${env.WORKSPACE}/${params.MIB_File.toString().trim()}"
+                    def deviceIP       = (params.Device_IP       ?: '').toString().trim()
+                    def readCommunity  = (params.Read_Community  ?: '').toString().trim()
+                    def writeCommunity = (params.Write_Community ?: '').toString().trim()
+                    def mibFilePath    = "${env.WORKSPACE}/${(params.MIB_File ?: '').toString().trim()}"
                     def scriptPath     = "testCases/test_SNMP_Validation.py"
 
                     echo "========================================"
