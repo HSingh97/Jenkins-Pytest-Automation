@@ -63,7 +63,7 @@ pipeline {
                     def readCommunity  = (params.Read_Community  ?: '').toString().trim()
                     def writeCommunity = (params.Write_Community ?: '').toString().trim()
                     def mibFilePath    = "${env.WORKSPACE}/${(params.MIB_File ?: '').toString().trim()}"
-                    def scriptPath     = "testCases/test_SNMP_Validation.py"
+                    def scriptPath     = "testCases/test-SNMP_Validation.py"
 
                     echo "========================================"
                     echo " Running SNMP Validation on ${deviceIP}"
