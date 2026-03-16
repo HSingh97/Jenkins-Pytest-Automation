@@ -68,14 +68,11 @@ def test_Smart_Auto_Validator(setup, local_ip):
     radio1_url = f"http://{local_ip}/cgi-bin/luci/;stok={stok}/admin/wireless/radio1"
     driver.get(radio1_url)
 
-    # Wait for JS to render the page
     WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.NAME, "wireless.@wifi-iface[1].ssid")))
     time.sleep(1)
 
     print("\n--- Phase 2: Dynamic Element Discovery & Rule Generation ---")
     soup = BeautifulSoup(driver.page_source, 'html.parser')
-
-    # This list will hold all the dynamically generated test scenarios
     dynamic_test_cases = []
 
     inputs = soup.find_all('input')
@@ -84,44 +81,49 @@ def test_Smart_Auto_Validator(setup, local_ip):
     for tag in valid_inputs:
         name_attr = tag.get('name')
 
+        # --- NEW VISIBILITY CHECK ---
+        # Ask Selenium if the element is actually visible on the screen right now
+        try:
+            sel_elem = driver.find_element(By.NAME, name_attr)
+            if not sel_elem.is_displayed():
+                print(f"Skipping HIDDEN Field: '{name_attr}' (Requires different login or mode)")
+                continue
+        except Exception:
+            print(f"Skipping MISSING Field: '{name_attr}'")
+            continue
+
         # Look at the parent element's text to find the hints (e.g., "(1-32) characters")
         parent_text = tag.parent.text.strip()
-
-        # Regex to find (min-max) values
         range_match = re.search(r'\((\d+)\s*-\s*(\d+)\)', parent_text)
 
         if range_match:
             min_val = int(range_match.group(1))
             max_val = int(range_match.group(2))
 
-            # Determine if the field is a string or a number based on context clues
             if "char" in parent_text.lower():
-                print(f"Discovered STRING Field: '{name_attr}' | Limits: {min_val} to {max_val} chars")
-                # Generate Boundary Values for Strings
-                dynamic_test_cases.append((name_attr, "A" * min_val, True))  # Exact Min length
-                dynamic_test_cases.append((name_attr, "A" * max_val, True))  # Exact Max length
-                dynamic_test_cases.append((name_attr, "A" * (max_val + 1), False))  # Over Max length
+                print(f"Discovered VISIBLE STRING Field: '{name_attr}' | Limits: {min_val} to {max_val} chars")
+                dynamic_test_cases.append((name_attr, "A" * min_val, True))
+                dynamic_test_cases.append((name_attr, "A" * max_val, True))
+                dynamic_test_cases.append((name_attr, "A" * (max_val + 1), False))
                 if min_val > 0:
-                    dynamic_test_cases.append((name_attr, "", False))  # Under Min length (Empty)
+                    dynamic_test_cases.append((name_attr, "", False))
             else:
-                print(f"Discovered NUMERIC Field: '{name_attr}' | Limits: {min_val} to {max_val}")
-                # Generate Boundary Values for Numbers
-                dynamic_test_cases.append((name_attr, str(min_val), True))  # Exact Min value
-                dynamic_test_cases.append((name_attr, str(max_val), True))  # Exact Max value
-                dynamic_test_cases.append((name_attr, str(max_val + 1), False))  # Over Max value
-                dynamic_test_cases.append((name_attr, str(min_val - 1), False))  # Under Min value
-                dynamic_test_cases.append((name_attr, "abc", False))  # Invalid data type (String in Number field)
+                print(f"Discovered VISIBLE NUMERIC Field: '{name_attr}' | Limits: {min_val} to {max_val}")
+                dynamic_test_cases.append((name_attr, str(min_val), True))
+                dynamic_test_cases.append((name_attr, str(max_val), True))
+                dynamic_test_cases.append((name_attr, str(max_val + 1), False))
+                dynamic_test_cases.append((name_attr, str(min_val - 1), False))
+                dynamic_test_cases.append((name_attr, "abc", False))
         else:
-            print(f"Discovered UNBOUNDED Field: '{name_attr}' | No explicit range found. Skipping auto-generation.")
+            print(f"Discovered VISIBLE UNBOUNDED Field: '{name_attr}' | No explicit range found.")
 
-    print(f"\nSuccessfully generated {len(dynamic_test_cases)} test cases purely from DOM reading!")
+    print(f"\nSuccessfully generated {len(dynamic_test_cases)} test cases for VISIBLE elements!")
 
     print("\n--- Phase 3: Automated Execution ---")
 
     for index, data in enumerate(dynamic_test_cases, start=1):
         locator_name, test_input, is_valid_scenario = data
 
-        # Extract a clean parameter name from the raw HTML name attribute for the report
         param_name_clean = locator_name.split('.')[-1].upper()
         display_input = str(test_input) if test_input != "" else "[EMPTY STRING]"
         if len(display_input) > 40:
@@ -141,23 +143,18 @@ def test_Smart_Auto_Validator(setup, local_ip):
         }
 
         try:
-            # Refresh page to clear unsaved state
             driver.get(radio1_url)
 
-            # Locate element
             target_element = WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located((By.NAME, locator_name))
             )
 
-            # Input value
             target_element.clear()
             target_element.send_keys(test_input)
 
-            # Click Save
             save_button = driver.find_element(By.XPATH, "//input[@value='Save']")
             save_button.click()
 
-            # Wait for Alert
             alert_triggered = False
             try:
                 WebDriverWait(driver, 5).until(EC.alert_is_present())
@@ -168,7 +165,6 @@ def test_Smart_Auto_Validator(setup, local_ip):
             except TimeoutException:
                 iteration_log += "No JavaScript alert triggered.\n"
 
-            # Evaluate Results
             if is_valid_scenario:
                 if alert_triggered is False:
                     test_iteration_result["status"] = "PASS"
