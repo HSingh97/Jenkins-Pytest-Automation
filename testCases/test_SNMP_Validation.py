@@ -24,7 +24,6 @@ LOG_FILE    = f"test-{ITER}.log"
 
 BUILD_PARAM_OIDS = {
     "Device Name": ".1.3.6.1.4.1.52619.1.2.2.1.0",
-    "HW Version":  ".1.3.6.1.4.1.52619.1.2.3.9.0",
     "Serial No":   ".1.3.6.1.4.1.52619.1.2.3.1.0",
     "IP Address":  ".1.3.6.1.4.1.52619.1.1.2.2.0",
     "FW Major":    ".1.3.6.1.4.1.52619.1.2.3.4.0",
@@ -166,6 +165,8 @@ def parse_snmp_output(raw_output, oid_map):
         })
     return records
 
+
+# ── INIT LOG ──────────────────────────────────────────────────────────────────
 with open(LOG_FILE, "w") as f:
     f.write(f"SNMP Validation | IP: {DEVICE_IP} | Iter: {ITER} | {datetime.now().isoformat()}\n")
     f.write("=" * 100 + "\n")
@@ -193,9 +194,9 @@ if raw.startswith("Error"):
     records = []
 else:
     records = parse_snmp_output(raw, oid_map)
-    log_print(f"Walk complete — {len(records)} OIDs received")
+    log_print(f"[PASS] Walk complete — {len(records)} OIDs received")
 
-log_print(f"\n Result :{RESULT_FILE} ...")
+log_print(f"\n[4] Saving iteration result to {RESULT_FILE} ...")
 iteration_result = {
     "iteration":      ITER,
     "timestamp":      datetime.now().isoformat(),
