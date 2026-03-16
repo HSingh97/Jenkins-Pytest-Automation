@@ -7,20 +7,19 @@ import json
 from datetime import datetime, timezone
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--device-ip",  required=True)
-parser.add_argument("--community",  default="ubr@rw123")
-parser.add_argument("--oid",        default=".1.3.6.1.4.1.52619.1")
-parser.add_argument("--mib-file",   default=os.path.expanduser("~/Downloads/SENAO-MIB.mib"))
-parser.add_argument("--iter",       type=int, required=True)
+parser.add_argument("--device-ip",        required=True)
+parser.add_argument("--read-community",   required=True)
+parser.add_argument("--write-community",  required=True)
+parser.add_argument("--mib-file",         required=True)
 args = parser.parse_args()
 
-DEVICE_IP  = args.device_ip
-COMMUNITY  = args.community
-OID        = args.oid
-MIB_FILE   = args.mib_file
-ITER       = args.iter
-RESULT_FILE = "SNMP_Validation.json"
-LOG_FILE    = f"test-{ITER}.log"
+DEVICE_IP        = args.device_ip
+READ_COMMUNITY   = args.read_community
+WRITE_COMMUNITY  = args.write_community
+OID              = ".1.3.6.1.4.1.52619.1"
+MIB_FILE         = args.mib_file
+RESULT_FILE      = "SNMP_Validation.json"
+LOG_FILE         = "snmp_validation.log"
 
 BUILD_PARAM_OIDS = {
     "Device Name": ".1.3.6.1.4.1.52619.1.2.2.1.0",
@@ -100,7 +99,7 @@ def load_mib(mib_path):
         oid = resolve(name)
         if oid:
             oid_to_name['.' + oid] = name
-    log_print(f"MIB: {len(oid_to_name)} OID names loaded")
+    log_print(f"MIB: {len(oid_to_name)} OID names loaded from {mib_path}")
     return oid_to_name
 
 
@@ -166,13 +165,13 @@ def parse_snmp_output(raw_output, oid_map):
     return records
 
 
-# ── INIT LOG ──────────────────────────────────────────────────────────────────
+# ── INIT LOG
 with open(LOG_FILE, "w") as f:
-    f.write(f"SNMP Validation | IP: {DEVICE_IP} | Iter: {ITER} | {datetime.now().isoformat()}\n")
+    f.write(f"SNMP Validation | IP: {DEVICE_IP} | {datetime.now().isoformat()}\n")
     f.write("=" * 100 + "\n")
 
 log_print("=" * 100)
-log_print(f"SNMP VALIDATION | Device: {DEVICE_IP} | Iteration: {ITER}")
+log_print(f"SNMP VALIDATION | Device: {DEVICE_IP}")
 log_print("=" * 100)
 
 overall_status = "PASS"
@@ -180,47 +179,59 @@ overall_status = "PASS"
 log_print(f"\n[1] Loading MIB: {MIB_FILE}")
 oid_map = load_mib(MIB_FILE)
 
-log_print(f"\n[2] Fetching build parameters from {DEVICE_IP} ...")
-build_params = fetch_build_params(DEVICE_IP, COMMUNITY)
+log_print(f"\n[2] Fetching build parameters from {DEVICE_IP} (using read community) ...")
+build_params = fetch_build_params(DEVICE_IP, READ_COMMUNITY)
 for k, v in build_params.items():
     log_print(f"    {k}: {v}")
 
-log_print(f"\n[3] Walking {DEVICE_IP} community={COMMUNITY} oid={OID} ...")
-raw = snmp_v2c_walk(DEVICE_IP, COMMUNITY, OID)
+# ── READ COMMUNITY
+log_print(f"\n[3] Walking {DEVICE_IP} with READ community ({READ_COMMUNITY}) oid={OID} ...")
+raw_read = snmp_v2c_walk(DEVICE_IP, READ_COMMUNITY, OID)
 
-if raw.startswith("Error"):
-    log_print(f"[FAIL] SNMP walk failed: {raw}")
+if raw_read.startswith("Error"):
+    log_print(f"[FAIL] Read community walk failed: {raw_read}")
     overall_status = "FAIL"
-    records = []
+    read_records = []
 else:
-    records = parse_snmp_output(raw, oid_map)
-    log_print(f"[PASS] Walk complete — {len(records)} OIDs received")
+    read_records = parse_snmp_output(raw_read, oid_map)
+    log_print(f"[PASS] Read walk complete — {len(read_records)} OIDs received")
 
-log_print(f"\n[4] Saving iteration result to {RESULT_FILE} ...")
-iteration_result = {
-    "iteration":      ITER,
-    "timestamp":      datetime.now().isoformat(),
-    "device_ip":      DEVICE_IP,
-    "community":      COMMUNITY,
-    "root_oid":       OID,
-    "oid_count":      len(records),
-    "overall_status": overall_status,
-    "build_params":   build_params,
-    "data":           records,
+# ── WRITE COMMUNITY
+log_print(f"\n[4] Walking {DEVICE_IP} with WRITE community ({WRITE_COMMUNITY}) oid={OID} ...")
+raw_write = snmp_v2c_walk(DEVICE_IP, WRITE_COMMUNITY, OID)
+
+if raw_write.startswith("Error"):
+    log_print(f"[FAIL] Write community walk failed: {raw_write}")
+    overall_status = "FAIL"
+    write_records = []
+else:
+    write_records = parse_snmp_output(raw_write, oid_map)
+    log_print(f"[PASS] Write walk complete — {len(write_records)} OIDs received")
+
+log_print(f"\n[5] Saving result to {RESULT_FILE} ...")
+result = {
+    "timestamp":       datetime.now().isoformat(),
+    "device_ip":       DEVICE_IP,
+    "root_oid":        OID,
+    "overall_status":  overall_status,
+    "build_params":    build_params,
+    "read_community":  {
+        "community":  READ_COMMUNITY,
+        "oid_count":  len(read_records),
+        "data":       read_records,
+    },
+    "write_community": {
+        "community":  WRITE_COMMUNITY,
+        "oid_count":  len(write_records),
+        "data":       write_records,
+    },
 }
 
-try:
-    with open(RESULT_FILE, "r") as f:
-        data = json.load(f)
-except Exception:
-    data = {"iterations": []}
-
-data["iterations"].append(iteration_result)
 with open(RESULT_FILE, "w") as f:
-    json.dump(data, f, indent=4)
+    json.dump(result, f, indent=4)
 
-log_print(f"JSON result updated: {RESULT_FILE}")
-log_print(f"\nITERATION {ITER} → {overall_status}")
+log_print(f"JSON result saved: {RESULT_FILE}")
+log_print(f"\nResult → {overall_status}")
 log_print("=" * 100)
 
 exit(0 if overall_status == "PASS" else 1)
