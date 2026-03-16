@@ -193,9 +193,9 @@ if raw.startswith("Error"):
     records = []
 else:
     records = parse_snmp_output(raw, oid_map)
-    log_print(f"[PASS] Walk complete — {len(records)} OIDs received")
+    log_print(f"Walk complete — {len(records)} OIDs received")
 
-log_print(f"\n[4] Saving iteration result to {RESULT_FILE} ...")
+log_print(f"\n Result :{RESULT_FILE} ...")
 iteration_result = {
     "iteration":      ITER,
     "timestamp":      datetime.now().isoformat(),
