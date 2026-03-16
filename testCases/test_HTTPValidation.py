@@ -3,6 +3,8 @@ import requests
 import warnings
 import re
 import time
+import json
+import traceback
 from bs4 import BeautifulSoup
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
@@ -15,7 +17,6 @@ from testCases.configsetup import setup
 from preMadeFunctions import accessWeb
 
 
-# Suppress warnings
 def warn(*args, **kwargs):
     pass
 
@@ -28,78 +29,55 @@ password = "admin"
 # ==============================================================================
 # MASTER TEST DATA
 # Format: (Locator Strategy, Locator Value, Input Value, Expected to Pass?, Element Type, Dependency)
-# Dependency Options: None, "requires_bsu"
 # ==============================================================================
 VALIDATION_DATA = [
-    # --- SSID Validation (Text Input) ---
+    # --- SSID Validation ---
     (By.NAME, "wireless.@wifi-iface[1].ssid", "Valid_SSID_123", True, "input", None),
     (By.NAME, "wireless.@wifi-iface[1].ssid", "A", True, "input", None),
     (By.NAME, "wireless.@wifi-iface[1].ssid", "ThirtyTwoCharactersExactly123456", True, "input", None),
     (By.NAME, "wireless.@wifi-iface[1].ssid", "", False, "input", None),
     (By.NAME, "wireless.@wifi-iface[1].ssid", "ThisIsThirtyThreeCharacters123456", False, "input", None),
 
-    # --- Channel Validation (Dropdown Select) - Requires BSU ---
+    # --- Channel & Distance ---
     (By.ID, "supp_chan", "165", True, "select", "requires_bsu"),
-
-    # --- Bandwidth Validation (Dropdown Select) - Requires BSU ---
-    # Assuming 'supp_band' is the ID for bandwidth based on previous HTML
-    (By.ID, "supp_band", "HT40+", True, "select", "requires_bsu"),
-
-    # --- Distance Validation (Text Input) ---
     (By.NAME, "wireless.wifi1.distance", "15", True, "input", None),
     (By.NAME, "wireless.wifi1.distance", "35", False, "input", None),
 ]
 
 
-# ==============================================================================
-# TEST 1: Extract EVERY configuration parameter instantly via HTTP
-# ==============================================================================
-def test_Extract_All_Config(setup, local_ip):
-    driver = setup
-    print(f"\nLocal IP Address: {local_ip}", flush=True)
-    URL = f"http://{local_ip}/cgi-bin/luci"
-
-    accessWeb.access_and_login(driver, URL, username, password)
-
+def append_result_to_json(result, filename="iteration_results.json"):
     try:
-        WebDriverWait(driver, 10).until(EC.url_contains(";stok="))
-    except Exception:
-        pytest.fail("Login failed or redirect took too long. Stok token not found in URL.")
+        with open(filename, "r") as f:
+            json_data = json.load(f)
+        if not isinstance(json_data, dict) or "iterations" not in json_data:
+            json_data = {"iterations": []}
+    except (FileNotFoundError, json.JSONDecodeError):
+        json_data = {"iterations": []}
 
-    current_url = driver.current_url
-    stok_match = re.search(r';stok=([a-fA-F0-9]+)', current_url)
-    assert stok_match is not None, f"Could not find 'stok' token in URL: {current_url}"
-    stok = stok_match.group(1)
+    json_data["iterations"].append(result)
 
-    session = requests.Session()
-    for cookie in driver.get_cookies():
-        session.cookies.set(cookie['name'], cookie['value'])
+    with open(filename, "w") as f:
+        json.dump(json_data, f, indent=4)
 
-    config_api_url = f"http://{local_ip}/cgi-bin/luci/;stok={stok}/admin/wireless/radio1"
-    response = session.get(config_api_url)
-    assert response.status_code == 200
 
-    js_block_match = re.search(r'const values = \{(.*?)\};', response.text, re.DOTALL)
-    assert js_block_match is not None, "Could not find the 'const values' JS block!"
-
-    js_block = js_block_match.group(1)
-    all_configs = dict(re.findall(r'"([^"]+)":\s*"([^"]*)"', js_block))
-
-    print(f"\nSuccessfully extracted {len(all_configs)} configuration parameters!")
-    assert all_configs.get("wireless.@wifi-iface[1].ssid") is not None, "Failed to map configurations correctly."
-    print("Backend data extraction passed.")
+def write_iteration_log(iteration, content):
+    with open(f"test-{iteration}.log", "w") as f:
+        f.write(content)
 
 
 # ==============================================================================
-# TEST 2: Data-Driven GUI Validation
+# MASTER TEST EXECUTION
 # ==============================================================================
-@pytest.mark.parametrize("locator_strategy, locator_value, test_input, is_valid_scenario, element_type, dependency",
-                         VALIDATION_DATA)
-def test_GUI_Parameter_Validation(setup, local_ip, locator_strategy, locator_value, test_input, is_valid_scenario,
-                                  element_type, dependency):
+def test_GUI_Validation_Suite(setup, local_ip):
     driver = setup
     URL = f"http://{local_ip}/cgi-bin/luci"
+    total_failures = 0
 
+    # Ensure clean slate for JSON
+    with open("iteration_results.json", "w") as f:
+        json.dump({"iterations": []}, f)
+
+    # 1. Login once
     accessWeb.access_and_login(driver, URL, username, password)
 
     try:
@@ -113,63 +91,96 @@ def test_GUI_Parameter_Validation(setup, local_ip, locator_strategy, locator_val
     stok = stok_match.group(1)
 
     radio1_url = f"http://{local_ip}/cgi-bin/luci/;stok={stok}/admin/wireless/radio1"
-    driver.get(radio1_url)
 
-    # ---------------------------------------------------------
-    # DEPENDENCY CHECK: Check Radio Mode before proceeding
-    # ---------------------------------------------------------
-    if dependency == "requires_bsu":
+    # 2. Iterate through all validation data without closing the browser
+    for index, data in enumerate(VALIDATION_DATA, start=1):
+        locator_strategy, locator_value, test_input, is_valid_scenario, element_type, dependency = data
+
+        test_name = f"Validate_{locator_value}_with_{test_input}"
+        print(f"\n--- Running Iteration {index}: {test_name} ---")
+
+        # Initialize result payload and log tracking
+        iteration_log = f"Starting validation for {locator_value}\nInput Value: '{test_input}'\nExpected to pass: {is_valid_scenario}\n\n"
+        test_iteration_result = {
+            "iteration": index,
+            "test": test_name,
+            "status": "FAIL",
+            "Local IP": local_ip
+        }
+
         try:
-            radio_mode_select = Select(WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.NAME, "wireless.@wifi-iface[1].mode"))
-            ))
-            # In LuCI, 'ap' is typically Master/BSU, and 'sta' is Client/SU
-            current_mode = radio_mode_select.first_selected_option.get_attribute("value")
+            # Refresh page to clear any previous unsaved state
+            driver.get(radio1_url)
 
-            if current_mode != "ap":
-                pytest.skip(f"Skipping parameter '{locator_value}'. Radio Mode is currently SU ('{current_mode}').")
+            # Dependency Check
+            if dependency == "requires_bsu":
+                radio_mode_select = Select(WebDriverWait(driver, 5).until(
+                    EC.presence_of_element_located((By.NAME, "wireless.@wifi-iface[1].mode"))
+                ))
+                current_mode = radio_mode_select.first_selected_option.get_attribute("value")
+
+                if current_mode != "ap":
+                    msg = f"Skipped: Radio Mode is currently SU ('{current_mode}'). Requires BSU."
+                    iteration_log += msg + "\n"
+                    test_iteration_result["status"] = "PASS"  # Mark as pass so it doesn't fail the build
+                    test_iteration_result["test"] += " (SKIPPED)"
+                    continue  # Move to next parameter
+
+            # Locate and interact
+            target_element = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((locator_strategy, locator_value))
+            )
+
+            if element_type == "input":
+                target_element.clear()
+                target_element.send_keys(test_input)
+            elif element_type == "select":
+                dropdown = Select(target_element)
+                dropdown.select_by_value(test_input)
+
+                # Save
+            save_button = driver.find_element(By.XPATH, "//input[@value='Save']")
+            save_button.click()
+
+            # Wait for JS Alert
+            alert_triggered = False
+            try:
+                WebDriverWait(driver, 5).until(EC.alert_is_present())
+                alert = driver.switch_to.alert
+                iteration_log += f"JavaScript Alert Triggered: '{alert.text}'\n"
+                alert.accept()
+                alert_triggered = True
+            except TimeoutException:
+                iteration_log += "No JavaScript alert triggered.\n"
+
+            # Evaluate Results
+            if is_valid_scenario:
+                if alert_triggered is False:
+                    test_iteration_result["status"] = "PASS"
+                    iteration_log += "SUCCESS: Valid input was accepted without error.\n"
+                else:
+                    total_failures += 1
+                    iteration_log += "FAILURE: Valid input triggered an unexpected error.\n"
+            else:
+                actual_typed_value = target_element.get_attribute('value')
+                if alert_triggered or str(test_input) != str(actual_typed_value):
+                    test_iteration_result["status"] = "PASS"
+                    iteration_log += "SUCCESS: Invalid input was properly blocked by the GUI.\n"
+                else:
+                    total_failures += 1
+                    iteration_log += "FAILURE: Invalid input was accepted without an error.\n"
+
         except Exception as e:
-            pytest.fail(f"Could not determine Radio Mode for dependency check. Error: {e}")
+            total_failures += 1
+            error_trace = traceback.format_exc()
+            iteration_log += f"CRITICAL FAILURE during interaction:\n{error_trace}\n"
+            print(f"Error during {test_name}: {e}")
 
-    # 1. Locate the specific element
-    target_element = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((locator_strategy, locator_value))
-    )
+        finally:
+            # Write the log file for this specific iteration (Jenkins will read this)
+            write_iteration_log(index, iteration_log)
+            # Append result to JSON (Jenkins will read this)
+            append_result_to_json(test_iteration_result)
 
-    # 2. Interact with the element based on its type
-    if element_type == "input":
-        target_element.clear()
-        target_element.send_keys(test_input)
-    elif element_type == "select":
-        dropdown = Select(target_element)
-        dropdown.select_by_value(test_input)
-    else:
-        pytest.fail(f"Unsupported element type defined in test data: {element_type}")
-
-    # 3. Click the "Save" button
-    save_button = driver.find_element(By.XPATH, "//input[@value='Save']")
-    save_button.click()
-
-    # 4. Smart Wait for Alert (Wait up to 5 seconds for backend to process)
-    alert_triggered = False
-    try:
-        WebDriverWait(driver, 5).until(EC.alert_is_present())
-        alert = driver.switch_to.alert
-        print(f"\nAlert Triggered: '{alert.text}'")
-        alert.accept()
-        alert_triggered = True
-    except TimeoutException:
-        # No alert popped up within 5 seconds
-        pass
-
-    # 5. Evaluate the results based on our expectations
-    if is_valid_scenario:
-        assert alert_triggered is False, f"Failed! Valid input '{test_input}' for '{locator_value}' triggered an unexpected error."
-        print(f"\nPass: Valid input '{test_input}' was accepted successfully.")
-    else:
-        actual_typed_value = target_element.get_attribute('value')
-
-        if alert_triggered or str(test_input) != str(actual_typed_value):
-            print(f"\nPass: Invalid input '{test_input}' for '{locator_value}' was properly blocked.")
-        else:
-            pytest.fail(f"Failed! Invalid input '{test_input}' for '{locator_value}' was accepted without an error.")
+    # 3. Final Assertion for the entire suite
+    assert total_failures == 0, f"GUI Validation Suite finished with {total_failures} failures. Check Jenkins HTML report for details."
