@@ -345,9 +345,6 @@ pipeline {
                     reportName           : 'SNMP Validation Report'
                 ])
 
-                // ────────────────────────────────────────────────
-                //  FIXED PART — replaced new File().exists()
-                // ────────────────────────────────────────────────
                 if (fileExists('SNMP_Validation.json')) {
                     def jsonReport = readJSON file: 'SNMP_Validation.json'
                     def status     = jsonReport.overall_status ?: "UNKNOWN"
