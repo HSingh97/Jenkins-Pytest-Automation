@@ -4,8 +4,6 @@ import warnings
 import re
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-
-# Assuming these exist in your project structure
 from pageObjects.LoginPage import LoginPage
 from testCases.configsetup import setup
 from preMadeFunctions import accessWeb
@@ -52,7 +50,7 @@ def test_Validate_Config(setup, local_ip):
     # PHASE 2: HTTP / Data Configuration Validation
     # ==========================================
 
-    # NEW: Extract the 'stok' token from the Selenium URL
+    # Extract the 'stok' token from the Selenium URL
     current_url = driver.current_url
     stok_match = re.search(r';stok=([a-fA-F0-9]+)', current_url)
 
@@ -80,7 +78,15 @@ def test_Validate_Config(setup, local_ip):
 
     # Validate the actual configuration data
     try:
+        # Try to parse as JSON first (if you ever target a real API endpoint)
         config_data = response.json()
-        print("Data configuration validation passed.")
-    except requests.exceptions.JSONDecodeError:
-        print("Response was not JSON. The overview page usually returns HTML, but the connection was successful!")
+        print("Data configuration validation passed (JSON format).")
+    except ValueError:
+        # Fallback: The server returned HTML or raw text
+        print("Response was not JSON. Server returned HTML.")
+
+        # Example validation for HTML: Check if the string we care about is in the page source
+        # You can change "radio1" to a specific MAC address or SSID you expect to see on this page
+        expected_string = "radio1"
+        assert expected_string in response.text, f"Configuration string '{expected_string}' not found in the HTML source."
+        print(f"Data configuration validation passed (Found '{expected_string}' in HTML).")
