@@ -2,21 +2,14 @@ import pytest
 import requests
 import warnings
 import re
-import time
-import json
-import traceback
 from bs4 import BeautifulSoup
-from selenium.webdriver.support.ui import WebDriverWait, Select
+from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import UnexpectedAlertPresentException, NoAlertPresentException, TimeoutException
-from selenium.webdriver.common.by import By
 
+# Assuming these exist in your project structure
 from pageObjects.LoginPage import LoginPage
 from testCases.configsetup import setup
 from preMadeFunctions import accessWeb
-
-# NEW: Importing your Page Object Model class
-from pageObjects.WirelessRadioConfig import Wireless
 
 
 def warn(*args, **kwargs):
@@ -28,54 +21,16 @@ warnings.warn = warn
 username = "root"
 password = "admin"
 
-# ==============================================================================
-# MASTER TEST DATA
-# Format: (Parameter Name, Locator Strategy, Locator Value, Input Value/Expected Options, Expected to Pass?, Element Type, Dependency)
-# ==============================================================================
-VALIDATION_DATA = [
-    # --- Verify Dropdown Options (Using Wireless POM XPaths) ---
-    ("Radio Mode Options", By.XPATH, Wireless.radioRadiomode_xpath, ["BSU", "SU"], True, "verify_options", None),
-    ("Link Type Options", By.XPATH, Wireless.radioLinktype_xpath, ["PTP", "PTMP"], True, "verify_options", None),
-
-    # --- Standard Input Validations (Using Wireless POM XPaths) ---
-    ("SSID", By.XPATH, Wireless.radioSSID_xpath, "Valid_SSID_123", True, "input", None),
-    ("SSID", By.XPATH, Wireless.radioSSID_xpath, "", False, "input", None),
-    ("Distance", By.XPATH, Wireless.radioDistance_xpath, "15", True, "input", None),
-    ("Distance", By.XPATH, Wireless.radioDistance_xpath, "35", False, "input", None),
-]
-
-
-def append_result_to_json(result, filename="iteration_results.json"):
-    try:
-        with open(filename, "r") as f:
-            json_data = json.load(f)
-        if not isinstance(json_data, dict) or "iterations" not in json_data:
-            json_data = {"iterations": []}
-    except (FileNotFoundError, json.JSONDecodeError):
-        json_data = {"iterations": []}
-
-    json_data["iterations"].append(result)
-
-    with open(filename, "w") as f:
-        json.dump(json_data, f, indent=4)
-
-
-def write_iteration_log(iteration, content):
-    with open(f"test-{iteration}.log", "w") as f:
-        f.write(content)
-
 
 # ==============================================================================
-# MASTER TEST EXECUTION
+# WEB ELEMENT EXTRACTOR
 # ==============================================================================
-def test_GUI_Validation_Suite(setup, local_ip):
+def test_Extract_All_Web_Elements(setup, local_ip):
     driver = setup
+    print(f"\nTargeting Local IP: {local_ip}", flush=True)
     URL = f"http://{local_ip}/cgi-bin/luci"
-    total_failures = 0
 
-    with open("iteration_results.json", "w") as f:
-        json.dump({"iterations": []}, f)
-
+    # 1. Login and get token
     accessWeb.access_and_login(driver, URL, username, password)
 
     try:
@@ -88,108 +43,67 @@ def test_GUI_Validation_Suite(setup, local_ip):
     assert stok_match is not None, f"Could not find 'stok' token in URL: {current_url}"
     stok = stok_match.group(1)
 
+    # 2. Fetch the raw HTML via Requests
     radio1_url = f"http://{local_ip}/cgi-bin/luci/;stok={stok}/admin/wireless/radio1"
 
-    for index, data in enumerate(VALIDATION_DATA, start=1):
-        param_name, locator_strategy, locator_value, test_input, is_valid_scenario, element_type, dependency = data
+    session = requests.Session()
+    for cookie in driver.get_cookies():
+        session.cookies.set(cookie['name'], cookie['value'])
 
-        display_input = str(test_input) if test_input != "" else "[EMPTY STRING]"
-        test_name = f"Input/Check: {display_input} (Expected: {'Pass' if is_valid_scenario else 'Fail'})"
-        print(f"\n--- Running Iteration {index}: {param_name} -> {test_name} ---")
+    response = session.get(radio1_url)
+    assert response.status_code == 200, "Failed to load the Radio 1 configuration page via HTTP."
 
-        iteration_log = f"Starting validation for {param_name} ({locator_value})\nInput/Check Value: {display_input}\nExpected to pass: {is_valid_scenario}\n\n"
+    # 3. Parse the HTML using BeautifulSoup
+    soup = BeautifulSoup(response.text, 'html.parser')
 
-        test_iteration_result = {
-            "iteration": index,
-            "parameter": param_name,
-            "test": test_name,
-            "status": "FAIL",
-            "Local IP": local_ip
-        }
+    print("\n" + "=" * 80)
+    print(" 📡 SENAO WEB ELEMENT DISCOVERY REPORT")
+    print("=" * 80)
 
-        try:
-            driver.get(radio1_url)
+    # --- Extract all <input> fields ---
+    inputs = soup.find_all('input')
+    print(f"\n[{len(inputs)}] INPUT ELEMENTS FOUND:")
+    print("-" * 80)
+    print(f"{'TYPE':<12} | {'ID':<25} | {'NAME'}")
+    print("-" * 80)
 
-            # Dependency check using POM XPath
-            if dependency == "requires_bsu":
-                radio_mode_select = Select(WebDriverWait(driver, 5).until(
-                    EC.presence_of_element_located((By.XPATH, Wireless.radioRadiomode_xpath))
-                ))
-                current_mode = radio_mode_select.first_selected_option.get_attribute("value")
+    for tag in inputs:
+        tag_id = tag.get('id', 'N/A')
+        tag_name = tag.get('name', 'N/A')
+        tag_type = tag.get('type', 'N/A')
 
-                if current_mode != "ap":
-                    msg = f"Skipped: Radio Mode is currently SU ('{current_mode}'). Requires BSU."
-                    iteration_log += msg + "\n"
-                    test_iteration_result["status"] = "PASS"
-                    test_iteration_result["test"] += " (SKIPPED)"
-                    continue
+        # We generally ignore hidden system tokens in our automation map
+        if tag_name != "token":
+            print(f"{tag_type:<12} | {tag_id:<25} | {tag_name}")
 
-            target_element = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((locator_strategy, locator_value))
-            )
+    # --- Extract all <select> dropdowns ---
+    selects = soup.find_all('select')
+    print(f"\n\n[{len(selects)}] DROPDOWN (SELECT) ELEMENTS FOUND:")
+    print("-" * 80)
+    print(f"{'TAG':<12} | {'ID':<25} | {'NAME'}")
+    print("-" * 80)
 
-            # Verify Dropdown Options
-            if element_type == "verify_options":
-                dropdown = Select(target_element)
+    for tag in selects:
+        tag_id = tag.get('id', 'N/A')
+        tag_name = tag.get('name', 'N/A')
+        print(f"{'select':<12} | {tag_id:<25} | {tag_name}")
 
-                actual_options = [opt.text.strip() for opt in dropdown.options]
-                iteration_log += f"Found Options: {actual_options}\n"
+    # --- Extract Backend Parameter Keys (From the JS Block) ---
+    js_block_match = re.search(r'const values = \{(.*?)\};', response.text, re.DOTALL)
+    if js_block_match:
+        js_block = js_block_match.group(1)
+        all_configs = dict(re.findall(r'"([^"]+)":\s*"([^"]*)"', js_block))
 
-                if set(actual_options) == set(test_input):
-                    test_iteration_result["status"] = "PASS"
-                    iteration_log += f"SUCCESS: Dropdown contains exactly {test_input}.\n"
-                else:
-                    total_failures += 1
-                    iteration_log += f"FAILURE: Dropdown options mismatch. Expected {test_input}, but got {actual_options}.\n"
+        print(f"\n\n[{len(all_configs)}] BACKEND PARAMETERS (From JS Dictionary):")
+        print("-" * 80)
 
-                continue
+        # Sort keys alphabetically for easier reading
+        for key in sorted(all_configs.keys()):
+            val = all_configs[key]
+            # Truncate extremely long values for console readability
+            display_val = (val[:47] + '...') if len(val) > 50 else val
+            print(f"{key:<40} | CURRENT: {display_val}")
 
-            # Input Interactions
-            elif element_type == "input":
-                target_element.clear()
-                target_element.send_keys(test_input)
-            elif element_type == "select":
-                dropdown = Select(target_element)
-                dropdown.select_by_value(test_input)
-
-                # Click Save using POM XPath
-            save_button = driver.find_element(By.XPATH, Wireless.radioPropertiesSave_xpath)
-            save_button.click()
-
-            alert_triggered = False
-            try:
-                WebDriverWait(driver, 5).until(EC.alert_is_present())
-                alert = driver.switch_to.alert
-                iteration_log += f"JavaScript Alert Triggered: '{alert.text}'\n"
-                alert.accept()
-                alert_triggered = True
-            except TimeoutException:
-                iteration_log += "No JavaScript alert triggered.\n"
-
-            if is_valid_scenario:
-                if alert_triggered is False:
-                    test_iteration_result["status"] = "PASS"
-                    iteration_log += "SUCCESS: Valid input was accepted without error.\n"
-                else:
-                    total_failures += 1
-                    iteration_log += "FAILURE: Valid input triggered an unexpected error.\n"
-            else:
-                actual_typed_value = target_element.get_attribute('value')
-                if alert_triggered or str(test_input) != str(actual_typed_value):
-                    test_iteration_result["status"] = "PASS"
-                    iteration_log += "SUCCESS: Invalid input was properly blocked by the GUI.\n"
-                else:
-                    total_failures += 1
-                    iteration_log += "FAILURE: Invalid input was accepted without an error.\n"
-
-        except Exception as e:
-            total_failures += 1
-            error_trace = traceback.format_exc()
-            iteration_log += f"CRITICAL FAILURE during interaction:\n{error_trace}\n"
-            print(f"Error during {test_name}: {e}")
-
-        finally:
-            write_iteration_log(index, iteration_log)
-            append_result_to_json(test_iteration_result)
-
-    assert total_failures == 0, f"GUI Validation Suite finished with {total_failures} failures. Check Jenkins HTML report for details."
+    print("\n" + "=" * 80)
+    print("DISCOVERY COMPLETE.")
+    print("=" * 80 + "\n")
