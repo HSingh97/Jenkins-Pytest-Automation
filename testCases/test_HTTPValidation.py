@@ -23,13 +23,13 @@ def warn(*args, **kwargs):
 
 warnings.warn = warn
 
-# We will discover visible elements for both users, but run validations as root
+# We will discover visible elements for all users, but run validations as root
 MAIN_USER = "root"
 MAIN_PASS = "admin"
 
 DISCOVERY_USERS = [
-    {"user": MAIN_USER, "pass": MAIN_PASS},
-    {"user": "admin", "pass": "admin"},  # Update password if different
+    {"user": "root", "pass": "admin"},
+    {"user": "admin", "pass": "admin"},
     {"user": "develop", "pass": "ind655"}
 ]
 
