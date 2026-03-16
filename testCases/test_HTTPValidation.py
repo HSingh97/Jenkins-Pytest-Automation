@@ -30,10 +30,8 @@ def append_result_to_json(result, filename="iteration_results.json"):
     try:
         with open(filename, "r") as f:
             json_data = json.load(f)
-        if not isinstance(json_data, dict) or "iterations" not in json_data:
-            json_data = {"iterations": []}
     except (FileNotFoundError, json.JSONDecodeError):
-        json_data = {"iterations": []}
+        json_data = {"current_configs": {}, "iterations": []}
 
     json_data["iterations"].append(result)
 
@@ -54,8 +52,9 @@ def test_Smart_Auto_Validator(setup, local_ip):
     URL = f"http://{local_ip}/cgi-bin/luci"
     total_failures = 0
 
+    # Initialize JSON with both config data and iterations
     with open("iteration_results.json", "w") as f:
-        json.dump({"iterations": []}, f)
+        json.dump({"current_configs": {}, "iterations": []}, f)
 
     print("\n--- Phase 1: Authentication & Navigation ---")
     accessWeb.access_and_login(driver, URL, username, password)
@@ -72,7 +71,19 @@ def test_Smart_Auto_Validator(setup, local_ip):
     time.sleep(1)
 
     print("\n--- Phase 2: Dynamic Element Discovery & Rule Generation ---")
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
+    rendered_html = driver.page_source
+    soup = BeautifulSoup(rendered_html, 'html.parser')
+
+    # Extract the current configurations and save to JSON
+    js_block_match = re.search(r'const values = \{(.*?)\};', rendered_html, re.DOTALL)
+    if js_block_match:
+        all_configs = dict(re.findall(r'"([^"]+)":\s*"([^"]*)"', js_block_match.group(1)))
+        with open("iteration_results.json", "r") as f:
+            json_data = json.load(f)
+        json_data["current_configs"] = all_configs
+        with open("iteration_results.json", "w") as f:
+            json.dump(json_data, f, indent=4)
+
     dynamic_test_cases = []
 
     inputs = soup.find_all('input')
@@ -81,20 +92,20 @@ def test_Smart_Auto_Validator(setup, local_ip):
     for tag in valid_inputs:
         name_attr = tag.get('name')
 
-        # --- NEW VISIBILITY CHECK ---
-        # Ask Selenium if the element is actually visible on the screen right now
         try:
             sel_elem = driver.find_element(By.NAME, name_attr)
             if not sel_elem.is_displayed():
                 print(f"Skipping HIDDEN Field: '{name_attr}' (Requires different login or mode)")
                 continue
         except Exception:
-            print(f"Skipping MISSING Field: '{name_attr}'")
             continue
 
-        # Look at the parent element's text to find the hints (e.g., "(1-32) characters")
         parent_text = tag.parent.text.strip()
+
+        # Regex 1: Looks for a range (e.g., "1-32")
         range_match = re.search(r'\((\d+)\s*-\s*(\d+)\)', parent_text)
+        # Regex 2: Looks for exact length (e.g., "8 characters")
+        exact_match = re.search(r'\b(\d+)\s*character', parent_text, re.IGNORECASE)
 
         if range_match:
             min_val = int(range_match.group(1))
@@ -114,6 +125,12 @@ def test_Smart_Auto_Validator(setup, local_ip):
                 dynamic_test_cases.append((name_attr, str(max_val + 1), False))
                 dynamic_test_cases.append((name_attr, str(min_val - 1), False))
                 dynamic_test_cases.append((name_attr, "abc", False))
+        elif exact_match:
+            exact_val = int(exact_match.group(1))
+            print(f"Discovered VISIBLE EXACT STRING Field: '{name_attr}' | Length: {exact_val} chars")
+            dynamic_test_cases.append((name_attr, "A" * exact_val, True))
+            dynamic_test_cases.append((name_attr, "A" * (exact_val + 1), False))
+            dynamic_test_cases.append((name_attr, "A" * (exact_val - 1), False))
         else:
             print(f"Discovered VISIBLE UNBOUNDED Field: '{name_attr}' | No explicit range found.")
 
