@@ -1,9 +1,3 @@
-import jenkins.model.Jenkins
-
-def archiveArtifacts(pattern) {
-    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
-}
-
 pipeline {
     agent {
         node {
@@ -38,13 +32,15 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                echo "----------------------------------------"
-                echo "Installing Dependencies "
-                echo "----------------------------------------"
-                sh "sh utilities/requirements.txt"
-
+                script {
+                    echo "----------------------------------------"
+                    echo "Installing Dependencies "
+                    echo "----------------------------------------"
+                    sh "sh utilities/requirements.txt"
+                }
                 sh '''
                     which snmpget >/dev/null 2>&1 || {
+                        echo "--- Installing SNMP tools ---"
                         sudo apt-get update -qq
                         sudo apt-get install -y snmp snmp-mibs-downloader
                     }
@@ -56,10 +52,10 @@ pipeline {
         stage('Run SNMP Validation') {
             steps {
                 script {
-                    def deviceIP  = params.Device_IP.toString().trim()
-                    def community = params.SNMP_Community.toString().trim()
-                    def rootOid   = params.Root_OID.toString().trim()
-                    def count     = params.ITERATION_COUNT.toInteger()
+                    def deviceIP   = params.Device_IP.toString().trim()
+                    def community  = params.SNMP_Community.toString().trim()
+                    def rootOid    = params.Root_OID.toString().trim()
+                    def count      = params.ITERATION_COUNT.toInteger()
                     def scriptPath = "testCases/test_SNMP_Validation.py"
 
                     echo "----------------------------------------"
@@ -92,19 +88,19 @@ pipeline {
                     def community = params.SNMP_Community.toString().trim()
                     def rootOid   = params.Root_OID.toString().trim()
 
-                    def jsonReport = readJSON file: 'SNMP_Validation.json'
-                    def total  = jsonReport.iterations?.size() ?: 0
-                    def pass   = jsonReport.iterations?.count { it.overall_status == 'PASS' } ?: 0
-                    def fail   = total - pass
-                    def rate   = total > 0 ? String.format("%.1f", (pass * 100.0 / total)) : "0.0"
-
-                    def istZone       = TimeZone.getTimeZone("Asia/Kolkata")
+                    def jsonReport     = readJSON file: 'SNMP_Validation.json'
+                    def total          = jsonReport.iterations?.size() ?: 0
+                    def pass           = jsonReport.iterations?.count { it.overall_status == 'PASS' } ?: 0
+                    def fail           = total - pass
+                    def rate           = total > 0 ? String.format("%.1f", (pass * 100.0 / total)) : "0.0"
+                    def istZone        = TimeZone.getTimeZone("Asia/Kolkata")
                     def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", istZone)
-                    def pipelineName  = env.JOB_NAME
+                    def pipelineName   = env.JOB_NAME
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
-                    // Grab build params from first iteration result (already fetched by Python via SNMP)
-                    def bp = jsonReport.iterations ? jsonReport.iterations[0].build_params : [:]
+                    // Build params fetched by Python via SNMP — read from first iteration
+                    def bp = (jsonReport.iterations && jsonReport.iterations.size() > 0)
+                        ? jsonReport.iterations[0].build_params : [:]
                     def buildParams = [
                         "Device Name" : bp["Device Name"] ?: "N/A",
                         "HW Version"  : bp["HW Version"]  ?: "N/A",
@@ -154,7 +150,6 @@ pipeline {
 </head>
 <body>
 <div class="container">
-
   <div class="header">
     <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
     <div class="header-info">
@@ -216,7 +211,6 @@ pipeline {
                     htmlContent += tableRows + """
   </table>
 </div>
-
 <div id="logModal" class="modal">
   <div class="modal-content">
     <div class="modal-header">
@@ -240,7 +234,10 @@ ${logDataBlocks}
     post {
         always {
             script {
-                archiveArtifacts(pattern: "SNMP_Validation.json, SNMP_Validation.html, test-*.log")
+                // Use built-in archiveArtifacts step directly — no custom wrapper
+                archiveArtifacts artifacts: 'SNMP_Validation.json, SNMP_Validation.html, test-*.log',
+                                 fingerprint: true,
+                                 allowEmptyArchive: true
 
                 publishHTML(target: [
                     allowMissing         : false,
