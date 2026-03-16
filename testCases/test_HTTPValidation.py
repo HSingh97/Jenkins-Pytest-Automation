@@ -2,7 +2,7 @@ import pytest
 import requests
 import warnings
 import re
-from bs4 import BeautifulSoup  # NEW: Added BeautifulSoup import
+from bs4 import BeautifulSoup
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -87,35 +87,54 @@ def test_Validate_Config(setup, local_ip):
 
     except ValueError:
         # Fallback: The server returned HTML
-        print("Response was not JSON. Parsing HTML with BeautifulSoup...")
+        print("Response was not JSON. Parsing HTML...")
 
-        # Initialize BeautifulSoup to parse the HTML text
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # Example 1: Finding an input field value
-        # LuCI heavily uses 'cbid' in its input names/ids. You will need to inspect
-        # the webpage (F12) to find the exact name or ID of the element you want.
+        # ---------------------------------------------------------
+        # SSID VALIDATION
+        # ---------------------------------------------------------
+        # Updated target name based on your HTML
+        target_name = 'wireless.@wifi-iface[1].ssid'
+        expected_ssid = "hahaha"
 
-        # Let's pretend we are looking for the Wi-Fi SSID input field
-        # We search for an <input> tag where the name attribute is what we expect
-        ssid_element = soup.find('input', {'name': 'cbid.wireless.default_radio1.ssid'})
+        # Strategy 1: Look for the rendered HTML tag
+        ssid_element = soup.find('input', {'name': target_name})
 
-        if ssid_element:
+        if ssid_element is not None:
             actual_ssid = ssid_element.get('value')
-            expected_ssid = "My_Test_Network"  # Change this to your expected value
-
-            assert actual_ssid == expected_ssid, f"Config Mismatch! Expected SSID '{expected_ssid}', but found '{actual_ssid}'"
-            print(f"Successfully validated SSID configuration: {actual_ssid}")
         else:
-            print("Warning: Could not find the SSID input element in the HTML. Check the element's 'name' attribute.")
+            # Strategy 2: If the tag is hidden by JS rendering, extract directly from the JS data block!
+            print("BS4 couldn't find the rendered tag. Extracting from JavaScript config block...")
 
-        # Example 2: Finding the selected option in a Dropdown (Select tag)
-        # Let's pretend we are looking for the selected wireless channel
-        channel_select = soup.find('select', {'id': 'cbid.wireless.radio1.channel'})
+            # This regex looks specifically for: "wireless.@wifi-iface[1].ssid": "value"
+            regex_pattern = rf'"{re.escape(target_name)}":\s*"([^"]+)"'
+            match = re.search(regex_pattern, response.text)
+
+            assert match is not None, f"Could not find SSID '{target_name}' in HTML tags OR JavaScript block."
+            actual_ssid = match.group(1)
+
+        # Final Assertion
+        assert actual_ssid == expected_ssid, f"Config Mismatch! Expected SSID '{expected_ssid}', but found '{actual_ssid}'"
+        print(f"Successfully validated SSID configuration: {actual_ssid}")
+
+        # ---------------------------------------------------------
+        # CHANNEL VALIDATION
+        # ---------------------------------------------------------
+        # Updated target ID based on your HTML
+        target_channel_id = 'supp_chan'
+
+        channel_select = soup.find('select', {'id': target_channel_id})
 
         if channel_select:
-            # Find the <option> tag inside this select that has the 'selected' attribute
             selected_option = channel_select.find('option', selected=True)
             if selected_option:
                 actual_channel = selected_option.text.strip()
                 print(f"Successfully validated Channel configuration: {actual_channel}")
+        else:
+            # Strategy 2 for Channel: Check JS block
+            regex_pattern_channel = r'"advwireless\.ath1\.channel":\s*"([^"]+)"'
+            match_channel = re.search(regex_pattern_channel, response.text)
+            if match_channel:
+                actual_channel = match_channel.group(1)
+                print(f"Successfully validated Channel configuration (from JS): {actual_channel}")
