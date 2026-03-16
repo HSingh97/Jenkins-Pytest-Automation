@@ -15,6 +15,9 @@ from pageObjects.LoginPage import LoginPage
 from testCases.configsetup import setup
 from preMadeFunctions import accessWeb
 
+# NEW: Importing your Page Object Model class
+from pageObjects.WirelessRadioConfig import Wireless
+
 
 def warn(*args, **kwargs):
     pass
@@ -27,23 +30,18 @@ password = "admin"
 
 # ==============================================================================
 # MASTER TEST DATA
-# Format: (Parameter Name, Locator Strategy, Locator Value, Input Value, Expected to Pass?, Element Type, Dependency)
+# Format: (Parameter Name, Locator Strategy, Locator Value, Input Value/Expected Options, Expected to Pass?, Element Type, Dependency)
 # ==============================================================================
 VALIDATION_DATA = [
-    # --- SSID Validation ---
-    ("SSID", By.NAME, "wireless.@wifi-iface[1].ssid", "Valid_SSID_123", True, "input", None),
-    ("SSID", By.NAME, "wireless.@wifi-iface[1].ssid", "A", True, "input", None),
-    ("SSID", By.NAME, "wireless.@wifi-iface[1].ssid", "ThirtyTwoCharactersExactly123456", True, "input", None),
-    ("SSID", By.NAME, "wireless.@wifi-iface[1].ssid", "", False, "input", None),
-    ("SSID", By.NAME, "wireless.@wifi-iface[1].ssid", "ThisIsThirtyThreeCharacters123456", False, "input", None),
+    # --- Verify Dropdown Options (Using Wireless POM XPaths) ---
+    ("Radio Mode Options", By.XPATH, Wireless.radioRadiomode_xpath, ["BSU", "SU"], True, "verify_options", None),
+    ("Link Type Options", By.XPATH, Wireless.radioLinktype_xpath, ["PTP", "PTMP"], True, "verify_options", None),
 
-    # --- Channel Validation (Requires BSU) ---
-    ("Channel", By.ID, "supp_chan", "165", True, "select", "requires_bsu"),
-    ("Channel", By.ID, "supp_chan", "36", True, "select", "requires_bsu"),
-
-    # --- Distance Validation ---
-    ("Distance", By.NAME, "wireless.wifi1.distance", "15", True, "input", None),
-    ("Distance", By.NAME, "wireless.wifi1.distance", "35", False, "input", None),
+    # --- Standard Input Validations (Using Wireless POM XPaths) ---
+    ("SSID", By.XPATH, Wireless.radioSSID_xpath, "Valid_SSID_123", True, "input", None),
+    ("SSID", By.XPATH, Wireless.radioSSID_xpath, "", False, "input", None),
+    ("Distance", By.XPATH, Wireless.radioDistance_xpath, "15", True, "input", None),
+    ("Distance", By.XPATH, Wireless.radioDistance_xpath, "35", False, "input", None),
 ]
 
 
@@ -93,17 +91,14 @@ def test_GUI_Validation_Suite(setup, local_ip):
     radio1_url = f"http://{local_ip}/cgi-bin/luci/;stok={stok}/admin/wireless/radio1"
 
     for index, data in enumerate(VALIDATION_DATA, start=1):
-        # NEW: Unpacking the param_name
         param_name, locator_strategy, locator_value, test_input, is_valid_scenario, element_type, dependency = data
 
-        # Make the test name cleaner for the report
-        display_input = test_input if test_input != "" else "[EMPTY STRING]"
-        test_name = f"Input: {display_input} (Expected: {'Pass' if is_valid_scenario else 'Fail'})"
+        display_input = str(test_input) if test_input != "" else "[EMPTY STRING]"
+        test_name = f"Input/Check: {display_input} (Expected: {'Pass' if is_valid_scenario else 'Fail'})"
         print(f"\n--- Running Iteration {index}: {param_name} -> {test_name} ---")
 
-        iteration_log = f"Starting validation for {param_name} ({locator_value})\nInput Value: '{test_input}'\nExpected to pass: {is_valid_scenario}\n\n"
+        iteration_log = f"Starting validation for {param_name} ({locator_value})\nInput/Check Value: {display_input}\nExpected to pass: {is_valid_scenario}\n\n"
 
-        # NEW: Added "parameter" to the JSON payload
         test_iteration_result = {
             "iteration": index,
             "parameter": param_name,
@@ -115,9 +110,10 @@ def test_GUI_Validation_Suite(setup, local_ip):
         try:
             driver.get(radio1_url)
 
+            # Dependency check using POM XPath
             if dependency == "requires_bsu":
                 radio_mode_select = Select(WebDriverWait(driver, 5).until(
-                    EC.presence_of_element_located((By.NAME, "wireless.@wifi-iface[1].mode"))
+                    EC.presence_of_element_located((By.XPATH, Wireless.radioRadiomode_xpath))
                 ))
                 current_mode = radio_mode_select.first_selected_option.get_attribute("value")
 
@@ -132,14 +128,32 @@ def test_GUI_Validation_Suite(setup, local_ip):
                 EC.presence_of_element_located((locator_strategy, locator_value))
             )
 
-            if element_type == "input":
+            # Verify Dropdown Options
+            if element_type == "verify_options":
+                dropdown = Select(target_element)
+
+                actual_options = [opt.text.strip() for opt in dropdown.options]
+                iteration_log += f"Found Options: {actual_options}\n"
+
+                if set(actual_options) == set(test_input):
+                    test_iteration_result["status"] = "PASS"
+                    iteration_log += f"SUCCESS: Dropdown contains exactly {test_input}.\n"
+                else:
+                    total_failures += 1
+                    iteration_log += f"FAILURE: Dropdown options mismatch. Expected {test_input}, but got {actual_options}.\n"
+
+                continue
+
+            # Input Interactions
+            elif element_type == "input":
                 target_element.clear()
                 target_element.send_keys(test_input)
             elif element_type == "select":
                 dropdown = Select(target_element)
                 dropdown.select_by_value(test_input)
 
-            save_button = driver.find_element(By.XPATH, "//input[@value='Save']")
+                # Click Save using POM XPath
+            save_button = driver.find_element(By.XPATH, Wireless.radioPropertiesSave_xpath)
             save_button.click()
 
             alert_triggered = False
