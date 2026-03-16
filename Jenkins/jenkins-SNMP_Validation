@@ -1,0 +1,316 @@
+import jenkins.model.Jenkins
+
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
+pipeline {
+    agent {
+        node {
+            label "${params.TARGET_STAND}"
+        }
+    }
+
+    stages {
+
+        stage('Preparation') {
+            steps {
+                script {
+                    def deviceIP  = params.Device_IP.toString().trim()
+                    def community = params.SNMP_Community.toString().trim()
+                    def rootOid   = params.Root_OID.toString().trim()
+                    def count     = params.ITERATION_COUNT.toInteger()
+
+                    echo "----------------------------------------"
+                    echo "DEVICE IP      : ${deviceIP}"
+                    echo "SNMP COMMUNITY : ${community}"
+                    echo "ROOT OID       : ${rootOid}"
+                    echo "ITERATIONS     : ${count}"
+                    echo "TARGET STAND   : ${params.TARGET_STAND}"
+                    echo "----------------------------------------"
+
+                    sh "rm -f SNMP_Validation.json SNMP_Validation.html test-*.log || true"
+                    sh "echo '{\"iterations\": []}' > SNMP_Validation.json"
+                    echo "Workspace cleaned and result file initialized."
+                }
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                echo "----------------------------------------"
+                echo "Installing Dependencies "
+                echo "----------------------------------------"
+                sh "sh utilities/requirements.txt"
+
+                sh '''
+                    which snmpget >/dev/null 2>&1 || {
+                        sudo apt-get update -qq
+                        sudo apt-get install -y snmp snmp-mibs-downloader
+                    }
+                    which python3 >/dev/null 2>&1 || sudo apt-get install -y python3
+                '''
+            }
+        }
+
+        stage('Run SNMP Validation') {
+            steps {
+                script {
+                    def deviceIP  = params.Device_IP.toString().trim()
+                    def community = params.SNMP_Community.toString().trim()
+                    def rootOid   = params.Root_OID.toString().trim()
+                    def count     = params.ITERATION_COUNT.toInteger()
+                    def scriptPath = "testCases/test_SNMP_Validation.py"
+
+                    echo "----------------------------------------"
+                    echo "Running SNMP Validation for ${count} iteration(s)"
+                    echo "----------------------------------------"
+
+                    for (int i = 1; i <= count; i++) {
+                        echo "=== Iteration ${i} / ${count} ==="
+                        try {
+                            sh """
+                                set -x
+                                python3 ${scriptPath} \
+                                    --device-ip '${deviceIP}' \
+                                    --community '${community}' \
+                                    --oid '${rootOid}' \
+                                    --iter ${i} | tee test-${i}.log
+                            """
+                        } catch (err) {
+                            echo "Iteration ${i} encountered an error: ${err}"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Generate Report') {
+            steps {
+                script {
+                    def deviceIP  = params.Device_IP.toString().trim()
+                    def community = params.SNMP_Community.toString().trim()
+                    def rootOid   = params.Root_OID.toString().trim()
+
+                    def jsonReport = readJSON file: 'SNMP_Validation.json'
+                    def total  = jsonReport.iterations?.size() ?: 0
+                    def pass   = jsonReport.iterations?.count { it.overall_status == 'PASS' } ?: 0
+                    def fail   = total - pass
+                    def rate   = total > 0 ? String.format("%.1f", (pass * 100.0 / total)) : "0.0"
+
+                    def istZone       = TimeZone.getTimeZone("Asia/Kolkata")
+                    def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", istZone)
+                    def pipelineName  = env.JOB_NAME
+                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+
+                    // Grab build params from first iteration result (already fetched by Python via SNMP)
+                    def bp = jsonReport.iterations ? jsonReport.iterations[0].build_params : [:]
+                    def buildParams = [
+                        "Device Name" : bp["Device Name"] ?: "N/A",
+                        "HW Version"  : bp["HW Version"]  ?: "N/A",
+                        "Serial No"   : bp["Serial No"]   ?: "N/A",
+                        "IP Address"  : bp["IP Address"]  ?: deviceIP,
+                        "FW Version"  : bp["FW Version"]  ?: "N/A",
+                    ]
+
+                    def htmlContent = """
+<html>
+<head>
+  <title>SNMP Validation Report</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f9fafb; color: #1f2937; }
+    .container { max-width: 1200px; margin: 24px auto; padding: 24px; }
+    .header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%); padding: 28px 36px; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04); margin-bottom: 0; }
+    .header img { height: 65px; }
+    .header-info { text-align: right; }
+    .header-info h1 { margin: 0; font-size: 28px; font-weight: 700; color: #0a2540; }
+    .header-info p { margin: 5px 0; font-size: 14px; color: #4a5568; }
+    h2 { margin-top: 32px; font-size: 20px; font-weight: 600; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
+    th, td { padding: 14px 20px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle; }
+    th { background-color: #f9fafb; font-weight: 600; color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background-color: #f9fafb; }
+    .status-pass { color: #059669; font-weight: 600; background-color: #d1fae5; padding: 5px 12px; border-radius: 99px; display: inline-block; }
+    .status-fail { color: #dc2626; font-weight: 600; background-color: #fee2e2; padding: 5px 12px; border-radius: 99px; display: inline-block; }
+    .log-button { background-color: #1a56db; color: white; padding: 7px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; display: inline-block; border: none; cursor: pointer; }
+    .log-button:hover { background-color: #1447be; }
+    .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); }
+    .modal-content { background-color: #fff; margin: 5% auto; border-radius: 12px; width: 80%; max-width: 900px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); overflow: hidden; }
+    .modal-header { padding: 20px 32px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+    .modal-header h2 { margin: 0; padding: 0; border: none; font-size: 18px; }
+    .modal-close { color: #9ca3af; font-size: 26px; font-weight: bold; cursor: pointer; }
+    .modal-close:hover { color: #1f2937; }
+    #log-content-pre { background-color: #1f2937; color: #e5e7eb; padding: 24px 32px; max-height: 60vh; overflow: auto; white-space: pre-wrap; word-wrap: break-word; margin: 0; font-family: monospace; font-size: 13px; }
+  </style>
+  <script>
+    function showLog(id) {
+      document.getElementById('log-content-pre').innerHTML = document.getElementById(id).innerHTML;
+      document.getElementById('logModal').style.display = 'block';
+    }
+    function closeModal() { document.getElementById('logModal').style.display = 'none'; }
+    window.onclick = function(e) { if (e.target == document.getElementById('logModal')) closeModal(); }
+  </script>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
+    <div class="header-info">
+      <h1>SNMP Validation Report</h1>
+      <p><strong>Pipeline:</strong> ${pipelineName}</p>
+      <p><strong>Date &amp; Time:</strong> ${currentDateTime}</p>
+    </div>
+  </div>
+
+  <h2>Build Parameters</h2>
+  <table>
+    <tr><th>Parameter</th><th>Value</th></tr>
+    ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
+  </table>
+
+  <h2>Test Results</h2>
+  <table>
+    <tr>
+      <th>Iteration</th>
+      <th>Timestamp</th>
+      <th>OIDs Collected</th>
+      <th style="text-align:center;">Status</th>
+      <th style="text-align:center;">Log</th>
+    </tr>
+"""
+                    def tableRows     = ""
+                    def logDataBlocks = ""
+
+                    if (jsonReport.iterations) {
+                        jsonReport.iterations.each { result ->
+                            def iteration = result.iteration  ?: "-"
+                            def ts        = result.timestamp  ?: "-"
+                            def oidCount  = result.oid_count  ?: "-"
+                            def status    = result.overall_status == "PASS"
+                                ? "<span class='status-pass'>PASS</span>"
+                                : "<span class='status-fail'>FAIL</span>"
+                            def logId     = "log-data-${iteration}"
+                            def logContent = ""
+                            try {
+                                logContent = readFile(file: "test-${iteration}.log")
+                                    .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                            } catch (e) {
+                                logContent = "Log file not found: test-${iteration}.log"
+                            }
+                            tableRows += """
+<tr>
+  <td>${iteration}</td>
+  <td>${ts}</td>
+  <td>${oidCount}</td>
+  <td style="text-align:center;">${status}</td>
+  <td style="text-align:center;"><button class='log-button' onclick="showLog('${logId}')">View Log</button></td>
+</tr>"""
+                            logDataBlocks += "<div id='${logId}' style='display:none;'>${logContent}</div>\n"
+                        }
+                    } else {
+                        tableRows = "<tr><td colspan='5' style='text-align:center;'>No results found.</td></tr>"
+                    }
+
+                    htmlContent += tableRows + """
+  </table>
+</div>
+
+<div id="logModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Iteration Log</h2>
+      <span class="modal-close" onclick="closeModal()">&times;</span>
+    </div>
+    <pre id="log-content-pre"></pre>
+  </div>
+</div>
+${logDataBlocks}
+</body>
+</html>"""
+
+                    writeFile file: 'SNMP_Validation.html', text: htmlContent
+                    echo "Report generated: SNMP_Validation.html"
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                archiveArtifacts(pattern: "SNMP_Validation.json, SNMP_Validation.html, test-*.log")
+
+                publishHTML(target: [
+                    allowMissing         : false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll              : true,
+                    reportDir            : '.',
+                    reportFiles          : 'SNMP_Validation.html',
+                    reportName           : 'SNMP Validation Report'
+                ])
+
+                def jsonReport = readJSON file: 'SNMP_Validation.json'
+                def total = jsonReport.iterations?.size() ?: 0
+                def pass  = jsonReport.iterations?.count { it.overall_status == 'PASS' } ?: 0
+                def fail  = total - pass
+                def rate  = total > 0 ? String.format("%.1f", (pass * 100.0 / total)) : "0.0"
+
+                def buildCauses   = currentBuild.getBuildCauses()
+                def userCause     = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+                def buildUserName = userCause?.userName ?: "Unknown User"
+                def buildUserId   = userCause?.userId   ?: "unknown"
+
+                def userEmails = [
+                    "puneet"  : "puneet.sharma@senao.com",
+                    "harman"  : "harmanjot.singh@senao.com",
+                    "mahesh"  : "mahesh.battala@senao.com",
+                    "sandeep" : "sandeep.manchikanti@senao.com",
+                    "sampath" : "sampath.marella@senao.com",
+                    "jayanth" : "jayanth.munnaluru@senao.com",
+                    "srilatha": "srilatha.tadiboina@senao.com",
+                    "phani"   : "phani.darla@senao.com",
+                    "dinesh"  : "dinesh.redddy@senao.com"
+                ]
+                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+                echo "Sending report email to: ${userEmail}"
+
+                def emailBody = """
+<html><body>
+  <h2 style="color:#1a56db;">Jenkins Notification: SNMP Validation</h2>
+  <p><strong>Build:</strong> ${currentBuild.fullDisplayName}</p>
+  <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'}; font-weight:bold;">${currentBuild.currentResult}</span></p>
+  <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
+  <p><strong>Total Iterations:</strong> ${total}</p>
+  <h3 style="border-bottom:1px solid #ccc; padding-bottom:5px;">Summary</h3>
+  <table border="1" style="border-collapse:collapse; width:400px; text-align:center;">
+    <tr><th>Metric</th><th>Count</th><th>Rate</th></tr>
+    <tr><td>Total</td><td>${total}</td><td>100%</td></tr>
+    <tr style="background:#d1fae5;"><td>Passed</td><td>${pass}</td><td>${rate}%</td></tr>
+    <tr style="background:#fee2e2;"><td>Failed</td><td>${fail}</td><td>-</td></tr>
+  </table>
+  <h3 style="margin-top:20px;">Links</h3>
+  <ul>
+    <li><a href="${env.BUILD_URL}SNMP_Validation_Report">HTML Report</a></li>
+    <li><a href="${env.BUILD_URL}">Build URL</a></li>
+    <li><a href="${env.BUILD_URL}console">Console Output</a></li>
+  </ul>
+  <p style="color:gray; margin-top:30px;">-- Jenkins Automated Notification</p>
+</body></html>"""
+
+                emailext(
+                    subject : "Jenkins: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    body    : emailBody,
+                    to      : userEmail,
+                    mimeType: 'text/html',
+                    attachmentsPattern: "SNMP_Validation.html, SNMP_Validation.json"
+                )
+
+                sh 'rm -f test-*.log || true'
+            }
+        }
+        success { echo "SNMP Validation — SUCCESS" }
+        failure { echo "SNMP Validation — FAILED"  }
+    }
+}
