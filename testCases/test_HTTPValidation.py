@@ -3,11 +3,10 @@ import requests
 import warnings
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-
-# Assuming these exist in your project structure
 from pageObjects.LoginPage import LoginPage
 from testCases.configsetup import setup
 from preMadeFunctions import accessWeb
+from testCases.test_factoryReset import driver
 
 
 # Suppress warnings
@@ -21,15 +20,8 @@ username = "root"
 password = "admin"
 
 
-def driver_setup(setup):
-    driver = setup  # Initializes your webdriver
-    yield driver
-
-    # This block executes after the test finishes, pass or fail
-    driver.quit()
-
-def test_Validate_Config(driver_setup, local_ip):
-    driver = driver_setup
+def test_Validate_Config(setup, local_ip):
+    driver = setup
     print(f"\nLocal IP Address: {local_ip}", flush=True)
     URL = f"http://{local_ip}/cgi-bin/luci"
 
