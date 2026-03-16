@@ -54,7 +54,7 @@ pipeline {
                 }
             }
         }
-        stage('Generate Report') {
+stage('Generate Report') {
             steps {
                 script {
                     def localIP = params['Local IP Address']
@@ -88,6 +88,10 @@ pipeline {
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
+
+                    // NEW: Dynamic File Naming
+                    def fileDate = Calendar.getInstance(istZone).getTime().format("yyyyMMdd", istZone)
+                    def reportFileName = "HTTPValidation_report_${env.BUILD_ID}_${fileDate}.html"
 
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
@@ -127,8 +131,10 @@ pipeline {
                             tr:last-child td { border-bottom: none; }
                             tr:hover { background-color: #f9fafb; }
 
-                            /* NEW: Subsection Header Styling */
-                            .subsection-header td { background-color: #e5e7eb !important; font-weight: 700; color: #1f2937; font-size: 15px; border-top: 2px solid #d1d5db; }
+                            /* NEW: Interactive Subsection Header Styling */
+                            .subsection-header td { background-color: #e5e7eb !important; font-weight: 700; color: #1f2937; font-size: 15px; border-top: 2px solid #d1d5db; cursor: pointer; user-select: none; transition: background-color 0.2s; }
+                            .subsection-header td:hover { background-color: #d1d5db !important; }
+                            .toggle-icon { display: inline-block; width: 20px; text-align: center; color: #4b5563; }
 
                             .status-pass { color: #059669; font-weight: 600; background-color: #d1fae5; padding: 5px 10px; border-radius: 99px; display: inline-block; }
                             .status-fail { color: #dc2626; font-weight: 600; background-color: #fee2e2; padding: 5px 10px; border-radius: 99px; display: inline-block; }
@@ -148,6 +154,19 @@ pipeline {
                             function showLog(logDataId) { document.getElementById('log-content-pre').innerHTML = document.getElementById(logDataId).innerHTML; document.getElementById('logModal').style.display = 'block'; }
                             function closeModal() { document.getElementById('logModal').style.display = 'none'; }
                             window.onclick = function(event) { if (event.target == document.getElementById('logModal')) closeModal(); }
+
+                            // NEW: Show/Hide logic for the parameter rows
+                            function toggleSection(paramId) {
+                                var rows = document.querySelectorAll('.row-' + paramId);
+                                var icon = document.getElementById('icon-' + paramId);
+                                var isExpanded = icon.innerHTML.includes('9660'); // Checks for down-arrow
+
+                                rows.forEach(function(row) {
+                                    row.style.display = isExpanded ? 'none' : 'table-row';
+                                });
+
+                                icon.innerHTML = isExpanded ? '&#9658;' : '&#9660;'; // Toggle between right-arrow and down-arrow
+                            }
                         </script>
                     </head>
                     <body>
@@ -201,15 +220,19 @@ pipeline {
                     def logDataBlocks = ""
 
                     if (jsonReport.iterations) {
-                        // NEW: Group the JSON iterations by the 'parameter' key
                         def groupedByParam = jsonReport.iterations.groupBy { it.parameter ?: "Unknown Parameter" }
 
                         groupedByParam.each { paramName, results ->
+                            // Create a safe ID string without spaces for JavaScript mapping
+                            def safeParamId = paramName.replaceAll("\\s+","_").replaceAll("[^a-zA-Z0-9_]","")
 
-                            // NEW: Render the sub-section header row
+                            // NEW: Added onclick trigger and dynamic icon
                             tableRows += """
-                                <tr class="subsection-header">
-                                    <td colspan="4">Parameter: ${paramName}</td>
+                                <tr class="subsection-header" onclick="toggleSection('${safeParamId}')">
+                                    <td colspan="4">
+                                        <span class="toggle-icon" id="icon-${safeParamId}">&#9660;</span>
+                                        Parameter: ${paramName}
+                                    </td>
                                 </tr>
                             """
 
@@ -231,8 +254,9 @@ pipeline {
 
                                 def logButton = "<button class='log-button' onclick=\"showLog('${logDataId}')\">See Logs</button>"
 
+                                // NEW: Added the tracking class 'row-ID' so JS knows which rows to hide
                                 tableRows += """
-                                    <tr>
+                                    <tr class="row-${safeParamId}">
                                         <td>${iteration}</td>
                                         <td>${testName}</td>
                                         <td style="text-align: center;">${status}</td>
@@ -264,30 +288,37 @@ pipeline {
                     </html>
                     """
 
-                    writeFile file: 'report.html', text: htmlContent
+                    // NEW: Saving as the dynamically generated filename
+                    writeFile file: reportFileName, text: htmlContent
                 }
             }
         }
     }
     post {
         always {
-            publishHTML(target: [
-                allowMissing: false,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: '.',
-                reportFiles: 'report.html',
-                reportName: 'Test Report'
-            ])
-
-            echo "Cleaning up test log files..."
-            sh 'rm -f test-*.log || true'
-            sh 'rm -f console_output.log || true'
-
-            echo "-----------------------------------------"
-            echo 'Script Done!'
-            echo "-----------------------------------------"
+            // Re-generate the filename variable so the post block knows what to publish
             script {
+                def istZone = TimeZone.getTimeZone("Asia/Kolkata")
+                def fileDate = Calendar.getInstance(istZone).getTime().format("yyyyMMdd", istZone)
+                def reportFileName = "HTTPValidation_report_${env.BUILD_ID}_${fileDate}.html"
+
+                publishHTML(target: [
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: '.',
+                    reportFiles: reportFileName,
+                    reportName: 'Test Report'
+                ])
+
+                echo "Cleaning up test log files..."
+                sh 'rm -f test-*.log || true'
+                sh 'rm -f console_output.log || true'
+
+                echo "-----------------------------------------"
+                echo 'Script Done!'
+                echo "-----------------------------------------"
+
                 def buildCauses = currentBuild.getBuildCauses()
                 def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
 
@@ -305,7 +336,7 @@ pipeline {
                     "jayanth": "jayanth.munnaluru@senao.com",
                     "srilatha": "srilatha.tadiboina@senao.com",
                     "phani": "phani.darla@senao.com",
-                    "dinesh": "dinesh.reddy@senao.com"
+                    "dinesh": "dinesh.redddy@senao.com"
                 ]
 
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
@@ -330,7 +361,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html,iteration_results.json'
+                    attachmentsPattern: "${reportFileName},iteration_results.json" // Updated pattern
                 )
             }
         }
