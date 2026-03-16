@@ -58,14 +58,13 @@ pipeline {
             steps {
                 script {
                     def localIP = params['Local IP Address']
-
                     sh "ssh-keygen -R ${localIP} || true"
 
                     def local_fw_version = "N/A"
                     try {
                         local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
                     } catch (Exception e) {
-                        echo "⚠️ Failed to get local FW version from ${localIP}: ${e.message}"
+                        echo "⚠️ Failed to get FW version"
                     }
 
                     def jsonReport = readJSON file: 'iteration_results.json'
@@ -88,84 +87,130 @@ pipeline {
                     def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
-
-                    // NEW: Dynamic File Naming
                     def fileDate = Calendar.getInstance(istZone).getTime().format("yyyyMMdd", istZone)
                     def reportFileName = "HTTPValidation_report_${env.BUILD_ID}_${fileDate}.html"
 
-                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
-                    def pipelineName = env.JOB_NAME
+                    // NEW: Generate Discovered Configs segregated by Login User
+                    def currentConfigHTML = ""
+                    if (jsonReport.current_configs && jsonReport.current_configs.size() > 0) {
+                        jsonReport.current_configs.each { loginUser, configs ->
+                            currentConfigHTML += """
+                                <h3 style="margin-top: 24px; color: #1e3a8a; font-weight: 600;">Visible to Login: <span style="background-color:#dbeafe; padding: 4px 10px; border-radius:6px;">${loginUser}</span></h3>
+                                <table>
+                                    <tr><th width="50%">Parameter Name</th><th width="50%">Configured Value</th></tr>
+                            """
+                            if (configs.size() > 0) {
+                                configs.each { key, val ->
+                                    def displayVal = (val && val.toString() != "") ? val.toString() : "<i style='color:#9ca3af;'>[Empty]</i>"
+                                    currentConfigHTML += "<tr><td><code style='color:#d97706; background:#fef3c7; padding:2px 6px; border-radius:4px;'>${key}</code></td><td><strong>${displayVal}</strong></td></tr>\n"
+                                }
+                            } else {
+                                currentConfigHTML += "<tr><td colspan='2' style='text-align:center; color:#6b7280;'>No visible configurations found for this user.</td></tr>"
+                            }
+                            currentConfigHTML += "</table>"
+                        }
+                    }
 
                     def htmlContent = """
                     <html>
                     <head>
                         <title>Test Report</title>
                         <style>
-                            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f9fafb; color: #1f2937; }
-                            .container { max-width: 1200px; margin: 24px auto; padding: 24px; }
-                            .header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%); padding: 28px 36px; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04); }
-                            .header img { height: 65px; transition: transform 0.2s ease-in-out; }
-                            .header img:hover { transform: scale(1.03); }
+                            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+                            body { font-family: 'Inter', -apple-system, sans-serif; margin: 0; padding: 0; background-color: #f4f7f6; color: #1f2937; }
+                            .container { max-width: 1200px; margin: 30px auto; padding: 30px; background: #ffffff; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); }
+                            .header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #ffffff 0%, #f0f4f8 100%); padding: 30px 40px; border: 1px solid #e2e8f0; border-radius: 12px; }
+                            .header img { height: 65px; transition: transform 0.3s ease; }
+                            .header img:hover { transform: scale(1.05); }
                             .header-info { text-align: right; }
-                            .header-info h1 { margin: 0; font-size: 30px; font-weight: 700; color: #0a2540; }
-                            .header-info p { margin: 5px 0; font-size: 15px; color: #4a5568; }
-                            h2 { margin-top: 32px; font-size: 24px; font-weight: 600; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; }
-                            .summary-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-top: 24px; }
-                            .summary-card { background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.04); display: flex; padding: 24px; align-items: center; border-top-width: 4px; border-top-style: solid; }
-                            .card-icon { font-size: 32px; margin-right: 20px; padding: 12px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+                            .header-info h1 { margin: 0; font-size: 28px; font-weight: 700; color: #0f172a; }
+                            .header-info p { margin: 5px 0; font-size: 14px; color: #64748b; }
+                            h2 { margin-top: 40px; font-size: 22px; font-weight: 600; color: #0f172a; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px; }
+                            .summary-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; margin-top: 20px; }
+
+                            /* NEW: Interactive Clickable Cards */
+                            .summary-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; display: flex; padding: 20px; align-items: center; border-top-width: 4px; border-top-style: solid; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+                            .summary-card:hover { transform: translateY(-4px); box-shadow: 0 12px 20px -8px rgba(0,0,0,0.15); }
+                            .summary-card:active { transform: translateY(0); }
+
+                            .card-icon { font-size: 28px; margin-right: 18px; padding: 12px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
                             .card-info { text-align: left; }
-                            .card-info-title { font-size: 16px; color: #6b7280; margin: 0 0 4px 0; }
-                            .card-info-value { font-size: 32px; font-weight: 700; color: #111827; margin: 0; }
-                            .percent .percent-sign { font-size: 20px; font-weight: 600; }
-                            .card-percent { border-color: #6b7280; }
-                            .card-percent .card-icon { background-color: #f3f4f6; color: #6b7280; }
-                            .card-total { border-color: #3b82f6; }
-                            .card-total .card-icon { background-color: #dbeafe; color: #3b82f6; }
-                            .card-pass { border-color: #10b981; }
-                            .card-pass .card-icon { background-color: #d1fae5; color: #10b981; }
-                            .card-fail { border-color: #ef4444; }
-                            .card-fail .card-icon { background-color: #fee2e2; color: #ef4444; }
-                            table { width: 100%; border-collapse: collapse; margin-top: 24px; background-color: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
-                            th, td { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: middle; }
-                            th { background-color: #f9fafb; font-weight: 600; color: #6b7280; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+                            .card-info-title { font-size: 14px; color: #64748b; margin: 0 0 4px 0; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+                            .card-info-value { font-size: 32px; font-weight: 700; color: #0f172a; margin: 0; }
+                            .percent .percent-sign { font-size: 18px; font-weight: 600; }
+
+                            .card-percent { border-color: #94a3b8; } .card-percent .card-icon { background: #f1f5f9; color: #64748b; }
+                            .card-total { border-color: #3b82f6; } .card-total .card-icon { background: #eff6ff; color: #3b82f6; }
+                            .card-pass { border-color: #10b981; } .card-pass .card-icon { background: #ecfdf5; color: #10b981; }
+                            .card-fail { border-color: #ef4444; } .card-fail .card-icon { background: #fef2f2; color: #ef4444; }
+
+                            table { width: 100%; border-collapse: collapse; margin-top: 15px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
+                            th, td { padding: 14px 18px; border-bottom: 1px solid #e2e8f0; text-align: left; vertical-align: middle; font-size: 14px; }
+                            th { background: #f8fafc; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; font-size: 12px; }
                             tr:last-child td { border-bottom: none; }
-                            tr:hover { background-color: #f9fafb; }
+                            tr:hover { background-color: #f8fafc; }
 
-                            /* NEW: Interactive Subsection Header Styling */
-                            .subsection-header td { background-color: #e5e7eb !important; font-weight: 700; color: #1f2937; font-size: 15px; border-top: 2px solid #d1d5db; cursor: pointer; user-select: none; transition: background-color 0.2s; }
-                            .subsection-header td:hover { background-color: #d1d5db !important; }
-                            .toggle-icon { display: inline-block; width: 20px; text-align: center; color: #4b5563; }
+                            .subsection-header td { background-color: #f1f5f9 !important; font-weight: 700; color: #0f172a; font-size: 15px; border-top: 2px solid #cbd5e1; cursor: pointer; user-select: none; transition: background 0.2s; }
+                            .subsection-header td:hover { background-color: #e2e8f0 !important; }
+                            .toggle-icon { display: inline-block; width: 24px; text-align: center; color: #64748b; font-size: 12px; transition: transform 0.2s; }
 
-                            .status-pass { color: #059669; font-weight: 600; background-color: #d1fae5; padding: 5px 10px; border-radius: 99px; display: inline-block; }
-                            .status-fail { color: #dc2626; font-weight: 600; background-color: #fee2e2; padding: 5px 10px; border-radius: 99px; display: inline-block; }
-                            .log-button { background-color: #3b82f6; color: white; padding: 8px 16px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; border: none; cursor: pointer; }
-                            .log-button:hover { background-color: #2563eb; }
-                            .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); }
-                            .modal-content { background-color: #ffffff; margin: 5% auto; border-radius: 12px; width: 80%; max-width: 900px; animation-name: animatetop; animation-duration: 0.4s; overflow: hidden; }
-                            .modal-header { padding: 20px 32px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
-                            .modal-header h2 { margin: 0; font-size: 20px; }
-                            .modal-close { color: #9ca3af; font-size: 28px; font-weight: bold; cursor: pointer; }
-                            .modal-close:hover { color: #1f2937; }
-                            .modal-body { padding: 0; }
-                            #log-content-pre { background-color: #1f2937; color: #e5e7eb; padding: 24px 32px; max-height: 60vh; overflow: auto; white-space: pre-wrap; word-wrap: break-word; margin: 0; font-family: monospace; }
-                            @keyframes animatetop { from {transform: translateY(-50px); opacity: 0} to {transform: translateY(0); opacity: 1} }
+                            .status-pass { color: #059669; font-weight: 600; background: #d1fae5; padding: 4px 12px; border-radius: 20px; font-size: 12px; display: inline-block; }
+                            .status-fail { color: #dc2626; font-weight: 600; background: #fee2e2; padding: 4px 12px; border-radius: 20px; font-size: 12px; display: inline-block; }
+                            .log-button { background: #3b82f6; color: white; padding: 6px 14px; border-radius: 6px; font-weight: 600; font-size: 13px; border: none; cursor: pointer; transition: all 0.2s; }
+                            .log-button:hover { background: #2563eb; box-shadow: 0 4px 6px -1px rgba(59,130,246,0.3); }
+
+                            .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.7); backdrop-filter: blur(4px); }
+                            .modal-content { background: #fff; margin: 5% auto; border-radius: 16px; width: 80%; max-width: 900px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
+                            .modal-header { padding: 20px 30px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; }
+                            .modal-header h2 { margin: 0; font-size: 18px; color: #0f172a; border: none; padding: 0; }
+                            .modal-close { color: #64748b; font-size: 24px; font-weight: bold; cursor: pointer; transition: color 0.2s; }
+                            .modal-close:hover { color: #0f172a; }
+                            #log-content-pre { background: #0f172a; color: #f8fafc; padding: 24px; max-height: 60vh; overflow: auto; white-space: pre-wrap; word-wrap: break-word; margin: 0; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 13px; line-height: 1.5; }
                         </style>
                         <script>
                             function showLog(logDataId) { document.getElementById('log-content-pre').innerHTML = document.getElementById(logDataId).innerHTML; document.getElementById('logModal').style.display = 'block'; }
                             function closeModal() { document.getElementById('logModal').style.display = 'none'; }
                             window.onclick = function(event) { if (event.target == document.getElementById('logModal')) closeModal(); }
 
-                            // NEW: Show/Hide logic for the parameter rows
                             function toggleSection(paramId) {
                                 var rows = document.querySelectorAll('.row-' + paramId);
                                 var icon = document.getElementById('icon-' + paramId);
-                                var isExpanded = icon.innerHTML.includes('9660'); // Checks for down-arrow
+                                if (rows.length === 0) return;
 
-                                rows.forEach(function(row) {
-                                    row.style.display = isExpanded ? 'none' : 'table-row';
+                                var isHidden = rows[0].style.display === 'none';
+                                rows.forEach(function(row) { row.style.display = isHidden ? 'table-row' : 'none'; });
+                                icon.innerHTML = isHidden ? '&#9660;' : '&#9654;';
+                            }
+
+                            // NEW: Logic to filter table based on Pass/Fail Card Clicks
+                            function filterTable(status) {
+                                var headers = document.querySelectorAll('.subsection-header');
+
+                                headers.forEach(function(header) {
+                                    var paramId = header.getAttribute('data-param');
+                                    var rows = document.querySelectorAll('.row-' + paramId);
+                                    var visibleCount = 0;
+
+                                    rows.forEach(function(row) {
+                                        var rowStatus = row.getAttribute('data-status');
+                                        // Show row if filtering by ALL, or if status matches
+                                        if (status === 'ALL' || rowStatus === status) {
+                                            row.style.display = 'table-row';
+                                            visibleCount++;
+                                        } else {
+                                            row.style.display = 'none';
+                                        }
+                                    });
+
+                                    // Hide the subsection header if no rows underneath it are visible
+                                    if (visibleCount === 0) {
+                                        header.style.display = 'none';
+                                    } else {
+                                        header.style.display = 'table-row';
+                                        // Auto-expand the arrow icon so user can see the filtered results immediately
+                                        document.getElementById('icon-' + paramId).innerHTML = '&#9660;';
+                                    }
                                 });
-
-                                icon.innerHTML = isExpanded ? '&#9658;' : '&#9660;'; // Toggle between right-arrow and down-arrow
                             }
                         </script>
                     </head>
@@ -180,34 +225,44 @@ pipeline {
                                 </div>
                             </div>
 
-                            <h2>Build Parameters</h2>
-                            <table>
-                                <tr><th>Parameter</th><th>Value</th></tr>
-                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
-                            </table>
+                            <div style="display:flex; justify-content: space-between; align-items: flex-end;">
+                                <div style="width:48%;">
+                                    <h2>Build Parameters</h2>
+                                    <table>
+                                        ${buildParams.collect { "<tr><td><b style='color:#475569;'>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
+                                    </table>
+                                </div>
+                            </div>
 
-                            <h2>Test Summary</h2>
+                            <h2>Test Summary <span style="font-size:14px; color:#64748b; font-weight:400; margin-left:10px;">(Click cards to filter table)</span></h2>
                             <div class="summary-container">
                                 <div class="summary-card card-percent">
                                     <div class="card-icon">🎯</div>
                                     <div class="card-info"><p class="card-info-title">Success Rate</p><p class="card-info-value percent">${successPercentageStr}<span class="percent-sign">%</span></p></div>
                                 </div>
-                                <div class="summary-card card-total">
+                                <div class="summary-card card-total" onclick="filterTable('ALL')">
                                     <div class="card-icon">📦</div>
                                     <div class="card-info"><p class="card-info-title">Total Validations</p><p class="card-info-value">${totalTests}</p></div>
                                 </div>
-                                <div class="summary-card card-pass">
+                                <div class="summary-card card-pass" onclick="filterTable('PASS')">
                                     <div class="card-icon">✅</div>
                                     <div class="card-info"><p class="card-info-title">Passed</p><p class="card-info-value">${passCount}</p></div>
                                 </div>
-                                <div class="summary-card card-fail">
+                                <div class="summary-card card-fail" onclick="filterTable('FAIL')">
                                     <div class="card-icon">❌</div>
                                     <div class="card-info"><p class="card-info-title">Failed</p><p class="card-info-value">${failCount}</p></div>
                                 </div>
                             </div>
 
+                            <br><hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 30px 0;">
+
+                            <h2>Current Discovered Configuration</h2>
+                            ${currentConfigHTML}
+
+                            <br><hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 30px 0;">
+
                             <h2>Validation Results</h2>
-                            <table>
+                            <table id="resultsTable">
                                 <tr>
                                     <th width="10%">Iter #</th>
                                     <th width="60%">Scenario / Input</th>
@@ -223,15 +278,14 @@ pipeline {
                         def groupedByParam = jsonReport.iterations.groupBy { it.parameter ?: "Unknown Parameter" }
 
                         groupedByParam.each { paramName, results ->
-                            // Create a safe ID string without spaces for JavaScript mapping
                             def safeParamId = paramName.replaceAll("\\s+","_").replaceAll("[^a-zA-Z0-9_]","")
 
-                            // NEW: Added onclick trigger and dynamic icon
+                            // Added data-param attribute for JS filtering
                             tableRows += """
-                                <tr class="subsection-header" onclick="toggleSection('${safeParamId}')">
+                                <tr class="subsection-header" onclick="toggleSection('${safeParamId}')" data-param="${safeParamId}">
                                     <td colspan="4">
                                         <span class="toggle-icon" id="icon-${safeParamId}">&#9660;</span>
-                                        Parameter: ${paramName}
+                                        Parameter: <span style="color:#2563eb;">${paramName}</span>
                                     </td>
                                 </tr>
                             """
@@ -239,7 +293,8 @@ pipeline {
                             results.each { result ->
                                 def iteration = result.iteration ?: "-"
                                 def testName = result.test ?: "Unknown"
-                                def status = result.status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
+                                def rawStatus = result.status ?: "FAIL"
+                                def statusHtml = rawStatus == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
 
                                 def logFile = "test-${iteration}.log"
                                 def logDataId = "log-data-${iteration}"
@@ -254,12 +309,12 @@ pipeline {
 
                                 def logButton = "<button class='log-button' onclick=\"showLog('${logDataId}')\">See Logs</button>"
 
-                                // NEW: Added the tracking class 'row-ID' so JS knows which rows to hide
+                                // Added data-status attribute for JS filtering
                                 tableRows += """
-                                    <tr class="row-${safeParamId}">
+                                    <tr class="row-${safeParamId}" data-status="${rawStatus}">
                                         <td>${iteration}</td>
-                                        <td>${testName}</td>
-                                        <td style="text-align: center;">${status}</td>
+                                        <td><strong>${testName}</strong></td>
+                                        <td style="text-align: center;">${statusHtml}</td>
                                         <td style="text-align: center;">${logButton}</td>
                                     </tr>
                                 """
@@ -267,7 +322,7 @@ pipeline {
                             }
                         }
                     } else {
-                        tableRows += "<tr><td colspan='4' style='text-align:center;'>No validation results found.</td></tr>"
+                        tableRows += "<tr><td colspan='4' style='text-align:center; padding:30px; color:#64748b;'>No validation results found.</td></tr>"
                     }
 
                     htmlContent += tableRows
@@ -277,7 +332,7 @@ pipeline {
                         <div id="logModal" class="modal">
                           <div class="modal-content">
                             <div class="modal-header">
-                                <h2>Validation Log</h2>
+                                <h2>Validation Log Details</h2>
                                 <span class="modal-close" onclick="closeModal()">&times;</span>
                             </div>
                             <div class="modal-body"><pre id="log-content-pre"></pre></div>
@@ -288,7 +343,6 @@ pipeline {
                     </html>
                     """
 
-                    // NEW: Saving as the dynamically generated filename
                     writeFile file: reportFileName, text: htmlContent
                 }
             }
@@ -296,7 +350,6 @@ pipeline {
     }
     post {
         always {
-            // Re-generate the filename variable so the post block knows what to publish
             script {
                 def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                 def fileDate = Calendar.getInstance(istZone).getTime().format("yyyyMMdd", istZone)
@@ -318,51 +371,6 @@ pipeline {
                 echo "-----------------------------------------"
                 echo 'Script Done!'
                 echo "-----------------------------------------"
-
-                def buildCauses = currentBuild.getBuildCauses()
-                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
-
-                def buildUserName = userCause?.userName ?: "Unknown User"
-                def buildUserId = userCause?.userId ?: "unknown"
-
-                echo "Build started by: ${buildUserName} (${buildUserId})"
-
-                def userEmails = [
-                    "puneet": "puneet.sharma@senao.com",
-                    "harman": "harmanjot.singh@senao.com",
-                    "mahesh": "mahesh.battala@senao.com",
-                    "sandeep": "sandeep.manchikanti@senao.com",
-                    "sampath": "sampath.marella@senao.com",
-                    "jayanth": "jayanth.munnaluru@senao.com",
-                    "srilatha": "srilatha.tadiboina@senao.com",
-                    "phani": "phani.darla@senao.com",
-                    "dinesh": "dinesh.redddy@senao.com"
-                ]
-
-                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
-                echo "Sending email to: ${userEmail}"
-
-                emailext(
-                    subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
-                    body: """
-                        <html>
-                        <body>
-                            <h2 style="color:blue;">Jenkins Build Notification</h2>
-                            <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
-                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
-                                ${currentBuild.currentResult}</span></p>
-                            <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
-                            <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
-                            <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
-                            <br/>
-                            <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
-                        </body>
-                        </html>
-                    """,
-                    to: userEmail,
-                    mimeType: 'text/html',
-                    attachmentsPattern: "${reportFileName},iteration_results.json" // Updated pattern
-                )
             }
         }
         success {
