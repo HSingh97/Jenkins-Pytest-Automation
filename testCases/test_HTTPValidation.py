@@ -6,7 +6,7 @@ import time
 from bs4 import BeautifulSoup
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import UnexpectedAlertPresentException, NoAlertPresentException
+from selenium.common.exceptions import UnexpectedAlertPresentException, NoAlertPresentException, TimeoutException
 from selenium.webdriver.common.by import By
 
 # Assuming these exist in your project structure
@@ -26,24 +26,28 @@ username = "root"
 password = "admin"
 
 # ==============================================================================
-# MASTER TEST DATA: Add all your parameters here to test the entire GUI
-# Format: (Locator Strategy, Locator Value, Input Value, Expected to Pass?, Element Type)
+# MASTER TEST DATA
+# Format: (Locator Strategy, Locator Value, Input Value, Expected to Pass?, Element Type, Dependency)
+# Dependency Options: None, "requires_bsu"
 # ==============================================================================
 VALIDATION_DATA = [
     # --- SSID Validation (Text Input) ---
-    (By.NAME, "wireless.@wifi-iface[1].ssid", "Valid_SSID_123", True, "input"),
-    (By.NAME, "wireless.@wifi-iface[1].ssid", "A", True, "input"),
-    (By.NAME, "wireless.@wifi-iface[1].ssid", "ThirtyTwoCharactersExactly123456", True, "input"),
-    (By.NAME, "wireless.@wifi-iface[1].ssid", "", False, "input"),  # Negative: Empty
-    (By.NAME, "wireless.@wifi-iface[1].ssid", "ThisIsThirtyThreeCharacters123456", False, "input"),
-    # Negative: Too long
+    (By.NAME, "wireless.@wifi-iface[1].ssid", "Valid_SSID_123", True, "input", None),
+    (By.NAME, "wireless.@wifi-iface[1].ssid", "A", True, "input", None),
+    (By.NAME, "wireless.@wifi-iface[1].ssid", "ThirtyTwoCharactersExactly123456", True, "input", None),
+    (By.NAME, "wireless.@wifi-iface[1].ssid", "", False, "input", None),
+    (By.NAME, "wireless.@wifi-iface[1].ssid", "ThisIsThirtyThreeCharacters123456", False, "input", None),
 
-    # --- Channel Validation (Dropdown Select) ---
-    (By.ID, "supp_chan", "165", True, "select"),
+    # --- Channel Validation (Dropdown Select) - Requires BSU ---
+    (By.ID, "supp_chan", "165", True, "select", "requires_bsu"),
+
+    # --- Bandwidth Validation (Dropdown Select) - Requires BSU ---
+    # Assuming 'supp_band' is the ID for bandwidth based on previous HTML
+    (By.ID, "supp_band", "HT40+", True, "select", "requires_bsu"),
 
     # --- Distance Validation (Text Input) ---
-    (By.NAME, "wireless.wifi1.distance", "15", True, "input"),
-    (By.NAME, "wireless.wifi1.distance", "35", False, "input"),  # Negative: Out of range
+    (By.NAME, "wireless.wifi1.distance", "15", True, "input", None),
+    (By.NAME, "wireless.wifi1.distance", "35", False, "input", None),
 ]
 
 
@@ -57,19 +61,16 @@ def test_Extract_All_Config(setup, local_ip):
 
     accessWeb.access_and_login(driver, URL, username, password)
 
-    # FIX: Wait specifically for the URL to change and include the stok token
     try:
         WebDriverWait(driver, 10).until(EC.url_contains(";stok="))
     except Exception:
         pytest.fail("Login failed or redirect took too long. Stok token not found in URL.")
 
-    # Extract the 'stok' token
     current_url = driver.current_url
     stok_match = re.search(r';stok=([a-fA-F0-9]+)', current_url)
     assert stok_match is not None, f"Could not find 'stok' token in URL: {current_url}"
     stok = stok_match.group(1)
 
-    # Create HTTP session and transfer cookies
     session = requests.Session()
     for cookie in driver.get_cookies():
         session.cookies.set(cookie['name'], cookie['value'])
@@ -78,35 +79,29 @@ def test_Extract_All_Config(setup, local_ip):
     response = session.get(config_api_url)
     assert response.status_code == 200
 
-    # Extract the JS variables block
     js_block_match = re.search(r'const values = \{(.*?)\};', response.text, re.DOTALL)
     assert js_block_match is not None, "Could not find the 'const values' JS block!"
 
     js_block = js_block_match.group(1)
-
-    # Convert JS variables to a Python Dictionary
     all_configs = dict(re.findall(r'"([^"]+)":\s*"([^"]*)"', js_block))
 
     print(f"\nSuccessfully extracted {len(all_configs)} configuration parameters!")
-
-    # Baseline assertion to ensure the dictionary mapped correctly
     assert all_configs.get("wireless.@wifi-iface[1].ssid") is not None, "Failed to map configurations correctly."
     print("Backend data extraction passed.")
 
 
 # ==============================================================================
-# TEST 2: Data-Driven GUI Validation (Iterates through VALIDATION_DATA)
+# TEST 2: Data-Driven GUI Validation
 # ==============================================================================
-@pytest.mark.parametrize("locator_strategy, locator_value, test_input, is_valid_scenario, element_type",
+@pytest.mark.parametrize("locator_strategy, locator_value, test_input, is_valid_scenario, element_type, dependency",
                          VALIDATION_DATA)
 def test_GUI_Parameter_Validation(setup, local_ip, locator_strategy, locator_value, test_input, is_valid_scenario,
-                                  element_type):
+                                  element_type, dependency):
     driver = setup
     URL = f"http://{local_ip}/cgi-bin/luci"
 
     accessWeb.access_and_login(driver, URL, username, password)
 
-    # FIX: Wait specifically for the URL to change and include the stok token
     try:
         WebDriverWait(driver, 10).until(EC.url_contains(";stok="))
     except Exception:
@@ -119,6 +114,22 @@ def test_GUI_Parameter_Validation(setup, local_ip, locator_strategy, locator_val
 
     radio1_url = f"http://{local_ip}/cgi-bin/luci/;stok={stok}/admin/wireless/radio1"
     driver.get(radio1_url)
+
+    # ---------------------------------------------------------
+    # DEPENDENCY CHECK: Check Radio Mode before proceeding
+    # ---------------------------------------------------------
+    if dependency == "requires_bsu":
+        try:
+            radio_mode_select = Select(WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.NAME, "wireless.@wifi-iface[1].mode"))
+            ))
+            # In LuCI, 'ap' is typically Master/BSU, and 'sta' is Client/SU
+            current_mode = radio_mode_select.first_selected_option.get_attribute("value")
+
+            if current_mode != "ap":
+                pytest.skip(f"Skipping parameter '{locator_value}'. Radio Mode is currently SU ('{current_mode}').")
+        except Exception as e:
+            pytest.fail(f"Could not determine Radio Mode for dependency check. Error: {e}")
 
     # 1. Locate the specific element
     target_element = WebDriverWait(driver, 10).until(
@@ -139,26 +150,23 @@ def test_GUI_Parameter_Validation(setup, local_ip, locator_strategy, locator_val
     save_button = driver.find_element(By.XPATH, "//input[@value='Save']")
     save_button.click()
 
-    # Time to wait for JavaScript to process and throw an error if input is bad
-    time.sleep(1)
-
-    # 4. Determine if Senao's JavaScript threw an alert blocking the save
+    # 4. Smart Wait for Alert (Wait up to 5 seconds for backend to process)
     alert_triggered = False
     try:
+        WebDriverWait(driver, 5).until(EC.alert_is_present())
         alert = driver.switch_to.alert
         print(f"\nAlert Triggered: '{alert.text}'")
-        alert.accept()  # Click OK to dismiss the alert so the next test can run
+        alert.accept()
         alert_triggered = True
-    except NoAlertPresentException:
+    except TimeoutException:
+        # No alert popped up within 5 seconds
         pass
 
     # 5. Evaluate the results based on our expectations
     if is_valid_scenario:
-        # A valid scenario should NOT trigger an error alert
         assert alert_triggered is False, f"Failed! Valid input '{test_input}' for '{locator_value}' triggered an unexpected error."
         print(f"\nPass: Valid input '{test_input}' was accepted successfully.")
     else:
-        # An invalid scenario MUST trigger an alert OR be blocked by the HTML field max limits
         actual_typed_value = target_element.get_attribute('value')
 
         if alert_triggered or str(test_input) != str(actual_typed_value):
