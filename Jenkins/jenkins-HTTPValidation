@@ -127,6 +127,9 @@ pipeline {
                             body { font-family: 'Inter', -apple-system, sans-serif; margin: 0; padding: 0; background-color: #f4f7f6; color: #1f2937; }
                             .container { max-width: 1200px; margin: 30px auto; padding: 30px; background: #ffffff; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); }
                             .header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #ffffff 0%, #f0f4f8 100%); padding: 30px 40px; border: 1px solid #e2e8f0; border-radius: 12px; }
+                            /* Reduced logo size to 45px per request */
+                            .header img { height: 45px; transition: transform 0.3s ease; }
+                            .header img:hover { transform: scale(1.05); }
                             .header-info { text-align: right; }
                             .header-info h1 { margin: 0; font-size: 28px; font-weight: 700; color: #0f172a; }
                             .header-info p { margin: 5px 0; font-size: 14px; color: #64748b; }
@@ -280,12 +283,18 @@ pipeline {
                         groupedByParam.each { paramName, results ->
                             def safeParamId = paramName.replaceAll("\\s+","_").replaceAll("[^a-zA-Z0-9_]","")
 
+                            // Check if all iterations under this parameter passed
+                            boolean allPass = results.every { it.status == "PASS" }
+                            String overallStatusHtml = allPass ? "<span class='status-pass' style='font-size:11px;'>ALL PASS</span>" : "<span class='status-fail' style='font-size:11px;'>FAIL DETECTED</span>"
+
                             tableRows += """
                                 <tr class="subsection-header" onclick="toggleSection('${safeParamId}')" data-param="${safeParamId}">
-                                    <td colspan="4">
-                                        <span class="toggle-icon" id="icon-${safeParamId}">[-]</span>
+                                    <td colspan="2">
+                                        <span class="toggle-icon" id="icon-${safeParamId}">[+]</span>
                                         Parameter: <span style="color:#2563eb;">${paramName}</span>
                                     </td>
+                                    <td style="text-align: center;">${overallStatusHtml}</td>
+                                    <td style="text-align: center; font-size:12px; color:#64748b;">${results.size()} Cases</td>
                                 </tr>
                             """
 
@@ -308,8 +317,9 @@ pipeline {
 
                                 def logButton = "<button class='log-button' onclick=\"showLog('${logDataId}')\">See Logs</button>"
 
+                                // Set initially hidden with inline style display:none
                                 tableRows += """
-                                    <tr class="row-${safeParamId}" data-status="${rawStatus}">
+                                    <tr class="row-${safeParamId}" data-status="${rawStatus}" style="display:none;">
                                         <td>${iteration}</td>
                                         <td><strong>${testName}</strong></td>
                                         <td style="text-align: center;">${statusHtml}</td>
