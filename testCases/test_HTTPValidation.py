@@ -30,11 +30,20 @@ password = "admin"
 # Format: (Parameter Name, Locator Strategy, Locator Value, Input Value, Expected to Pass?, Element Type, Dependency)
 # ==============================================================================
 VALIDATION_DATA = [
-    # 1 Positive Case: Standard valid SSID
+    # --- SSID Validation ---
     ("SSID", By.NAME, "wireless.@wifi-iface[1].ssid", "Valid_SSID_123", True, "input", None),
-
-    # 1 Negative Case: Empty string (0 chars)
+    ("SSID", By.NAME, "wireless.@wifi-iface[1].ssid", "A", True, "input", None),
+    ("SSID", By.NAME, "wireless.@wifi-iface[1].ssid", "ThirtyTwoCharactersExactly123456", True, "input", None),
     ("SSID", By.NAME, "wireless.@wifi-iface[1].ssid", "", False, "input", None),
+    ("SSID", By.NAME, "wireless.@wifi-iface[1].ssid", "ThisIsThirtyThreeCharacters123456", False, "input", None),
+
+    # --- Channel Validation (Requires BSU) ---
+    ("Channel", By.ID, "supp_chan", "165", True, "select", "requires_bsu"),
+    ("Channel", By.ID, "supp_chan", "36", True, "select", "requires_bsu"),
+
+    # --- Distance Validation ---
+    ("Distance", By.NAME, "wireless.wifi1.distance", "15", True, "input", None),
+    ("Distance", By.NAME, "wireless.wifi1.distance", "35", False, "input", None),
 ]
 
 
