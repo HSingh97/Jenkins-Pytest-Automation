@@ -59,7 +59,7 @@ pipeline {
                     def scriptPath = "testCases/test_SNMP_Validation.py"
 
                     echo "----------------------------------------"
-                    echo "Running SNMP Validation for ${count} iteration(s)"
+                    echo "SNMP Validation"
                     echo "----------------------------------------"
 
                     for (int i = 1; i <= count; i++) {
