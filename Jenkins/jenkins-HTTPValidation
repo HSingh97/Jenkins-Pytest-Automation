@@ -78,26 +78,52 @@ pipeline {
                     String fileDate = Calendar.getInstance(istZone).getTime().format("yyyyMMdd", istZone)
                     String reportFileName = "HTTPValidation_report_${env.BUILD_ID}_${fileDate}.html"
 
-                    // Generate Discovered Configs segregated by Login User
+                    // =========================================================
+                    // NEW: Consolidated Visibility Matrix Table
+                    // =========================================================
                     String currentConfigHTML = ""
-                    if (jsonReport.current_configs && jsonReport.current_configs.size() > 0) {
-                        jsonReport.current_configs.each { loginUser, configs ->
-                            currentConfigHTML += """
-                                <h3 style="margin-top: 24px; color: #1e3a8a; font-weight: 600;">Visible to Login: <span style="background-color:#dbeafe; padding: 4px 10px; border-radius:6px; border: 1px solid #bfdbfe;">${loginUser}</span></h3>
-                                <table>
-                                    <tr><th width="50%">Parameter Name</th><th width="50%">Configured Value</th></tr>
-                            """
-                            if (configs.size() > 0) {
-                                configs.each { key, val ->
-                                    def displayVal = (val && val.toString() != "") ? val.toString() : "<i style='color:#9ca3af;'>[Empty]</i>"
-                                    currentConfigHTML += "<tr><td><code style='color:#d97706; background:#fef3c7; padding:2px 6px; border-radius:4px;'>${key}</code></td><td><strong>${displayVal}</strong></td></tr>\n"
-                                }
-                            } else {
-                                currentConfigHTML += "<tr><td colspan='2' style='text-align:center; color:#6b7280;'>No visible configurations found for this user.</td></tr>"
-                            }
-                            currentConfigHTML += "</table>"
+                    def allKeys = [] as Set
+                    def userRoles = ["root", "admin", "develop"]
+
+                    // Gather all unique parameter keys discovered across all users
+                    if (jsonReport.current_configs) {
+                        jsonReport.current_configs.each { role, configs ->
+                            if (configs) allKeys.addAll(configs.keySet())
                         }
                     }
+
+                    def sortedKeys = allKeys.sort()
+
+                    currentConfigHTML += """
+                        <table style="margin-top: 15px;">
+                            <tr>
+                                <th width="40%">Parameter Element</th>
+                                <th width="20%" style="text-align:center; background-color:#eff6ff; color:#1e3a8a;">Root</th>
+                                <th width="20%" style="text-align:center; background-color:#fefce8; color:#92400e;">Admin</th>
+                                <th width="20%" style="text-align:center; background-color:#f0fdf4; color:#166534;">Develop</th>
+                            </tr>
+                    """
+
+                    if (sortedKeys.size() > 0) {
+                        sortedKeys.each { rawKey ->
+                            // Clean the key (e.g., "advwireless.ath1.amsdu_count" -> "AMSDU COUNT")
+                            def cleanKey = rawKey.tokenize('.')[-1].toUpperCase().replaceAll("_", " ")
+
+                            currentConfigHTML += "<tr>\n"
+                            currentConfigHTML += "<td><strong>${cleanKey}</strong></td>\n"
+
+                            userRoles.each { role ->
+                                boolean isVisible = jsonReport.current_configs[role] && jsonReport.current_configs[role].containsKey(rawKey)
+                                def icon = isVisible ? "<span style='color:#10b981; font-size:18px; font-weight:bold;'>&#10003;</span>" : "<span style='color:#ef4444; font-size:18px; font-weight:bold;'>&#10007;</span>"
+                                currentConfigHTML += "<td style='text-align:center;'>${icon}</td>\n"
+                            }
+                            currentConfigHTML += "</tr>\n"
+                        }
+                    } else {
+                        currentConfigHTML += "<tr><td colspan='4' style='text-align:center; color:#64748b;'>No configurations found.</td></tr>"
+                    }
+                    currentConfigHTML += "</table>"
+                    // =========================================================
 
                     // Build HTML
                     String htmlContent = """
@@ -109,8 +135,6 @@ pipeline {
                             body { font-family: 'Inter', -apple-system, sans-serif; margin: 0; padding: 0; background-color: #f4f7f6; color: #1f2937; }
                             .container { max-width: 1200px; margin: 30px auto; padding: 30px; background: #ffffff; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); }
                             .header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #ffffff 0%, #f0f4f8 100%); padding: 30px 40px; border: 1px solid #e2e8f0; border-radius: 12px; }
-                            .header img { height: 65px; transition: transform 0.3s ease; }
-                            .header img:hover { transform: scale(1.05); }
                             .header-info { text-align: right; }
                             .header-info h1 { margin: 0; font-size: 28px; font-weight: 700; color: #0f172a; }
                             .header-info p { margin: 5px 0; font-size: 14px; color: #64748b; }
@@ -200,7 +224,6 @@ pipeline {
                     <body>
                         <div class="container">
                             <div class="header">
-                                <img src="https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png" alt="Senao Networks, Inc."/>
                                 <div class="header-info">
                                     <h1>Automated Test Report</h1>
                                     <p><strong>Pipeline:</strong> ${env.JOB_NAME}</p>
@@ -240,12 +263,12 @@ pipeline {
 
                             <br><hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 30px 0;">
 
-                            <h2>Current Discovered Configuration</h2>
+                            <h2>Visibility Matrix</h2>
                             ${currentConfigHTML}
 
                             <br><hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 30px 0;">
 
-                            <h2>Validation Results</h2>
+                            <h2>Validation Results (Main User)</h2>
                             <table id="resultsTable">
                                 <tr>
                                     <th width="10%">Iter #</th>
@@ -380,7 +403,7 @@ pipeline {
                             <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
                             <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
                             <br/>
-                            <p style="color:gray;">--<br/>Jenkins Automateed Notification</p>
+                            <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
                         </body>
                         </html>
                     """,
