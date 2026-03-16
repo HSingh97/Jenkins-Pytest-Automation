@@ -89,12 +89,23 @@ pipeline {
                     def istDate = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
 
-                    // NEW: Dynamic File Naming
                     def fileDate = Calendar.getInstance(istZone).getTime().format("yyyyMMdd", istZone)
                     def reportFileName = "HTTPValidation_report_${env.BUILD_ID}_${fileDate}.html"
 
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
+
+                    // Generate Current Config Rows
+                    def currentConfigRows = ""
+                    if (jsonReport.current_configs && jsonReport.current_configs.size() > 0) {
+                        jsonReport.current_configs.each { key, val ->
+                            def displayVal = val.toString()
+                            if (displayVal == "") displayVal = "<i style='color:gray;'>[Empty]</i>"
+                            currentConfigRows += "<tr><td><code>${key}</code></td><td><strong>${displayVal}</strong></td></tr>\n"
+                        }
+                    } else {
+                        currentConfigRows = "<tr><td colspan='2' style='text-align:center;'>No configurations found.</td></tr>"
+                    }
 
                     def htmlContent = """
                     <html>
@@ -131,7 +142,6 @@ pipeline {
                             tr:last-child td { border-bottom: none; }
                             tr:hover { background-color: #f9fafb; }
 
-                            /* NEW: Interactive Subsection Header Styling */
                             .subsection-header td { background-color: #e5e7eb !important; font-weight: 700; color: #1f2937; font-size: 15px; border-top: 2px solid #d1d5db; cursor: pointer; user-select: none; transition: background-color 0.2s; }
                             .subsection-header td:hover { background-color: #d1d5db !important; }
                             .toggle-icon { display: inline-block; width: 20px; text-align: center; color: #4b5563; }
@@ -155,17 +165,19 @@ pipeline {
                             function closeModal() { document.getElementById('logModal').style.display = 'none'; }
                             window.onclick = function(event) { if (event.target == document.getElementById('logModal')) closeModal(); }
 
-                            // NEW: Show/Hide logic for the parameter rows
                             function toggleSection(paramId) {
                                 var rows = document.querySelectorAll('.row-' + paramId);
                                 var icon = document.getElementById('icon-' + paramId);
-                                var isExpanded = icon.innerHTML.includes('9660'); // Checks for down-arrow
+                                if (rows.length === 0) return;
+
+                                // Check current display status of the first row to toggle
+                                var isHidden = rows[0].style.display === 'none';
 
                                 rows.forEach(function(row) {
-                                    row.style.display = isExpanded ? 'none' : 'table-row';
+                                    row.style.display = isHidden ? 'table-row' : 'none';
                                 });
 
-                                icon.innerHTML = isExpanded ? '&#9658;' : '&#9660;'; // Toggle between right-arrow and down-arrow
+                                icon.innerHTML = isHidden ? '&#9660;' : '&#9658;';
                             }
                         </script>
                     </head>
@@ -206,6 +218,15 @@ pipeline {
                                 </div>
                             </div>
 
+                            <h2>Current Discovered Configuration</h2>
+                            <table>
+                                <tr>
+                                    <th width="50%">Backend Parameter</th>
+                                    <th width="50%">Configured Value</th>
+                                </tr>
+                                ${currentConfigRows}
+                            </table>
+
                             <h2>Validation Results</h2>
                             <table>
                                 <tr>
@@ -223,10 +244,8 @@ pipeline {
                         def groupedByParam = jsonReport.iterations.groupBy { it.parameter ?: "Unknown Parameter" }
 
                         groupedByParam.each { paramName, results ->
-                            // Create a safe ID string without spaces for JavaScript mapping
                             def safeParamId = paramName.replaceAll("\\s+","_").replaceAll("[^a-zA-Z0-9_]","")
 
-                            // NEW: Added onclick trigger and dynamic icon
                             tableRows += """
                                 <tr class="subsection-header" onclick="toggleSection('${safeParamId}')">
                                     <td colspan="4">
@@ -254,7 +273,6 @@ pipeline {
 
                                 def logButton = "<button class='log-button' onclick=\"showLog('${logDataId}')\">See Logs</button>"
 
-                                // NEW: Added the tracking class 'row-ID' so JS knows which rows to hide
                                 tableRows += """
                                     <tr class="row-${safeParamId}">
                                         <td>${iteration}</td>
@@ -288,7 +306,6 @@ pipeline {
                     </html>
                     """
 
-                    // NEW: Saving as the dynamically generated filename
                     writeFile file: reportFileName, text: htmlContent
                 }
             }
@@ -296,7 +313,6 @@ pipeline {
     }
     post {
         always {
-            // Re-generate the filename variable so the post block knows what to publish
             script {
                 def istZone = TimeZone.getTimeZone("Asia/Kolkata")
                 def fileDate = Calendar.getInstance(istZone).getTime().format("yyyyMMdd", istZone)
@@ -329,14 +345,7 @@ pipeline {
 
                 def userEmails = [
                     "puneet": "puneet.sharma@senao.com",
-                    "harman": "harmanjot.singh@senao.com",
-                    "mahesh": "mahesh.battala@senao.com",
-                    "sandeep": "sandeep.manchikanti@senao.com",
-                    "sampath": "sampath.marella@senao.com",
-                    "jayanth": "jayanth.munnaluru@senao.com",
-                    "srilatha": "srilatha.tadiboina@senao.com",
-                    "phani": "phani.darla@senao.com",
-                    "dinesh": "dinesh.redddy@senao.com"
+                    "harman": "harmanjot.singh@senao.com"
                 ]
 
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
@@ -361,7 +370,7 @@ pipeline {
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: "${reportFileName},iteration_results.json" // Updated pattern
+                    attachmentsPattern: "${reportFileName},iteration_results.json"
                 )
             }
         }
