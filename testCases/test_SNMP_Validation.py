@@ -41,8 +41,9 @@ def log_print(*msg):
 
 def snmp_get(device_ip, community, oid):
     try:
+        # Wrapped {community} in single quotes to handle spaces/special chars
         result = subprocess.run(
-            f"snmpget -v2c -c {community} {device_ip} {oid}",
+            f"snmpget -v2c -c '{community}' {device_ip} {oid}",
             shell=True, capture_output=True, text=True, check=True
         )
         output = result.stdout.strip()
@@ -79,9 +80,9 @@ def load_mib_with_snmptranslate(mib_path):
         return oid_to_name
 
     try:
-        # -Tz prints the loaded tree as: "nodeName" "numeric.oid"
+        # Wrapped {mib_path} in single quotes to handle directory spaces
         result = subprocess.run(
-            f"snmptranslate -Tz -m {mib_path}",
+            f"snmptranslate -Tz -m '{mib_path}'",
             shell=True, capture_output=True, text=True
         )
 
@@ -123,10 +124,9 @@ def lookup_name(oid_str, oid_map):
 
 def snmp_v2c_walk(device_ip, community, oid, mib_path):
     try:
-        # Pass the MIB explicitly to ensure snmpwalk has full context,
-        # but force numeric output (-O n) so regex matching is uniform.
+        # Wrapped {mib_path} and {community} in single quotes
         result = subprocess.run(
-            f"snmpwalk -m {mib_path} -v2c -c {community} -O n {device_ip} {oid}",
+            f"snmpwalk -m '{mib_path}' -v2c -c '{community}' -O n {device_ip} {oid}",
             shell=True, capture_output=True, text=True, check=True
         )
         return result.stdout.strip()
