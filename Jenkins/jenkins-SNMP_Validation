@@ -13,7 +13,6 @@ pipeline {
                     def deviceIP       = (params['Local IP Address']       ?: '').toString().trim()
                     def readCommunity  = (params['Read Community']  ?: '').toString().trim()
                     def writeCommunity = (params['Write Community'] ?: '').toString().trim()
-                    def mibFilePath    = "${env.WORKSPACE}/${mibFileName}"
 
                     echo "========================================"
                     echo " SNMP Validation — Preparation"
@@ -61,6 +60,9 @@ pipeline {
                     def writeCommunity = (params['Write Community'] ?: '').toString().trim()
                     def scriptPath     = "testCases/test_SNMP_Validation.py"
 
+                    // Jenkins File Parameter: the uploaded file is placed directly in
+                    // the workspace with its original filename. params['MIB File'] gives that filename.
+                    // Pattern from example: treat the param value as the file reference and mv to fixed name.
                     def customMibFile = params['MIB File']
                     def mibFilePath   = "${env.WORKSPACE}/SENAO-MIB.mib"
 
