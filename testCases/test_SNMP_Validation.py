@@ -70,8 +70,8 @@ def fetch_build_params(device_ip, community):
 
 def load_mib_fast_parser(mib_path):
     """
-    High-accuracy, non-regex reliant ASN.1 block parser.
-    Safely builds the OID tree entirely in Python memory, bypassing Linux dependencies.
+    Highly accurate Line-by-Line Python MIB Parser.
+    Remembers node names across line breaks to perfectly map complex ASN.1 structures.
     """
     oid_to_name = {}
     if not os.path.isfile(mib_path):
@@ -81,60 +81,56 @@ def load_mib_fast_parser(mib_path):
         log_print("==========================================================")
         return oid_to_name
 
+    defs = {}
+    current_name = None
+
     try:
         with open(mib_path, 'r', encoding='utf-8', errors='ignore') as f:
-            content = f.read()
+            for line in f:
+                # 1. Strip inline comments
+                if '--' in line:
+                    line = line.split('--')[0]
 
-        # 1. Strip all SNMP comments to prevent false parsing
-        content = re.sub(r'--.*', '', content)
+                line = line.strip()
+                if not line: continue
 
-        # 2. Strip all descriptions and quoted text to prevent false positive keywords
-        content = re.sub(r'"[^"]*"', '""', content)
+                words = line.split()
 
-        defs = {}
+                # 2. Look for the start of an Object Definition
+                if len(words) >= 2 and words[1] in [
+                    "OBJECT-TYPE", "MODULE-IDENTITY", "OBJECT-IDENTITY",
+                    "NOTIFICATION-TYPE", "TRAP-TYPE", "OBJECT-GROUP", "NOTIFICATION-GROUP"
+                ]:
+                    current_name = words[0]
+                elif len(words) >= 3 and words[1] == "OBJECT" and words[2] == "IDENTIFIER":
+                    current_name = words[0]
 
-        # Split by assignments and read backwards to securely locate the base name
-        blocks = re.split(r'::=\s*\{', content)
-        for i in range(len(blocks) - 1):
-            left_side = blocks[i]
-            right_side = blocks[i + 1]
+                # 3. Look for the OID Assignment e.g., ::= { parent 1 }
+                match_end = re.search(r'::=\s*\{\s*([a-zA-Z0-9_-]+)\s+(\d+)\s*\}', line)
+                if match_end:
+                    parent = match_end.group(1)
+                    idx = int(match_end.group(2))
 
-            # Find the parent and index in the current block
-            match_right = re.match(r'\s*([a-zA-Z0-9_-]+)\s+(\d+)\s*\}', right_side)
-            if not match_right: continue
+                    # Fallback for 1-liners
+                    if not current_name:
+                        match_inline = re.match(r'^([a-zA-Z0-9_-]+)\s+', line)
+                        if match_inline:
+                            current_name = match_inline.group(1)
 
-            parent = match_right.group(1)
-            idx = int(match_right.group(2))
+                    if current_name:
+                        defs[current_name] = (parent, idx)
 
-            words = left_side.split()
-            if not words: continue
+                    # Reset name after assignment
+                    current_name = None
 
-            keywords = ["OBJECT-TYPE", "OBJECT", "MODULE-IDENTITY", "NOTIFICATION-TYPE", "TRAP-TYPE", "OBJECT-GROUP",
-                        "NOTIFICATION-GROUP"]
-            name = None
-
-            # The name is the identifier immediately preceding the keyword
-            for j in range(len(words) - 1, 0, -1):
-                if words[j] in keywords:
-                    name = words[j - 1]
-                    break
-
-            # Fallback for simple alias assignments (e.g. "senao ::= { enterprises 52619 }")
-            if not name:
-                name = words[-1]
-
-            name = re.sub(r'[^a-zA-Z0-9_-]', '', name)
-            if name:
-                defs[name] = (parent, idx)
-
-        # Standard Roots
+                    # 4. Standardize Top-Level Roots
         roots = {
             'enterprises': '1.3.6.1.4.1', 'mib-2': '1.3.6.1.2.1', 'iso': '1',
             'org': '1.3', 'dod': '1.3.6', 'internet': '1.3.6.1',
             'mgmt': '1.3.6.1.2', 'private': '1.3.6.1.4',
         }
 
-        # Force-inject Senao enterprises in case the syntax varied slightly
+        # Inject missing Senao roots just in case
         if 'engenius' not in defs and 'ENGENIUS' not in defs:
             defs['engenius'] = ('enterprises', 52619)
         if 'senao' not in defs and 'SENAO' not in defs:
@@ -155,6 +151,7 @@ def load_mib_fast_parser(mib_path):
             cache[name] = r
             return r
 
+        # Build the exact mapping dictionary
         for name in defs:
             oid = resolve(name)
             if oid:
@@ -182,7 +179,6 @@ def lookup_name(oid_str, oid_map):
             suffixes = parts[-trim:]
 
             # SMART HEURISTIC: Only apply Radio nomenclature to specific wireless/radio tables
-            # This prevents system metrics (like sysMgmtApply.1) from being called "2.4GHz Radio"
             radio_keywords = ['wireless', 'radio', 'assoc', 'dcs', 'sitesurvey', 'saresult', 'linkprofile']
             is_radio_metric = any(kw in base_name.lower() for kw in radio_keywords)
 
@@ -216,7 +212,6 @@ def lookup_name(oid_str, oid_map):
 
 def snmp_v2c_walk(device_ip, community, oid):
     try:
-        # Note: Bypassing Linux net-snmp dictionary entirely here.
         # We fetch raw numbers (-O n) and map them dynamically in Python.
         result = subprocess.run(
             f"snmpwalk -v2c -c '{community}' -O n {device_ip} {oid}",
