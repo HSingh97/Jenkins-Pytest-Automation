@@ -1,515 +1,660 @@
+// Functions
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
+
+// Main Pipeline
 pipeline {
-    agent {
-        node {
-            label "${params.TARGET_STAND}"
-        }
-    }
+    agent { node { label "${TARGET_STAND}"} }
 
     stages {
-
-        stage('Preparation') {
+        stage('Prepare tests') {
             steps {
                 script {
-                    def deviceIP       = (params['Local IP Address']       ?: '').toString().trim()
-                    def readCommunity  = (params['Read Community']  ?: '').toString().trim()
-                    def writeCommunity = (params['Write Community'] ?: '').toString().trim()
-                    def mibFilePath    = "${env.WORKSPACE}/${mibFileName}"
-
-                    echo "========================================"
-                    echo " SNMP Validation — Preparation"
-                    echo "========================================"
-                    echo " LOCAL IP        : ${deviceIP}"
-                    echo " READ COMMUNITY  : ${readCommunity}"
-                    echo " WRITE COMMUNITY : ${writeCommunity}"
-                    echo " MIB FILE        : ${params['MIB File'] ?: '(not provided)'}"
-                    echo " TARGET STAND    : ${params.TARGET_STAND}"
-                    echo "========================================"
-
-                    if (!deviceIP) { error "Missing required parameter: Local IP Address" }
-
-                    sh "rm -f SNMP_Validation.json SNMP_Validation.html snmp_validation.log || true"
-                    sh "echo '--- Workspace MIB check ---' && ls -la '${env.WORKSPACE}/' | grep -i mib || echo '[WARN] No .mib file found in workspace root'"
-                    echo "Workspace cleaned."
+                    echo "----------------------------------------"
+                    echo "--- TARGET STAND: ${TARGET_STAND}"
+                    echo "----------------------------------------"
                 }
             }
         }
-
-        stage('Install Dependencies') {
+        stage('Install Python Dependencies') {
             steps {
                 script {
-                    echo "========================================"
-                    echo " Installing Dependencies"
-                    echo "========================================"
+                    echo "----------------------------------------"
+                    echo "Installing Dependencies"
+                    echo "----------------------------------------"
                     sh "sh utilities/requirements.txt"
                 }
-                sh '''
-                    which snmpget >/dev/null 2>&1 || {
-                        echo "--- Installing SNMP tools ---"
-                        sudo apt-get update -qq
-                        sudo apt-get install -y snmp snmp-mibs-downloader
-                    }
-                    which python3 >/dev/null 2>&1 || sudo apt-get install -y python3
-                '''
             }
         }
-
-        stage('Run SNMP Validation') {
+        stage('Download Firmware'){
             steps {
                 script {
-                    def deviceIP       = (params['Local IP Address']       ?: '').toString().trim()
-                    def readCommunity  = (params['Read Community']  ?: '').toString().trim()
-                    def writeCommunity = (params['Write Community'] ?: '').toString().trim()
-                    def scriptPath     = "testCases/test_SNMP_Validation.py"
+                    echo "----------------------------------------"
+                    echo "Downloading the Build"
+                    echo "----------------------------------------"
+                    sh "mkdir -p artifacts"
+                    sh "pwd"
 
-                    // Jenkins File Parameter: the uploaded file is placed directly in
-                    // the workspace with its original filename. params['MIB File'] gives that filename.
-                    // Pattern from example: treat the param value as the file reference and mv to fixed name.
-                    def customMibFile = params['MIB File']
-                    def mibFilePath   = "${env.WORKSPACE}/SENAO-MIB.mib"
+                    echo "Cleaning up any old firmware files..."
+                    sh "rm -f fw.img.enc fw.tgz"
 
-                    if (customMibFile) {
-                        sh "mv -f '${customMibFile}' '${mibFilePath}' 2>/dev/null || true"
+                    def targetImgFile = "fw.img.enc"
+                    def targetTgzFile = "fw.tgz"
+
+                    def singleImage = params['Single Image'] ?: false
+
+                    def customBuildFile = params.UPLOADED_FIRMWARE
+                    def logFile = "${workspace}/artifacts/flashing-device.log"
+
+                    def url = params['Build']
+                    int bonsaiIndex = url.indexOf('/bonsai/')
+                    if (bonsaiIndex == -1) {
+                        error "Invalid Build URL: ${url}. URL must contain '/bonsai/'."
                     }
-
-                    // If mv didn't work (File Param returns name not path), try workspace root
-                    def mibOk = sh(script: "test -f '${mibFilePath}' && echo yes || echo no", returnStdout: true).trim()
-                    if (mibOk != 'yes') {
-                        // Jenkins File Parameter copies the file to workspace with original name
-                        sh """
-                            FILE=\$(ls -1 '${env.WORKSPACE}'/*.mib '${env.WORKSPACE}'/*.MIB 2>/dev/null | head -1)
-                            if [ -n "\$FILE" ]; then
-                                cp "\$FILE" '${mibFilePath}'
-                                echo "[OK] MIB found in workspace: \$FILE"
-                            fi
-                        """
-                        mibOk = sh(script: "test -f '${mibFilePath}' && echo yes || echo no", returnStdout: true).trim()
+                    def buildPath = url.substring(bonsaiIndex + 8)
+                    def WGET_URL = "https://jenkins.senao.com/bonsai/${buildPath}"
+                    if (!WGET_URL.endsWith('/')) {
+                        WGET_URL += '/'
                     }
+                    echo "Full WGET URL: ${WGET_URL}"
 
-                    if (mibOk == 'yes') {
-                        echo "[OK] Using MIB file: ${mibFilePath}"
+
+                    if (customBuildFile) {
+                        if (singleImage) {
+                            echo "Using custom uploaded file as SINGLE IMAGE: ${targetImgFile}"
+                            sh "mv -f '${customBuildFile}' ${targetImgFile} 2>&1 | tee \"${logFile}\""
+                            sh "echo 'Downloading .tgz file...' | tee -a \"${logFile}\""
+                            sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
+                            sh "mv -f *-apps.tgz ${targetTgzFile} 2>&1 | tee -a \"${logFile}\""
+                        } else {
+                            echo "Using custom uploaded file as TGZ: ${targetTgzFile}"
+                            sh "mv -f '${customBuildFile}' ${targetTgzFile} 2>&1 | tee \"${logFile}\""
+                            sh "echo 'Downloading .img.enc file...' | tee -a \"${logFile}\""
+                            sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
+                            sh """
+                               #!/bin/bash
+                               imgfile=\$(ls -t *-apps.img.enc 2>/dev/null | head -n 1)
+                               if [ -n "\$imgfile" ]; then mv -f "\$imgfile" "${targetImgFile}"; fi
+                            """ + " 2>&1 | tee -a \"${logFile}\""
+                        }
+
                     } else {
-                        echo "[WARN] MIB file not found — OID names will be empty"
-                        mibFilePath = "/dev/null"
-                    }
+                        sh "echo 'No custom build found. Downloading from URL.' | tee \"${logFile}\""
+                        sh "wget --no-verbose --no-parent --no-check-certificate -e robots=off --recursive --level=1 -A '*-apps.img.enc,*-apps.tgz' --no-directories ${WGET_URL} 2>&1 | tee -a \"${logFile}\""
 
-                    echo "========================================"
-                    echo " Running SNMP Validation on ${deviceIP}"
-                    echo "========================================"
+                        // Rename the tgz file
+                        sh "mv -f *-apps.tgz ${targetTgzFile} 2>&1 | tee -a \"${logFile}\""
 
-                    try {
+                        // Rename the img.enc file
                         sh """
-                            set -x
-                            python3 ${scriptPath} \
-                                --device-ip       '${deviceIP}'        \
-                                --read-community  '${readCommunity}'   \
-                                --write-community '${writeCommunity}'  \
-                                --mib-file        '${mibFilePath}'     \
-                                | tee snmp_validation.log
-                        """
-                    } catch (err) {
-                        echo "SNMP Validation error: ${err}"
+                           #!/bin/bash
+                           imgfile=\$(ls -t *-apps.img.enc 2>/dev/null | head -n 1)
+                           if [ -n "\$imgfile" ]; then
+                               echo "Found image file: \$imgfile. Renaming to ${targetImgFile}"
+                               mv -f "\$imgfile" "${targetImgFile}"
+                           else
+                               echo "ERROR: No downloaded .img file matching '*-apps.img.enc' was found."
+                               exit 1
+                           fi
+                        """ + " 2>&1 | tee -a \"${logFile}\""
                     }
+
+                    if (singleImage) {
+                        echo "Single Image selected. Setting firmware for upgrade: ${targetImgFile}"
+                        env.FIRMWARE_FILE = targetImgFile
+                    } else {
+                        echo "Single Image not selected. Setting firmware for upgrade: ${targetTgzFile}"
+                        env.FIRMWARE_FILE = targetTgzFile
+                    }
+
+                    archiveArtifacts(targetImgFile)
+                    archiveArtifacts(targetTgzFile)
                 }
             }
         }
+        stage('Firmware Upgrade') {
+            steps {
+                script {
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
+                    def model = params['Model']
+                    def buildURL = params['Build']
+                    def serialPort = params['Serial Logging Port']
 
+                    // Clear old files from previous runs
+                    sh 'rm -f test-*.log test.log'
+                    echo "✅ Cleared old workspace"
+
+                    sh "echo '{\"iterations\": []}' > iteration_results.json"  // Initialize JSON object with 'iterations' key
+
+                    def FIRMWARE_UPGRADE_COUNT = params.FIRMWARE_UPGRADE_COUNT ?: "1"
+
+                    echo "Local IP Address: ${localIP}"
+                    echo "Remote IP Address: ${remoteIP}"
+                    echo "--- Firmware file being passed to Pytest: ${env.FIRMWARE_FILE} ---"
+
+                    echo "----------------------------------------"
+                    echo "Upgrading the Firmware"
+                    echo "----------------------------------------"
+                    sh "mkdir -p artifacts"
+
+                    for (int i = 1; i <= FIRMWARE_UPGRADE_COUNT.toInteger() ; i++) {
+                        echo "Running Firmware Upgrade test iteration ${i}"
+                        try {
+                            sh """
+                                export FW_PATH=\"${env.FIRMWARE_FILE}\"; pytest -v -s testCases/test_firmwareUpgrade.py::test_Upgrade 2>&1 \
+                                --local-ip '$localIP' --remote-ip '$remoteIP' \
+                                --serialPort '$serialPort' --iter ${i} | tee \"${workspace}/artifacts/firmware-upgrade-device.log\"
+                            """
+                        } catch (Exception e) {
+                            echo "Firmware Upgrade test iteration ${i} failed: ${e.message}"
+                        }
+                    }
+
+                    // Zip the logs for archival
+                    sh 'zip fw_upgrade_test_results.zip test-*.log'
+                    // Archive the zip file
+                    archiveArtifacts('fw_upgrade_test_results.zip')
+                    // DO NOT remove test-*.log files here. They are needed for the next stage.
+                    // They will be removed in the post-build 'always' block.
+                    archiveArtifacts('artifacts/**/*')
+                }
+            }
+        }
         stage('Generate Report') {
             steps {
                 script {
-                    def deviceIP        = (params['Local IP Address'] ?: '').toString().trim()
-                    def jsonReport      = readJSON file: 'SNMP_Validation.json'
-                    def istZone         = TimeZone.getTimeZone("Asia/Kolkata")
-                    def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", istZone)
-                    def pipelineName    = env.JOB_NAME
-                    def companyLogoUrl  = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+                    def localIP = params['Local IP Address']
+                    def remoteIP = params['Remote IP Address']
+                    sh "ssh-keygen -R ${localIP} || true"
+                    sh "ssh-keygen -R ${remoteIP} || true"
 
-                    def bp = jsonReport.build_params ?: [:]
-                    def buildParams = [
-                        "Device Name" : bp["Device Name"] ?: "N/A",
-                        "Serial No"   : bp["Serial No"]   ?: "N/A",
-                        "IP Address"  : bp["IP Address"]  ?: deviceIP,
-                        "FW Version"  : bp["FW Version"]  ?: "N/A",
-                    ]
+                    def local_fw_version = "N/A"
+                    def remote_fw_version = "N/A"
 
-                    def buildSnmpRows = { dataList ->
-                        def rows = new StringBuilder()
-                        dataList.each { rec ->
-                            def rName  = (rec.name  ?: "").toString()
-                            def rOid   = (rec.oid   ?: "").toString()
-                                            .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                            def rType  = (rec.type  ?: "").toString()
-                            def rData  = (rec.data  ?: "").toString()
-                                            .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                            def rPrefix = "other"
-                            if (rName) {
-                                def m = (rName =~ /^([a-z]+)/)
-                                if (m) rPrefix = m[0][1]
-                            }
-                            def badgeClass = [
-                                "STRING"    : "badge-string",
-                                "INTEGER"   : "badge-integer",
-                                "Gauge32"   : "badge-gauge",
-                                "Counter32" : "badge-counter",
-                                "Counter64" : "badge-counter",
-                                "Timeticks" : "badge-timeticks",
-                                "IpAddress" : "badge-ip",
-                                "OID"       : "badge-oid",
-                                "Hex-STRING": "badge-hex"
-                            ].get(rType, "badge-oid")
-                            def nameDisplay = rName ?: "<em class='no-name'>&#8212;</em>"
-                            rows.append("<tr data-prefix=\"${rPrefix}\" data-type=\"${rType}\">")
-                            rows.append("<td class=\"col-name\">${nameDisplay}</td>")
-                            rows.append("<td class=\"col-oid\">${rOid}</td>")
-                            rows.append("<td class=\"col-type\"><span class=\"badge ${badgeClass}\">${rType}</span></td>")
-                            rows.append("<td class=\"col-val\">${rData}</td>")
-                            rows.append("</tr>\n")
-                        }
-                        return rows.toString()
+                    try {
+                        local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
+                    } catch (Exception e) {
+                        echo "⚠️ Failed to get local FW version from ${localIP}: ${e.message}"
                     }
 
-                    def readData   = jsonReport.read_community  ?: [:]
-                    def writeData  = jsonReport.write_community ?: [:]
-                    def readRows   = buildSnmpRows(readData.data   ?: [])
-                    def writeRows  = buildSnmpRows(writeData.data  ?: [])
-                    def readCount  = readData.oid_count  ?: 0
-                    def writeCount = writeData.oid_count ?: 0
+                    try {
+                        remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
+                    } catch (Exception e) {
+                        echo "⚠️ Failed to get remote FW version from ${remoteIP}: ${e.message}"
+                    }
 
-                    def chipBar = '<span class="chip active" data-prefix="all">All</span>' +
-                        '<span class="chip" data-prefix="wireless">Wireless</span>' +
-                        '<span class="chip" data-prefix="assoc">Assoc</span>' +
-                        '<span class="chip" data-prefix="sys">System</span>' +
-                        '<span class="chip" data-prefix="ethernet">Ethernet</span>' +
-                        '<span class="chip" data-prefix="network">Network</span>' +
-                        '<span class="chip" data-prefix="vlan">VLAN</span>' +
-                        '<span class="chip" data-prefix="dcs">DCS</span>' +
-                        '<span class="chip" data-prefix="dfs">DFS</span>' +
-                        '<span class="chip" data-prefix="dhcp">DHCP</span>' +
-                        '<span class="chip" data-prefix="snmp">SNMP</span>' +
-                        '<span class="chip" data-prefix="radius">RADIUS</span>' +
-                        '<span class="chip" data-prefix="link">Link</span>' +
-                        '<span class="chip" data-prefix="gps">GPS</span>' +
-                        '<span class="chip" data-prefix="ntp">NTP</span>' +
-                        '<span class="chip" data-prefix="qinq">QinQ</span>' +
-                        '<span class="chip" data-prefix="other">Other</span>'
+                    def jsonReport = readJSON file: 'iteration_results.json'
+                    echo "JSON Report: ${jsonReport}"
 
-                    def htmlContent = """<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Automated Test Report</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
-  <style>
-    *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
-    body          { font-family:'Inter',-apple-system,sans-serif; background:#f4f7f6; color:#1f2937; line-height:1.6; }
-    .page         { max-width:1360px; margin:0 auto; padding:32px 24px 64px; }
-    .header       { display:flex; justify-content:space-between; align-items:center;
-                    background:linear-gradient(135deg,#ffffff 0%,#f0f4f8 100%);
-                    padding:30px 40px; border:1px solid #e2e8f0; border-radius:16px;
-                    box-shadow:0 10px 25px -5px rgba(0,0,0,0.05); }
-    .header img   { height:58px; transition:transform 0.3s; }
-    .header img:hover { transform:scale(1.05); }
-    .header-info  { text-align:right; }
-    .header-info h1 { font-size:30px; font-weight:800; color:#0f172a; letter-spacing:-0.5px; }
-    .header-info p  { margin-top:5px; font-size:14px; color:#64748b; }
-    h2            { margin:40px 0 20px; font-size:22px; font-weight:700; color:#0f172a;
-                    padding-bottom:12px; position:relative; }
-    h2::after     { content:''; position:absolute; left:0; bottom:0;
-                    width:56px; height:3px; background:#3b82f6; border-radius:3px; }
-    .params-table { width:100%; border-collapse:collapse; background:#fff;
-                    border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;
-                    box-shadow:0 4px 6px -1px rgba(0,0,0,0.04); }
-    .params-table th,.params-table td { padding:14px 20px; border-bottom:1px solid #e2e8f0;
-                    font-size:14px; text-align:left; vertical-align:middle; }
-    .params-table th { background:#f8fafc; font-weight:600; color:#475569;
-                       font-size:12px; text-transform:uppercase; letter-spacing:0.5px; }
-    .params-table tr:last-child td { border-bottom:none; }
-    .params-table tr:hover td { background:#f8fafc; }
-    .accordion    { background:#fff; border-radius:14px; overflow:hidden;
-                    border:1px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.06);
-                    margin-bottom:24px; }
-    .acc-header   { display:flex; justify-content:space-between; align-items:center;
-                    padding:20px 28px; cursor:pointer; user-select:none; transition:background 0.2s; }
-    .acc-header:hover { background:#f0f9ff; }
-    .acc-header.open  { background:#dbeafe; }
-    .acc-title    { display:flex; align-items:center; gap:14px; }
-    .acc-num      { width:32px; height:32px; border-radius:50%; background:#3b82f6; color:#fff;
-                    font-size:15px; font-weight:700; display:flex; align-items:center;
-                    justify-content:center; flex-shrink:0; }
-    .acc-header.open .acc-num   { background:#1d4ed8; }
-    .acc-label    { font-size:17px; font-weight:700; color:#0f172a; }
-    .acc-header.open .acc-label { color:#1d4ed8; }
-    .acc-meta     { font-size:13px; color:#64748b; font-weight:400; margin-left:4px; }
-    .acc-header.open .acc-meta  { color:#3b82f6; }
-    .acc-arrow    { font-size:18px; color:#94a3b8; transition:transform 0.3s; }
-    .acc-header.open .acc-arrow { transform:rotate(180deg); color:#1d4ed8; }
-    .acc-body     { max-height:0; overflow:hidden; transition:max-height 0.4s ease; }
-    .acc-body.open { max-height:99999px; }
-    .acc-inner    { padding:24px 28px; border-top:1px solid #e2e8f0; }
-    .toolbar      { display:flex; gap:14px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
-    .search-wrap  { flex:1; min-width:280px; position:relative; }
-    .search-wrap input { width:100%; border:1px solid #cbd5e1; border-radius:10px;
-                         padding:11px 16px 11px 46px; font-size:14px; font-family:'Inter',sans-serif;
-                         background:#fff; outline:none; transition:all 0.2s; }
-    .search-wrap input:focus { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,0.15); }
-    .search-wrap svg { position:absolute; left:14px; top:50%; transform:translateY(-50%);
-                       color:#94a3b8; pointer-events:none; width:20px; height:20px; }
-    .type-select  { padding:11px 16px; font-size:14px; font-family:'Inter',sans-serif;
-                    border:1px solid #cbd5e1; border-radius:10px; background:#fff;
-                    color:#1e293b; cursor:pointer; min-width:160px; outline:none; transition:all 0.2s; }
-    .type-select:focus { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,0.15); }
-    .count-pill   { background:#eff6ff; border:1px solid #bfdbfe; border-radius:999px;
-                    padding:9px 20px; font-size:14px; font-weight:600; color:#1d4ed8; white-space:nowrap; }
-    .chip-bar     { display:flex; flex-wrap:wrap; gap:8px; align-items:center;
-                    padding:14px 0; margin-bottom:16px; }
-    .chip-label   { font-size:11px; font-weight:700; text-transform:uppercase;
-                    letter-spacing:0.8px; color:#64748b; margin-right:4px; white-space:nowrap; }
-    .chip         { border:1.5px solid #e2e8f0; background:#f8fafc; border-radius:999px;
-                    padding:5px 16px; font-size:12px; font-weight:600; color:#475569;
-                    cursor:pointer; transition:all 0.15s; user-select:none; }
-    .chip:hover   { border-color:#3b82f6; color:#1d4ed8; background:#eff6ff; }
-    .chip.active  { background:#3b82f6; border-color:#3b82f6; color:#fff;
-                    box-shadow:0 2px 8px rgba(59,130,246,0.3); }
-    .data-table-wrap { border-radius:12px; overflow:hidden; border:1px solid #e2e8f0; }
-    table         { width:100%; border-collapse:collapse; background:#fff; }
-    thead tr      { background:#f1f5f9; }
-    th            { padding:13px 20px; font-weight:600; color:#475569; font-size:12px;
-                    text-transform:uppercase; letter-spacing:0.5px; border-bottom:2px solid #e2e8f0; text-align:left; }
-    tbody tr      { border-bottom:1px solid #f1f5f9; transition:background 0.12s; }
-    tbody tr:last-child { border-bottom:none; }
-    tbody tr:hover td { background:#f0f9ff; }
-    tbody tr:hover .col-oid { color:#3b82f6 !important; }
-    td            { padding:12px 20px; vertical-align:middle; }
-    .col-name     { font-size:13.5px; font-weight:600; color:#0f172a; min-width:180px; }
-    .col-oid      { font-family:'JetBrains Mono',monospace; font-size:12px; color:#64748b; }
-    .col-type     { text-align:center; min-width:120px; }
-    .col-val      { font-size:13px; color:#334155; max-width:400px; word-break:break-all; }
-    .no-name      { color:#94a3b8; font-style:italic; }
-    .no-results   { text-align:center; padding:60px 20px; color:#94a3b8; font-size:15px; }
-    .badge        { display:inline-block; padding:4px 12px; border-radius:999px; font-size:11px; font-weight:700; letter-spacing:0.3px; }
-    .badge-string   { background:#dbeafe; color:#1e40af; }
-    .badge-integer  { background:#fef9c3; color:#92400e; }
-    .badge-gauge    { background:#dcfce7; color:#166534; }
-    .badge-counter  { background:#ede9fe; color:#5b21b6; }
-    .badge-timeticks { background:#ffedd5; color:#9a3412; }
-    .badge-ip       { background:#fce7f3; color:#9d174d; }
-    .badge-oid      { background:#f1f5f9; color:#475569; }
-    .badge-hex      { background:#ecfdf5; color:#065f46; }
-  </style>
-</head>
-<body>
-<div class="page">
+                    // --- Calculate Stats ---
+                    def totalTests = 0
+                    def passCount = 0
+                    if (jsonReport.iterations) {
+                        totalTests = jsonReport.iterations.size()
+                        passCount = jsonReport.iterations.count { it.status == 'PASS' }
+                    }
+                    def failCount = totalTests - passCount
+                    def successPercentage = (totalTests > 0) ? (passCount / (double)totalTests) * 100 : 0
+                    def successPercentageStr = String.format("%.1f", successPercentage)
 
-  <div class="header">
-    <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
-    <div class="header-info">
-      <h1>Automated Test Report</h1>
-      <p><strong>Pipeline:</strong> ${pipelineName}</p>
-      <p><strong>Date &amp; Time:</strong> ${currentDateTime}</p>
-    </div>
-  </div>
+                    def buildParams = [
+                        "Local IP Address": params['Local IP Address'],
+                        "Remote IP Address": params['Remote IP Address'],
+                        "FW Version (Local / Remote)": "${local_fw_version} / ${remote_fw_version}",
+                        "Firmware":params['Build'],
+                        "Serial Port":params['Serial Logging Port']
+                    ]
 
-  <h2>Build Parameters</h2>
-  <table class="params-table">
-    <tr><th>Parameter</th><th>Value</th></tr>
-    ${buildParams.collect { "<tr><td><strong>${it.key}</strong></td><td>${it.value}</td></tr>" }.join('\n')}
-  </table>
+                    def istZone = TimeZone.getTimeZone("Asia/Kolkata")
+                    def istDate = Calendar.getInstance(istZone).getTime()
+                    def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
 
-  <h2>SNMP Data</h2>
+                    def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+                    def pipelineName = env.JOB_NAME
 
-  <div class="accordion">
-    <div class="acc-header" data-section="read">
-      <div class="acc-title">
-        <span class="acc-num">1</span>
-        <span class="acc-label">Community Read</span>
-        <span class="acc-meta">&mdash; ${readCount} OIDs</span>
-      </div>
-      <span class="acc-arrow">&#9660;</span>
-    </div>
-    <div class="acc-body" id="body-read">
-      <div class="acc-inner">
-        <div class="toolbar">
-          <div class="search-wrap">
-            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-            </svg>
-            <input type="text" id="searchRead" placeholder="Search name, OID, or value..." oninput="applyFilters('read')"/>
-          </div>
-          <select class="type-select" id="typeRead" onchange="applyFilters('read')">
-            <option value="">All Types</option>
-            <option>STRING</option><option>INTEGER</option><option>Gauge32</option>
-            <option>Counter32</option><option>Counter64</option><option>Timeticks</option>
-            <option>IpAddress</option><option>OID</option><option>Hex-STRING</option>
-          </select>
-          <div class="count-pill" id="countRead">${readCount} entries</div>
-        </div>
-        <div class="chip-bar" id="chipRead"><span class="chip-label">Category</span>${chipBar}</div>
-        <div class="data-table-wrap">
-          <table>
-            <thead><tr><th>Name</th><th>OID</th><th style="text-align:center;">Type</th><th>Value</th></tr></thead>
-            <tbody id="tbodyRead">${readRows}</tbody>
-          </table>
-          <div class="no-results" id="noRead" style="display:none;">No matching entries found.</div>
-        </div>
-      </div>
-    </div>
-  </div>
 
-  <div class="accordion">
-    <div class="acc-header" data-section="write">
-      <div class="acc-title">
-        <span class="acc-num">2</span>
-        <span class="acc-label">Community Write</span>
-        <span class="acc-meta">&mdash; ${writeCount} OIDs</span>
-      </div>
-      <span class="acc-arrow">&#9660;</span>
-    </div>
-    <div class="acc-body" id="body-write">
-      <div class="acc-inner">
-        <div class="toolbar">
-          <div class="search-wrap">
-            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-            </svg>
-            <input type="text" id="searchWrite" placeholder="Search name, OID, or value..." oninput="applyFilters('write')"/>
-          </div>
-          <select class="type-select" id="typeWrite" onchange="applyFilters('write')">
-            <option value="">All Types</option>
-            <option>STRING</option><option>INTEGER</option><option>Gauge32</option>
-            <option>Counter32</option><option>Counter64</option><option>Timeticks</option>
-            <option>IpAddress</option><option>OID</option><option>Hex-STRING</option>
-          </select>
-          <div class="count-pill" id="countWrite">${writeCount} entries</div>
-        </div>
-        <div class="chip-bar" id="chipWrite"><span class="chip-label">Category</span>${chipBar}</div>
-        <div class="data-table-wrap">
-          <table>
-            <thead><tr><th>Name</th><th>OID</th><th style="text-align:center;">Type</th><th>Value</th></tr></thead>
-            <tbody id="tbodyWrite">${writeRows}</tbody>
-          </table>
-          <div class="no-results" id="noWrite" style="display:none;">No matching entries found.</div>
-        </div>
-      </div>
-    </div>
-  </div>
+                    def htmlContent = """
+                    <html>
+                    <head>
+                        <title>Test Report</title>
+                        <style>
+                            body {
+                                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                                margin: 0;
+                                padding: 0;
+                                background-color: #f9fafb; /* Lighter gray background */
+                                color: #1f2937;
+                            }
+                            .container {
+                                max-width: 1200px;
+                                margin: 24px auto;
+                                padding: 24px;
+                            }
+                            .header {
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                background: linear-gradient(to right, #ffffff 10%, #f9fafb 100%); /* New gradient */
+                                padding: 28px 36px; /* Increased padding */
+                                border: 1px solid #e5e7eb;
+                                border-radius: 12px;
+                                box-shadow: 0 4px 6px rgba(0,0,0,0.04); /* Slightly stronger shadow */
+                            }
+                            .header img {
+                                height: 65px; /* Bigger logo */
+                                transition: transform 0.2s ease-in-out;
+                            }
+                            .header img:hover {
+                                transform: scale(1.03); /* Subtle hover effect */
+                            }
+                            .header-info { text-align: right; }
+                            .header-info h1 {
+                                margin: 0;
+                                font-size: 30px; /* Bigger title */
+                                font-weight: 700; /* Bolder */
+                                color: #0a2540; /* Darker, more corporate blue/black */
+                            }
+                            .header-info p {
+                                margin: 5px 0;
+                                font-size: 15px; /* Slightly larger sub-text */
+                                color: #4a5568; /* Darker gray */
+                            }
+                            /* ######## END: MODIFIED CSS (HEADER) ######## --> */
 
-</div>
-<script>
-  var activePrefixes = { read: 'all', write: 'all' };
+                            h2 {
+                                margin-top: 32px;
+                                font-size: 24px;
+                                font-weight: 600;
+                                color: #111827;
+                                border-bottom: 2px solid #e5e7eb;
+                                padding-bottom: 12px;
+                            }
 
-  document.querySelectorAll('.acc-header').forEach(function(header) {
-    header.addEventListener('click', function() {
-      var section = header.getAttribute('data-section');
-      var body    = document.getElementById('body-' + section);
-      var isOpen  = body.classList.contains('open');
-      document.querySelectorAll('.acc-body').forEach(function(b)  { b.classList.remove('open'); });
-      document.querySelectorAll('.acc-header').forEach(function(h) { h.classList.remove('open'); });
-      if (!isOpen) {
-        body.classList.add('open');
-        header.classList.add('open');
-      }
-    });
-  });
+                            /* --- Summary Cards --- */
+                            .summary-container {
+                                display: grid;
+                                grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+                                gap: 24px;
+                                margin-top: 24px;
+                            }
+                            .summary-card {
+                                background-color: #fff;
+                                border: 1px solid #e5e7eb;
+                                border-radius: 12px;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+                                display: flex;
+                                padding: 24px;
+                                align-items: center;
+                                border-top-width: 4px;
+                                border-top-style: solid;
+                            }
+                            .card-icon {
+                                font-size: 32px;
+                                margin-right: 20px;
+                                padding: 12px;
+                                border-radius: 50%;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                            }
+                            .card-info {
+                                text-align: left;
+                            }
+                            .card-info-title {
+                                font-size: 16px;
+                                color: #6b7280;
+                                margin: 0 0 4px 0;
+                            }
+                            .card-info-value {
+                                font-size: 32px;
+                                font-weight: 700;
+                                color: #111827;
+                                margin: 0;
+                            }
+                            .percent .percent-sign { font-size: 20px; font-weight: 600; }
 
-  (function() {
-    var first = document.querySelector('.acc-header');
-    if (first) {
-      first.classList.add('open');
-      document.getElementById('body-' + first.getAttribute('data-section')).classList.add('open');
-    }
-  })();
+                            /* Card-specific Colors */
+                            .card-percent { border-color: #6b7280; }
+                            .card-percent .card-icon { background-color: #f3f4f6; color: #6b7280; }
+                            .card-total { border-color: #3b82f6; }
+                            .card-total .card-icon { background-color: #dbeafe; color: #3b82f6; }
+                            .card-pass { border-color: #10b981; }
+                            .card-pass .card-icon { background-color: #d1fae5; color: #10b981; }
+                            .card-fail { border-color: #ef4444; }
+                            .card-fail .card-icon { background-color: #fee2e2; color: #ef4444; }
 
-  document.getElementById('chipRead').querySelectorAll('.chip').forEach(function(chip) {
-    chip.addEventListener('click', function() { setChip('read', this); });
-  });
-  document.getElementById('chipWrite').querySelectorAll('.chip').forEach(function(chip) {
-    chip.addEventListener('click', function() { setChip('write', this); });
-  });
+                            /* --- Table Style --- */
+                            table {
+                                width: 100%;
+                                border-collapse: collapse;
+                                margin-top: 24px;
+                                background-color: #fff;
+                                border: 1px solid #e5e7eb;
+                                border-radius: 12px;
+                                overflow: hidden;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+                            }
+                            th, td {
+                                padding: 16px 20px;
+                                border-bottom: 1px solid #e5e7eb;
+                                text-align: left;
+                                vertical-align: middle;
+                            }
+                            th {
+                                background-color: #f9fafb;
+                                font-weight: 600;
+                                color: #6b7280;
+                                font-size: 13px;
+                                text-transform: uppercase;
+                                letter-spacing: 0.5px;
+                            }
+                            tr:last-child td { border-bottom: none; }
+                            tr:hover { background-color: #f9fafb; }
 
-  function setChip(section, el) {
-    var cap = section.charAt(0).toUpperCase() + section.slice(1);
-    document.getElementById('chip' + cap).querySelectorAll('.chip').forEach(function(c) { c.classList.remove('active'); });
-    el.classList.add('active');
-    activePrefixes[section] = el.dataset.prefix;
-    applyFilters(section);
-  }
+                            .status-pass {
+                                color: #059669;
+                                font-weight: 600;
+                                background-color: #d1fae5;
+                                padding: 5px 10px;
+                                border-radius: 99px;
+                                display: inline-block;
+                            }
+                            .status-fail {
+                                color: #dc2626;
+                                font-weight: 600;
+                                background-color: #fee2e2;
+                                padding: 5px 10px;
+                                border-radius: 99px;
+                                display: inline-block;
+                            }
 
-  function applyFilters(section) {
-    var cap     = section.charAt(0).toUpperCase() + section.slice(1);
-    var search  = document.getElementById('search' + cap).value.toLowerCase();
-    var type    = document.getElementById('type'   + cap).value;
-    var rows    = document.getElementById('tbody'  + cap).querySelectorAll('tr');
-    var visible = 0;
-    rows.forEach(function(row) {
-      var rp = row.dataset.prefix || 'other';
-      var rt = row.dataset.type   || '';
-      var tx = row.textContent.toLowerCase();
-      var ok = (activePrefixes[section] === 'all' || rp === activePrefixes[section])
-            && (!type   || rt === type)
-            && (!search || tx.includes(search));
-      row.style.display = ok ? '' : 'none';
-      if (ok) visible++;
-    });
-    document.getElementById('count' + cap).textContent = visible + ' entries';
-    document.getElementById('no'    + cap).style.display = visible === 0 ? 'block' : 'none';
-  }
-</script>
-</body>
-</html>"""
+                            /* --- Log Button --- */
+                            .log-button {
+                                background-color: #3b82f6;
+                                color: white;
+                                padding: 8px 16px;
+                                text-decoration: none;
+                                border-radius: 8px;
+                                font-weight: 600;
+                                font-size: 14px;
+                                transition: background-color 0.2s ease, box-shadow 0.2s ease;
+                                display: inline-block;
+                                border: none;
+                                cursor: pointer;
+                                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+                            }
+                            .log-button:hover {
+                                background-color: #2563eb;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                            }
 
-                    writeFile file: 'SNMP_Validation.html', text: htmlContent
-                    echo "Report generated: SNMP_Validation.html"
+                            /* --- Modal Styles --- */
+                            .modal {
+                                display: none;
+                                position: fixed;
+                                z-index: 100;
+                                left: 0;
+                                top: 0;
+                                width: 100%;
+                                height: 100%;
+                                overflow: auto;
+                                background-color: rgba(0,0,0,0.6);
+                            }
+                            .modal-content {
+                                background-color: #ffffff;
+                                margin: 5% auto;
+                                border: 1px solid #e5e7eb;
+                                border-radius: 12px;
+                                width: 80%;
+                                max-width: 900px;
+                                box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+                                animation-name: animatetop;
+                                animation-duration: 0.4s;
+                                overflow: hidden;
+                            }
+                            .modal-header {
+                                padding: 20px 32px;
+                                border-bottom: 1px solid #e5e7eb;
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                            }
+                            .modal-header h2 {
+                                margin: 0;
+                                padding: 0;
+                                border: none;
+                                font-size: 20px;
+                            }
+                            .modal-close {
+                                color: #9ca3af;
+                                font-size: 28px;
+                                font-weight: bold;
+                                cursor: pointer;
+                                transition: color 0.2s ease;
+                            }
+                            .modal-close:hover,
+                            .modal-close:focus {
+                                color: #1f2937;
+                                text-decoration: none;
+                            }
+                            .modal-body {
+                                padding: 0;
+                            }
+                            #log-content-pre {
+                                background-color: #1f2937; /* Dark background */
+                                color: #e5e7eb; /* Light text */
+                                padding: 24px 32px;
+                                max-height: 60vh;
+                                overflow: auto;
+                                white-space: pre-wrap;
+                                word-wrap: break-word;
+                                margin: 0;
+                                border-radius: 0 0 12px 12px;
+                                font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+                                font-size: 14px;
+                            }
+                            @keyframes animatetop {
+                                from {transform: translateY(-50px); opacity: 0}
+                                to {transform: translateY(0); opacity: 1}
+                            }
+                        </style>
+
+                        <script>
+                            function showLog(logDataId) {
+                                var logContent = document.getElementById(logDataId).innerHTML;
+                                document.getElementById('log-content-pre').innerHTML = logContent;
+                                document.getElementById('logModal').style.display = 'block';
+                            }
+                            function closeModal() {
+                                document.getElementById('logModal').style.display = 'none';
+                            }
+                            window.onclick = function(event) {
+                                var modal = document.getElementById('logModal');
+                                if (event.target == modal) {
+                                    modal.style.display = 'none';
+                                }
+                            }
+                        </script>
+                    </head>
+                    <body>
+                        <div class="container">
+                            <div class="header">
+                                <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
+                                <div class="header-info">
+                                    <h1>Automated Test Report</h1>
+                                    <p><strong>Pipeline:</strong> ${pipelineName}</p>
+                                    <p><strong>Date & Time:</strong> ${currentDateTime}</p>
+                                </div>
+                            </div>
+
+                            <h2>Build Parameters</h2>
+                            <table>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Value</th>
+                                </tr>
+                                ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
+                            </table>
+
+                            <h2>Test Summary</h2>
+                            <div class="summary-container">
+                                <div class="summary-card card-percent">
+                                    <div class="card-icon">🎯</div>
+                                    <div class="card-info">
+                                        <p class="card-info-title">Success Rate</p>
+                                        <p class="card-info-value percent">${successPercentageStr}<span class="percent-sign">%</span></p>
+                                    </div>
+                                </div>
+                                <div class="summary-card card-total">
+                                    <div class="card-icon">📦</div>
+                                    <div class="card-info">
+                                        <p class="card-info-title">Total Iterations</p>
+                                        <p class="card-info-value">${totalTests}</p>
+                                    </div>
+                                </div>
+                                <div class="summary-card card-pass">
+                                    <div class="card-icon">✅</div>
+                                    <div class="card-info">
+                                        <p class="card-info-title">Passed</p>
+                                        <p class="card-info-value">${passCount}</p>
+                                    </div>
+                                </div>
+                                <div class="summary-card card-fail">
+                                    <div class="card-icon">❌</div>
+                                    <div class="card-info">
+                                        <p class="card-info-title">Failed</p>
+                                        <p class="card-info-value">${failCount}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+
+                            <h2>Test Results</h2>
+                            <table>
+                                <tr>
+                                    <th>Iteration</th>
+                                    <th style="text-align: center;">Status</th>
+                                    <th style="text-align: center;">Logs</th>
+                                </tr>
+                    """
+
+                    // --- Read log files and build table rows + hidden log data ---
+                    def tableRows = ""
+                    def logDataBlocks = ""
+
+                    if (jsonReport.iterations) {
+                        jsonReport.iterations.each { result ->
+                            def iteration = result.iteration ?: "-"
+                            def status = result.status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
+
+                            def logFile = "test-${iteration}.log"
+                            def logDataId = "log-data-${iteration}"
+                            def logContent = ""
+
+                            try {
+                                // Read the log file from the workspace
+                                logContent = readFile(file: logFile)
+                                // Manually escape HTML characters
+                                logContent = logContent.replace("&", "&amp;")
+                                                     .replace("<", "&lt;")
+                                                     .replace(">", "&gt;")
+                            } catch (e) {
+                                echo "Could not read log file ${logFile}: ${e.message}"
+                                logContent = "ERROR: Log file not found (${logFile}).\n${e.message}"
+                            }
+
+                            def logButton = "<button class='log-button' onclick=\"showLog('${logDataId}')\">See Logs</button>"
+
+                            tableRows += """
+                                <tr>
+                                    <td>${iteration}</td>
+                                    <td style="text-align: center;">${status}</td>
+                                    <td style="text-align: center;">${logButton}</td>
+                                </tr>
+                            """
+
+                            logDataBlocks += "<div id='${logDataId}' style='display:none;'>${logContent}</div>\n"
+                        }
+                    } else {
+                         tableRows += "<tr><td colspan='3' style='text-align:center;'>No iteration results found.</td></tr>"
+                    }
+
+                    htmlContent += tableRows
+
+                    htmlContent += """
+                            </table>
+                        </div> <div id="logModal" class="modal">
+                          <div class="modal-content">
+                            <div class="modal-header">
+                                <h2>Iteration Log</h2>
+                                <span class="modal-close" onclick="closeModal()">&times;</span>
+                            </div>
+                            <div class="modal-body">
+                                <pre id="log-content-pre"></pre>
+                            </div>
+                          </div>
+                        </div>
+
+                        ${logDataBlocks}
+
+                    </body>
+                    </html>
+                    """
+
+                    writeFile file: 'report.html', text: htmlContent
                 }
             }
         }
     }
-
     post {
         always {
+            publishHTML(target: [
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: '.',
+                reportFiles: 'report.html',
+                reportName: 'Test Report'
+            ])
+
+            // Clean up the log files after all stages are complete
+            echo "Cleaning up test log files..."
+            sh 'rm -f test-*.log || true'
+
+            echo "-----------------------------------------"
+            echo 'Script Done!'
+            echo "-----------------------------------------"
             script {
-                def istZone         = TimeZone.getTimeZone("Asia/Kolkata")
-                def fileDate        = Calendar.getInstance(istZone).getTime().format("yyyyMMdd", istZone)
-                def reportFileName  = "SNMP_Validation.html"
+                def buildCauses = currentBuild.getBuildCauses()
+                def userCause = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
 
-                archiveArtifacts artifacts: 'SNMP_Validation.json, SNMP_Validation.html, snmp_validation.log',
-                                 fingerprint: true,
-                                 allowEmptyArchive: true
-
-                publishHTML(target: [
-                    allowMissing         : true,
-                    alwaysLinkToLastBuild: true,
-                    keepAll              : true,
-                    reportDir            : '.',
-                    reportFiles          : reportFileName,
-                    reportName           : 'Automated Test Report'
-                ])
-
-                echo "Cleaning up log files..."
-                sh 'rm -f snmp_validation.log || true'
-
-                echo "-----------------------------------------"
-                echo 'Script Done!'
-                echo "-----------------------------------------"
-
-                def buildCauses   = currentBuild.getBuildCauses()
-                def userCause     = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
                 def buildUserName = userCause?.userName ?: "Unknown User"
-                def buildUserId   = userCause?.userId   ?: "unknown"
+                def buildUserId = userCause?.userId ?: "unknown"
 
+                echo "Build started by: ${buildUserName} (${buildUserId})"
+
+                // Define a mapping of user IDs to emails (update as needed)
                 def userEmails = [
-                    "puneet"  : "puneet.sharma@senao.com",
-                    "harman"  : "harmanjot.singh@senao.com",
-                    "mahesh"  : "mahesh.battala@senao.com",
-                    "sandeep" : "sandeep.manchikanti@senao.com",
-                    "sampath" : "sampath.marella@senao.com",
-                    "jayanth" : "jayanth.munnaluru@senao.com",
+                    "puneet": "puneet.sharma@senao.com",
+                    "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@senao.com",
+                    "sandeep": "sandeep.manchikanti@senao.com",
+                    "sampath": "sampath.marella@senao.com",
+                    "jayanth": "jayanth.munnaluru@senao.com",
                     "srilatha": "srilatha.tadiboina@senao.com",
-                    "phani"   : "phani.darla@senao.com",
-                    "dinesh"  : "dinesh.redddy@senao.com"
+                    "phani": "phani.darla@senao.com",
+                    "dinesh": "dinesh.redddy@senao.com"
                 ]
 
-                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+                // Get email from predefined mapping, else use default
+                def userEmail = userEmails.get(buildUserId, "harmanjot.singh@senao.com")
+
+                echo "Sending email to: ${userEmail}"
+
+                // Send email notification
 
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
@@ -518,11 +663,8 @@ pipeline {
                         <body>
                             <h2 style="color:blue;">Jenkins Build Notification</h2>
                             <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
-                            <p><strong>Status:</strong>
-                                <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
-                                    ${currentBuild.currentResult}
-                                </span>
-                            </p>
+                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
+                                ${currentBuild.currentResult}</span></p>
                             <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
                             <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
                             <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
@@ -531,13 +673,21 @@ pipeline {
                         </body>
                         </html>
                     """,
-                    to               : userEmail,
-                    mimeType         : 'text/html',
-                    attachmentsPattern: "SNMP_Validation.html, SNMP_Validation.json"
+                    to: userEmail,
+                    mimeType: 'text/html',
+                    attachmentsPattern: 'report.html,iteration_results.json'
                 )
             }
         }
-        success { echo "SNMP Validation — SUCCESS" }
-        failure { echo "SNMP Validation — FAILED"  }
+        success {
+            echo "-----------------------------------------"
+            echo 'Script Success'
+            echo "-----------------------------------------"
+        }
+        failure {
+            echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
+        }
     }
 }
