@@ -6,69 +6,30 @@ pipeline {
     }
 
     stages {
+
         stage('Preparation') {
             steps {
                 script {
-                    def deviceIP       = (params['Local IP Address'] ?: '').toString().trim()
-                    def readCommunity  = (params['Read Community']   ?: '').toString().trim()
-                    def writeCommunity = (params['Write Community']  ?: '').toString().trim()
+                    def deviceIP       = (params.Device_IP       ?: '').toString().trim()
+                    def readCommunity  = (params.Read_Community  ?: '').toString().trim()
+                    def writeCommunity = (params.Write_Community ?: '').toString().trim()
 
-                    // FIX: Extract the File Parameter properly with better fallbacks
-                    def extractedMib = ""
-                    try {
-                        def buildAction = currentBuild.rawBuild?.getAction(hudson.model.ParametersAction.class)
-                        if (buildAction) {
-                            def fileParam = buildAction.getParameter("MIB_File")
-                            if (fileParam && fileParam.class.name.contains("FileParameterValue")) {
-                                def fileItem = fileParam.getFile()
-                                if (fileItem) {
-                                    def content = fileItem.getText('UTF-8')
-                                    if (content && content.trim() != "") {
-                                        extractedMib = fileParam.getOriginalFileName() ?: "uploaded_mib.txt"
-                                        writeFile file: extractedMib, text: content, encoding: 'UTF-8'
-                                        env.EXTRACTED_MIB = extractedMib
-                                        echo "[SUCCESS] File Parameter '${extractedMib}' extracted to Agent workspace!"
-                                    }
-                                }
-                            }
-                        }
-                    } catch (org.jenkinsci.plugins.scriptsecurity.sandbox.RejectedAccessException e) {
-                        echo "[WARN] Script Security blocked rawBuild access. Approve 'currentBuild.rawBuild' in Jenkins Script Approval."
-                        echo "[INFO] Falling back to parameter path value"
-                    } catch (Exception e) {
-                        echo "[WARN] File extraction issue: ${e.message}. Using fallback."
-                    }
-
-                    // Determine final MIB path with proper null/empty handling
-                    def mibPath = env.EXTRACTED_MIB ?: (params['MIB_File'] ?: '').toString().trim()
-                    if (mibPath == 'null' || mibPath.isEmpty()) mibPath = ''
+                    // Jenkins "File Parameter" saves the uploaded file in the workspace
+                    // with the exact name of the parameter variable.
+                    def mibFilePath    = "${env.WORKSPACE}/MIB_File"
 
                     echo "========================================"
-                    echo " SNMP Validation - Preparation"
+                    echo " SNMP Validation — Preparation"
                     echo "========================================"
-                    echo " LOCAL IP        : ${deviceIP}"
+                    echo " DEVICE IP       : ${deviceIP}"
                     echo " READ COMMUNITY  : ${readCommunity}"
                     echo " WRITE COMMUNITY : ${writeCommunity}"
-                    echo " MIB FILE        : ${mibPath ?: 'Not provided'}"
+                    echo " MIB FILE PATH   : ${mibFilePath}"
                     echo " TARGET STAND    : ${params.TARGET_STAND}"
                     echo "========================================"
 
-                    if (!deviceIP) { error "Missing required parameter: Local IP Address" }
-
                     sh "rm -f SNMP_Validation.json SNMP_Validation.html snmp_validation.log || true"
-
-                    // Debug workspace contents
-                    sh """
-                        echo "=== WORKSPACE ==="
-                        ls -la '${env.WORKSPACE}/'
-                        echo "=== MIB FILE CHECK ==="
-                        if [ -n "${mibPath}" ] && [ -f "${mibPath}" ]; then
-                            echo "✓ MIB exists: ${mibPath}"
-                            head -3 "${mibPath}"
-                        else
-                            echo "✗ MIB not found at: ${mibPath}"
-                        fi
-                    """
+                    echo "Workspace cleaned."
                 }
             }
         }
@@ -79,14 +40,11 @@ pipeline {
                     echo "========================================"
                     echo " Installing Dependencies"
                     echo "========================================"
-                    if (fileExists('utilities/requirements.txt')) {
-                        sh "pip3 install -r utilities/requirements.txt"
-                    } else {
-                        echo "[WARN] requirements.txt not found"
-                    }
+                    sh "sh utilities/requirements.txt"
                 }
                 sh '''
                     which snmpget >/dev/null 2>&1 || {
+                        echo "--- Installing SNMP tools ---"
                         sudo apt-get update -qq
                         sudo apt-get install -y snmp snmp-mibs-downloader
                     }
@@ -98,32 +56,11 @@ pipeline {
         stage('Run SNMP Validation') {
             steps {
                 script {
-                    def deviceIP       = (params['Local IP Address'] ?: '').toString().trim()
-                    def readCommunity  = (params['Read Community']   ?: '').toString().trim()
-                    def writeCommunity = (params['Write Community']  ?: '').toString().trim()
+                    def deviceIP       = (params.Device_IP       ?: '').toString().trim()
+                    def readCommunity  = (params.Read_Community  ?: '').toString().trim()
+                    def writeCommunity = (params.Write_Community ?: '').toString().trim()
+                    def mibFilePath    = "${env.WORKSPACE}/MIB_File"
                     def scriptPath     = "testCases/test_SNMP_Validation.py"
-
-                    def mibPath = env.EXTRACTED_MIB ?: (params['MIB_File'] ?: '').toString().trim()
-                    if (mibPath == 'null' || mibPath.isEmpty()) mibPath = ''
-
-                    def wsFile = "${env.WORKSPACE}/${mibPath}"
-                    def mibArg = '/dev/null'
-
-                    if (mibPath) {
-                        def wsExists = sh(script: "test -f '${wsFile}' && echo yes || echo no", returnStdout: true).trim()
-                        if (wsExists == 'yes') {
-                            mibArg = wsFile
-                            echo "[OK] MIB in workspace: ${mibArg}"
-                        } else {
-                            def absExists = sh(script: "test -f '${mibPath}' && echo yes || echo no", returnStdout: true).trim()
-                            if (absExists == 'yes') {
-                                mibArg = mibPath
-                                echo "[OK] MIB at path: ${mibArg}"
-                            } else {
-                                echo "[WARN] MIB not found - OID names may be empty"
-                            }
-                        }
-                    }
 
                     echo "========================================"
                     echo " Running SNMP Validation on ${deviceIP}"
@@ -132,16 +69,15 @@ pipeline {
                     try {
                         sh """
                             set -x
-                            python3 ${scriptPath} \\
-                                --device-ip       '${deviceIP}'        \\
-                                --read-community  '${readCommunity}'   \\
-                                --write-community '${writeCommunity}'  \\
-                                --mib-file        '${mibArg}'         \\
+                            python3 ${scriptPath} \
+                                --device-ip       '${deviceIP}'        \
+                                --read-community  '${readCommunity}'   \
+                                --write-community '${writeCommunity}'  \
+                                --mib-file        '${mibFilePath}'     \
                                 | tee snmp_validation.log
                         """
                     } catch (err) {
                         echo "SNMP Validation error: ${err}"
-                        throw err // Properly fail the build
                     }
                 }
             }
@@ -150,7 +86,7 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def deviceIP        = (params['Local IP Address'] ?: '').toString().trim()
+                    def deviceIP        = (params.Device_IP ?: '').toString().trim()
                     def jsonReport      = readJSON file: 'SNMP_Validation.json'
                     def istZone         = TimeZone.getTimeZone("Asia/Kolkata")
                     def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", istZone)
@@ -165,308 +101,346 @@ pipeline {
                         "FW Version"  : bp["FW Version"]  ?: "N/A",
                     ]
 
-                    // ✅ FIX: Consolidate Read/Write into single table with Community & Status columns
-                    def buildCombinedRows = { readData, writeData ->
-                        def rows = new StringBuilder()
-
-                        // Process READ community data
-                        (readData.data ?: []).each { rec ->
-                            def rName  = (rec.name ?: "").toString()
-                            def rOid   = (rec.oid ?: "").toString().replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
-                            def rType  = (rec.type ?: "").toString()
-                            def rData  = (rec.data ?: "").toString().replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
-                            def rStatus = (rec.status ?: "success").toString().toLowerCase()
+                    def buildSnmpRows = { dataList ->
+                        def rows = ""
+                        dataList.each { rec ->
+                            def rName  = rec.name ?: ""
+                            def rOid   = rec.oid  ?: ""
+                            def rType  = rec.type ?: ""
+                            def rData  = rec.data?.toString() ?: ""
                             def rPrefix = "other"
-                            if (rName) { def m = (rName =~ /^([a-z]+)/); if (m) rPrefix = m[0][1] }
+
+                            if (rName) {
+                                def m = (rName =~ /^([a-z]+)/)
+                                if (m) rPrefix = m[0][1]
+                            }
 
                             def badgeClass = [
-                                "STRING":"badge-string","INTEGER":"badge-integer","Gauge32":"badge-gauge",
-                                "Counter32":"badge-counter","Counter64":"badge-counter","Timeticks":"badge-timeticks",
-                                "IpAddress":"badge-ip","OID":"badge-oid","Hex-STRING":"badge-hex"
+                                "STRING"    : "badge-string",
+                                "INTEGER"   : "badge-integer",
+                                "Gauge32"   : "badge-gauge",
+                                "Counter32" : "badge-counter",
+                                "Counter64" : "badge-counter",
+                                "Timeticks" : "badge-timeticks",
+                                "IpAddress" : "badge-ip",
+                                "OID"       : "badge-oid",
+                                "Hex-STRING": "badge-hex"
                             ].get(rType, "badge-oid")
 
-                            def statusClass = rStatus == "success" ? "status-success" : "status-failed"
-                            def nameDisplay = rName ?: "<em class='no-name'>&#8212;</em>"
+                            def nameDisplay = rName ?: "<em class='no-name'>—</em>"
 
-                            rows.append("<tr data-prefix=\"${rPrefix}\" data-type=\"${rType}\" data-community=\"read\" data-status=\"${rStatus}\">")
-                            rows.append("<td class=\"col-name\">${nameDisplay}</td>")
-                            rows.append("<td class=\"col-oid\">${rOid}</td>")
-                            rows.append("<td class=\"col-type\"><span class=\"badge ${badgeClass}\">${rType}</span></td>")
-                            rows.append("<td class=\"col-val\">${rData}</td>")
-                            rows.append("<td class=\"col-comm\"><span class=\"badge badge-read\">Read</span></td>")
-                            rows.append("<td class=\"col-status\"><span class=\"status-dot ${statusClass}\" title=\"${rStatus}\"></span></td>")
-                            rows.append("</tr>\n")
+                            // Escape HTML in the raw data for safe rendering in the details block
+                            def safeData = rData.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+                            // Implement +/- logic with a main row and a hidden details row
+                            rows += """
+<tr class="main-row" data-prefix="${rPrefix}" data-type="${rType}">
+  <td class="col-toggle"><button class="toggle-btn" onclick="toggleRow(this)">+</button></td>
+  <td class="col-name">${nameDisplay}</td>
+  <td class="col-oid">${rOid}</td>
+  <td class="col-type"><span class="badge ${badgeClass}">${rType}</span></td>
+  <td class="col-val" style="max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeData}</td>
+</tr>
+<tr class="details-row" data-prefix="${rPrefix}" data-type="${rType}" style="display:none;">
+  <td colspan="5">
+    <div class="details-content">
+      <strong>OID:</strong> ${rOid}<br>
+      <strong>Type:</strong> ${rType}<br>
+      <strong>Value:</strong><br>
+      <pre style="margin: 8px 0 0 0; white-space: pre-wrap; font-family: monospace;">${safeData}</pre>
+    </div>
+  </td>
+</tr>"""
                         }
-
-                        // Process WRITE community data
-                        (writeData.data ?: []).each { rec ->
-                            def rName  = (rec.name ?: "").toString()
-                            def rOid   = (rec.oid ?: "").toString().replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
-                            def rType  = (rec.type ?: "").toString()
-                            def rData  = (rec.data ?: "").toString().replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
-                            def rStatus = (rec.status ?: "success").toString().toLowerCase()
-                            def rPrefix = "other"
-                            if (rName) { def m = (rName =~ /^([a-z]+)/); if (m) rPrefix = m[0][1] }
-
-                            def badgeClass = [
-                                "STRING":"badge-string","INTEGER":"badge-integer","Gauge32":"badge-gauge",
-                                "Counter32":"badge-counter","Counter64":"badge-counter","Timeticks":"badge-timeticks",
-                                "IpAddress":"badge-ip","OID":"badge-oid","Hex-STRING":"badge-hex"
-                            ].get(rType, "badge-oid")
-
-                            def statusClass = rStatus == "success" ? "status-success" : "status-failed"
-                            def nameDisplay = rName ?: "<em class='no-name'>&#8212;</em>"
-
-                            rows.append("<tr data-prefix=\"${rPrefix}\" data-type=\"${rType}\" data-community=\"write\" data-status=\"${rStatus}\">")
-                            rows.append("<td class=\"col-name\">${nameDisplay}</td>")
-                            rows.append("<td class=\"col-oid\">${rOid}</td>")
-                            rows.append("<td class=\"col-type\"><span class=\"badge ${badgeClass}\">${rType}</span></td>")
-                            rows.append("<td class=\"col-val\">${rData}</td>")
-                            rows.append("<td class=\"col-comm\"><span class=\"badge badge-write\">Write</span></td>")
-                            rows.append("<td class=\"col-status\"><span class=\"status-dot ${statusClass}\" title=\"${rStatus}\"></span></td>")
-                            rows.append("</tr>\n")
-                        }
-
-                        return rows.toString()
+                        return rows
                     }
 
                     def readData   = jsonReport.read_community  ?: [:]
                     def writeData  = jsonReport.write_community ?: [:]
-                    def combinedRows = buildCombinedRows(readData, writeData)
-                    def totalCount = (readData.oid_count ?: 0) + (writeData.oid_count ?: 0)
+                    def readRows   = buildSnmpRows(readData.data   ?: [])
+                    def writeRows  = buildSnmpRows(writeData.data  ?: [])
+                    def readCount  = readData.oid_count  ?: 0
+                    def writeCount = writeData.oid_count ?: 0
+                    def readCom    = readData.community  ?: params.Read_Community
+                    def writeCom   = writeData.community ?: params.Write_Community
 
-                    // Category filter chips
-                    def chipBar = '<span class="chip active" data-prefix="all">All</span>' +
-                        '<span class="chip" data-prefix="wireless">Wireless</span>' +
-                        '<span class="chip" data-prefix="assoc">Assoc</span>' +
-                        '<span class="chip" data-prefix="sys">System</span>' +
-                        '<span class="chip" data-prefix="ethernet">Ethernet</span>' +
-                        '<span class="chip" data-prefix="network">Network</span>' +
-                        '<span class="chip" data-prefix="vlan">VLAN</span>' +
-                        '<span class="chip" data-prefix="dcs">DCS</span>' +
-                        '<span class="chip" data-prefix="dfs">DFS</span>' +
-                        '<span class="chip" data-prefix="dhcp">DHCP</span>' +
-                        '<span class="chip" data-prefix="snmp">SNMP</span>' +
-                        '<span class="chip" data-prefix="radius">RADIUS</span>' +
-                        '<span class="chip" data-prefix="link">Link</span>' +
-                        '<span class="chip" data-prefix="gps">GPS</span>' +
-                        '<span class="chip" data-prefix="ntp">NTP</span>' +
-                        '<span class="chip" data-prefix="qinq">QinQ</span>' +
-                        '<span class="chip" data-prefix="other">Other</span>'
-
-                    // ✅ NEW: Community filter chips (Read/Write)
-                    def communityFilter = '<span class="chip active" data-community="all">All</span>' +
-                        '<span class="chip" data-community="read">Read</span>' +
-                        '<span class="chip" data-community="write">Write</span>'
+                    def chipBar = """
+    <span class="chip active" data-prefix="all"     >All</span>
+    <span class="chip"        data-prefix="wireless" >Wireless</span>
+    <span class="chip"        data-prefix="assoc"    >Assoc</span>
+    <span class="chip"        data-prefix="sys"      >System</span>
+    <span class="chip"        data-prefix="ethernet" >Ethernet</span>
+    <span class="chip"        data-prefix="network"  >Network</span>
+    <span class="chip"        data-prefix="vlan"     >VLAN</span>
+    <span class="chip"        data-prefix="dcs"      >DCS</span>
+    <span class="chip"        data-prefix="dfs"      >DFS</span>
+    <span class="chip"        data-prefix="dhcp"     >DHCP</span>
+    <span class="chip"        data-prefix="snmp"     >SNMP</span>
+    <span class="chip"        data-prefix="radius"   >RADIUS</span>
+    <span class="chip"        data-prefix="link"     >Link</span>
+    <span class="chip"        data-prefix="gps"      >GPS</span>
+    <span class="chip"        data-prefix="ntp"      >NTP</span>
+    <span class="chip"        data-prefix="qinq"     >QinQ</span>
+    <span class="chip"        data-prefix="other"    >Other</span>"""
 
                     def htmlContent = """<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Automated Test Report</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <title>SNMP Validation Report</title>
   <style>
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Inter',-apple-system,sans-serif;background:#f4f7f6;color:#1f2937;line-height:1.6}
-    .page{max-width:1400px;margin:0 auto;padding:32px 24px 64px}
-    .header{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#fff 0%,#f0f4f8 100%);padding:30px 40px;border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 10px 25px -5px rgba(0,0,0,0.05)}
-    .header img{height:58px;transition:transform 0.3s}.header img:hover{transform:scale(1.05)}
-    .header-info{text-align:right}
-    .header-info h1{font-size:30px;font-weight:800;color:#0f172a;letter-spacing:-0.5px}
-    .header-info p{margin-top:5px;font-size:14px;color:#64748b}
-    h2{margin:40px 0 20px;font-size:22px;font-weight:700;color:#0f172a;padding-bottom:12px;position:relative}
-    h2::after{content:'';position:absolute;left:0;bottom:0;width:56px;height:3px;background:#3b82f6;border-radius:3px}
-    .params-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px -1px rgba(0,0,0,0.04)}
-    .params-table th,.params-table td{padding:14px 20px;border-bottom:1px solid #e2e8f0;font-size:14px;text-align:left;vertical-align:middle}
-    .params-table th{background:#f8fafc;font-weight:600;color:#475569;font-size:12px;text-transform:uppercase;letter-spacing:0.5px}
-    .params-table tr:last-child td{border-bottom:none}.params-table tr:hover td{background:#f8fafc}
-    .accordion{background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 4px 6px -1px rgba(0,0,0,0.06);margin-bottom:24px}
-    .acc-header{display:flex;justify-content:space-between;align-items:center;padding:20px 28px;cursor:pointer;user-select:none;transition:background 0.2s}
-    .acc-header:hover{background:#f0f9ff}.acc-header.open{background:#dbeafe}
-    .acc-title{display:flex;align-items:center;gap:14px}
-    .acc-num{width:32px;height:32px;border-radius:50%;background:#3b82f6;color:#fff;font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-    .acc-header.open .acc-num{background:#1d4ed8}
-    .acc-label{font-size:17px;font-weight:700;color:#0f172a}.acc-header.open .acc-label{color:#1d4ed8}
-    .acc-meta{font-size:13px;color:#64748b;font-weight:400;margin-left:4px}.acc-header.open .acc-meta{color:#3b82f6}
-    .acc-arrow{font-size:18px;color:#94a3b8;transition:transform 0.3s}.acc-header.open .acc-arrow{transform:rotate(180deg);color:#1d4ed8}
-    .acc-body{max-height:0;overflow:hidden;transition:max-height 0.4s ease}
-    .acc-body.open{max-height:99999px}
-    .acc-inner{padding:24px 28px;border-top:1px solid #e2e8f0}
-    .toolbar{display:flex;gap:14px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
-    .search-wrap{flex:1;min-width:280px;position:relative}
-    .search-wrap input{width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:11px 16px 11px 46px;font-size:14px;font-family:'Inter',sans-serif;background:#fff;outline:none;transition:all 0.2s}
-    .search-wrap input:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,0.15)}
-    .search-wrap svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#94a3b8;pointer-events:none;width:20px;height:20px}
-    .type-select{padding:11px 16px;font-size:14px;font-family:'Inter',sans-serif;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#1e293b;cursor:pointer;min-width:160px;outline:none;transition:all 0.2s}
-    .type-select:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,0.15)}
-    .count-pill{background:#eff6ff;border:1px solid #bfdbfe;border-radius:999px;padding:9px 20px;font-size:14px;font-weight:600;color:#1d4ed8;white-space:nowrap}
-    .chip-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:14px 0;margin-bottom:16px}
-    .chip-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#64748b;margin-right:4px;white-space:nowrap}
-    .chip{border:1.5px solid #e2e8f0;background:#f8fafc;border-radius:999px;padding:5px 16px;font-size:12px;font-weight:600;color:#475569;cursor:pointer;transition:all 0.15s;user-select:none}
-    .chip:hover{border-color:#3b82f6;color:#1d4ed8;background:#eff6ff}
-    .chip.active{background:#3b82f6;border-color:#3b82f6;color:#fff;box-shadow:0 2px 8px rgba(59,130,246,0.3)}
-    .data-table-wrap{border-radius:12px;overflow:hidden;border:1px solid #e2e8f0}
-    table{width:100%;border-collapse:collapse;background:#fff}
-    thead tr{background:#f1f5f9}
-    th{padding:13px 20px;font-weight:600;color:#475569;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #e2e8f0;text-align:left}
-    tbody tr{border-bottom:1px solid #f1f5f9;transition:background 0.12s}
-    tbody tr:last-child{border-bottom:none}
-    tbody tr:hover td{background:#f0f9ff}
-    tbody tr:hover .col-oid{color:#3b82f6 !important}
-    td{padding:12px 20px;vertical-align:middle}
-    .col-name{font-size:13.5px;font-weight:600;color:#0f172a;min-width:180px}
-    .col-oid{font-family:'JetBrains Mono',monospace;font-size:12px;color:#64748b}
-    .col-type{text-align:center;min-width:100px}
-    .col-val{font-size:13px;color:#334155;max-width:300px;word-break:break-all}
-    .col-comm{text-align:center;min-width:90px}
-    .col-status{text-align:center;min-width:60px}
-    .no-name{color:#94a3b8;font-style:italic}
-    .no-results{text-align:center;padding:60px 20px;color:#94a3b8;font-size:15px}
-    .badge{display:inline-block;padding:4px 12px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:0.3px}
-    .badge-string{background:#dbeafe;color:#1e40af}.badge-integer{background:#fef9c3;color:#92400e}
-    .badge-gauge{background:#dcfce7;color:#166534}.badge-counter{background:#ede9fe;color:#5b21b6}
-    .badge-timeticks{background:#ffedd5;color:#9a3412}.badge-ip{background:#fce7f3;color:#9d174d}
-    .badge-oid{background:#f1f5f9;color:#475569}.badge-hex{background:#ecfdf5;color:#065f46}
-    .badge-read{background:#dbeafe;color:#1e40af}
-    .badge-write{background:#ede9fe;color:#5b21b6}
-    .status-dot{display:inline-block;width:12px;height:12px;border-radius:50%}
-    .status-success{background:#22c55e;box-shadow:0 0 0 2px rgba(34,197,94,0.2)}
-    .status-failed{background:#ef4444;box-shadow:0 0 0 2px rgba(239,68,68,0.2)}
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0; padding: 0; background: #f8fafc; color: #1e293b; line-height: 1.6;
+    }
+    .container { max-width: 1320px; margin: 32px auto; padding: 0 16px; }
+    .header {
+      display: flex; justify-content: space-between; align-items: center;
+      background: linear-gradient(135deg, #ffffff, #f8fafc); padding: 28px 36px;
+      border-radius: 16px; border: 1px solid #e2e8f0;
+      box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05);
+    }
+    .header img { height: 70px; }
+    .header-info { text-align: right; }
+    .header-info h1 { margin: 0; font-size: 32px; font-weight: 800; color: #0f172a; }
+    .header-info p { margin: 6px 0; font-size: 15px; color: #64748b; }
+
+    h2 { margin: 40px 0 20px; font-size: 24px; font-weight: 700; color: #0f172a; position: relative; padding-bottom: 12px; }
+    h2:after { content: ''; position: absolute; left: 0; bottom: 0; width: 60px; height: 3px; background: #3b82f6; border-radius: 3px; }
+
+    .accordion-section {
+      background: white; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 24px;
+    }
+    .accordion-header {
+      padding: 18px 24px; background: #f8fafc; cursor: pointer; font-size: 18px;
+      font-weight: 600; color: #1e293b; display: flex; justify-content: space-between;
+      align-items: center; transition: all 0.2s ease;
+    }
+    .accordion-header:hover { background: #eff6ff; }
+    .accordion-header.active { background: #dbeafe; color: #1d4ed8; }
+    .accordion-icon { font-size: 22px; font-weight: bold; transition: transform 0.3s ease; }
+
+    .accordion-content { max-height: 0; overflow: hidden; transition: max-height 0.35s ease, padding 0.35s ease; padding: 0 24px; }
+    .accordion-content.active { max-height: 15000px; padding: 24px; }
+
+    .toolbar { display: flex; gap: 16px; align-items: center; margin: 20px 0 16px; flex-wrap: wrap; }
+    .search-wrap { flex: 1; min-width: 320px; position: relative; }
+    .search-wrap input { width: 100%; border: 1px solid #cbd5e1; border-radius: 10px; padding: 12px 16px 12px 48px; font-size: 15px; background: white; }
+    .search-wrap input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); outline: none; }
+    .search-wrap svg { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 20px; height: 20px; }
+    .type-select { min-width: 180px; padding: 12px 16px; font-size: 14px; border: 1px solid #cbd5e1; border-radius: 10px; background: white; cursor: pointer; }
+    .count-pill { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 999px; padding: 10px 20px; font-size: 14px; font-weight: 600; color: #1d4ed8; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; background: white; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+    th, td { padding: 14px 20px; border-bottom: 1px solid #e2e8f0; text-align: left; }
+    th { background: #f1f5f9; font-weight: 600; color: #475569; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    .main-row:hover td { background: #f0f9ff; }
+    .details-row td { background: #fafafa; padding: 0; border-bottom: 2px solid #e2e8f0; }
+    .details-content { padding: 16px 20px 16px 64px; border-left: 4px solid #3b82f6; color: #334155; font-size: 14px; }
+
+    .toggle-btn {
+      background: white; border: 1px solid #cbd5e1; border-radius: 4px; color: #3b82f6;
+      width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+      font-size: 16px; font-weight: bold; cursor: pointer; transition: all 0.2s;
+    }
+    .toggle-btn:hover { background: #eff6ff; border-color: #3b82f6; }
+
+    .chip-section { padding: 12px 20px; background: #ffffff; border-bottom: 1px solid #e2e8f0; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .chip-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #64748b; margin-right: 8px; }
+    .chip { border: 1.5px solid #e2e8f0; background: #f8fafc; border-radius: 999px; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #475569; cursor: pointer; user-select: none; }
+    .chip:hover { border-color: #3b82f6; color: #1d4ed8; background: #eff6ff; }
+    .chip.active { background: #3b82f6; border-color: #3b82f6; color: white; }
+
+    .col-toggle { width: 40px; text-align: center; padding-right: 0; }
+    .col-name { font-size: 14px; font-weight: 600; color: #0f172a; min-width: 180px; }
+    .col-oid { font-family: monospace; font-size: 13px; color: #64748b; }
+    .col-type { text-align: center; min-width: 120px; }
+    .col-val { font-size: 14px; color: #334155; max-width: 300px; word-break: break-all; }
+
+    .no-name { color: #94a3b8; font-style: italic; }
+    .no-results { text-align: center; padding: 60px; color: #94a3b8; font-size: 15px; }
+    .badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .badge-string   { background: #dbeafe; color: #1e40af; }
+    .badge-integer  { background: #fef9c3; color: #92400e; }
+    .badge-gauge    { background: #dcfce7; color: #166534; }
+    .badge-counter  { background: #ede9fe; color: #5b21b6; }
+    .badge-timeticks { background: #ffedd5; color: #9a3412; }
+    .badge-ip       { background: #fce7f3; color: #9d174d; }
+    .badge-oid      { background: #f1f5f9; color: #475569; }
+    .badge-hex      { background: #ecfdf5; color: #065f46; }
   </style>
 </head>
 <body>
-<div class="page">
+<div class="container">
+
   <div class="header">
-    <img src="${companyLogoUrl}" alt="Senao Networks"/>
+    <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
     <div class="header-info">
-      <h1>Automated Test Report</h1>
+      <h1>SNMP Validation Report</h1>
       <p><strong>Pipeline:</strong> ${pipelineName}</p>
-      <p><strong>Date &amp; Time:</strong> ${currentDateTime}</p>
+      <p><strong>Date & Time:</strong> ${currentDateTime}</p>
     </div>
   </div>
 
   <h2>Build Parameters</h2>
-  <table class="params-table">
+  <table style="max-width: 600px;">
     <tr><th>Parameter</th><th>Value</th></tr>
-    ${buildParams.collect { "<tr><td><strong>${it.key}</strong></td><td>${it.value}</td></tr>" }.join('\n')}
+    ${buildParams.collect { "<tr><td style='width: 150px;'><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
   </table>
 
   <h2>SNMP Data</h2>
 
-  <div class="accordion">
-    <div class="acc-header" data-section="combined">
-      <div class="acc-title">
-        <span class="acc-num">1</span>
-        <span class="acc-label">SNMP Communities (Read/Write)</span>
-        <span class="acc-meta">&mdash; ${totalCount} OIDs</span>
-      </div>
-      <span class="acc-arrow">&#9660;</span>
+  <div class="accordion-section">
+    <div class="accordion-header" data-target="read">
+      <span>1. Community Read — ${readCom}</span>
+      <span class="accordion-icon" id="icon-read">+</span>
     </div>
-    <div class="acc-body" id="body-combined">
-      <div class="acc-inner">
-        <div class="toolbar">
-          <div class="search-wrap">
-            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <input type="text" id="searchCombined" placeholder="Search name, OID, or value..." oninput="applyFilters()"/>
-          </div>
-          <select class="type-select" id="typeCombined" onchange="applyFilters()">
-            <option value="">All Types</option>
-            <option>STRING</option><option>INTEGER</option><option>Gauge32</option>
-            <option>Counter32</option><option>Counter64</option><option>Timeticks</option>
-            <option>IpAddress</option><option>OID</option><option>Hex-STRING</option>
-          </select>
-          <div class="count-pill" id="countCombined">${totalCount} entries</div>
+    <div class="accordion-content" id="content-read">
+      <div class="toolbar">
+        <div class="search-wrap">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <input type="text" id="searchRead" placeholder="Search name, OID, or value…" oninput="applyFilters('read')"/>
         </div>
-        <div class="chip-bar" id="chipPrefix"><span class="chip-label">Category</span>${chipBar}</div>
-        <div class="chip-bar" id="chipCommunity"><span class="chip-label">Community</span>${communityFilter}</div>
-        <div class="data-table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>OID</th>
-                <th style="text-align:center;">Type</th>
-                <th>Value</th>
-                <th style="text-align:center;">Community</th>
-                <th style="text-align:center;">Status</th>
-              </tr>
-            </thead>
-            <tbody id="tbodyCombined">${combinedRows}</tbody>
-          </table>
-          <div class="no-results" id="noCombined" style="display:none;">No matching entries found.</div>
+        <select class="type-select" id="typeRead" onchange="applyFilters('read')">
+          <option value="">All Types</option>
+          <option>STRING</option><option>INTEGER</option><option>Gauge32</option>
+          <option>Counter32</option><option>Counter64</option><option>Timeticks</option>
+          <option>IpAddress</option><option>OID</option><option>Hex-STRING</option>
+        </select>
+        <div class="count-pill" id="countRead">${readCount} entries</div>
+      </div>
+      <div class="chip-section" id="chipRead"><span class="chip-label">Category</span>${chipBar}</div>
+      <div class="table-card">
+        <table>
+          <thead><tr><th></th><th>Name</th><th>OID</th><th style="text-align:center;">Type</th><th>Value</th></tr></thead>
+          <tbody id="bodyRead">${readRows}</tbody>
+        </table>
+        <div class="no-results" id="noRead" style="display:none;">No matching entries found.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="accordion-section">
+    <div class="accordion-header" data-target="write">
+      <span>2. Community Write — ${writeCom}</span>
+      <span class="accordion-icon" id="icon-write">+</span>
+    </div>
+    <div class="accordion-content" id="content-write">
+      <div class="toolbar">
+        <div class="search-wrap">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <input type="text" id="searchWrite" placeholder="Search name, OID, or value…" oninput="applyFilters('write')"/>
         </div>
+        <select class="type-select" id="typeWrite" onchange="applyFilters('write')">
+          <option value="">All Types</option>
+          <option>STRING</option><option>INTEGER</option><option>Gauge32</option>
+          <option>Counter32</option><option>Counter64</option><option>Timeticks</option>
+          <option>IpAddress</option><option>OID</option><option>Hex-STRING</option>
+        </select>
+        <div class="count-pill" id="countWrite">${writeCount} entries</div>
+      </div>
+      <div class="chip-section" id="chipWrite"><span class="chip-label">Category</span>${chipBar}</div>
+      <div class="table-card">
+        <table>
+          <thead><tr><th></th><th>Name</th><th>OID</th><th style="text-align:center;">Type</th><th>Value</th></tr></thead>
+          <tbody id="bodyWrite">${writeRows}</tbody>
+        </table>
+        <div class="no-results" id="noWrite" style="display:none;">No matching entries found.</div>
       </div>
     </div>
   </div>
 
 </div>
+
 <script>
-  var activePrefix = 'all';
-  var activeCommunity = 'all';
+var activePrefixes = { read: 'all', write: 'all' };
 
-  // Accordion toggle
-  document.querySelectorAll('.acc-header').forEach(function(h) {
-    h.addEventListener('click', function() {
-      var sec  = h.getAttribute('data-section');
-      var body = document.getElementById('body-' + sec);
-      var open = body.classList.contains('open');
-      document.querySelectorAll('.acc-body').forEach(function(b)  { b.classList.remove('open'); });
-      document.querySelectorAll('.acc-header').forEach(function(x) { x.classList.remove('open'); });
-      if (!open) { body.classList.add('open'); h.classList.add('open'); }
-    });
-  });
-  (function() {
-    var f = document.querySelector('.acc-header');
-    if (f) { f.classList.add('open'); document.getElementById('body-' + f.getAttribute('data-section')).classList.add('open'); }
-  })();
+document.getElementById('chipRead').querySelectorAll('.chip').forEach(function(chip) {
+  chip.addEventListener('click', function() { setChip('read', this); });
+});
+document.getElementById('chipWrite').querySelectorAll('.chip').forEach(function(chip) {
+  chip.addEventListener('click', function() { setChip('write', this); });
+});
 
-  // Category chips
-  document.getElementById('chipPrefix').querySelectorAll('.chip').forEach(function(c) {
-    c.addEventListener('click', function() { setChip('prefix', c); });
-  });
+function setChip(section, el) {
+  var cap = section.charAt(0).toUpperCase() + section.slice(1);
+  document.getElementById('chip' + cap).querySelectorAll('.chip').forEach(function(c) { c.classList.remove('active'); });
+  el.classList.add('active');
+  activePrefixes[section] = el.dataset.prefix;
+  applyFilters(section);
+}
 
-  // Community chips (Read/Write)
-  document.getElementById('chipCommunity').querySelectorAll('.chip').forEach(function(c) {
-    c.addEventListener('click', function() { setChip('community', c); });
-  });
+function applyFilters(section) {
+  var cap    = section.charAt(0).toUpperCase() + section.slice(1);
+  var search = document.getElementById('search' + cap).value.toLowerCase();
+  var type   = document.getElementById('type'   + cap).value;
+  var rows   = document.getElementById('body'   + cap).querySelectorAll('.main-row');
+  var visible = 0;
 
-  function setChip(type, el) {
-    var container = type === 'prefix' ? 'chipPrefix' : 'chipCommunity';
-    document.getElementById(container).querySelectorAll('.chip').forEach(function(c) { c.classList.remove('active'); });
-    el.classList.add('active');
-    if (type === 'prefix') {
-      activePrefix = el.dataset.prefix;
+  rows.forEach(function(row) {
+    var detailsRow = row.nextElementSibling;
+    var rp = row.dataset.prefix || 'other';
+    var rt = row.dataset.type   || '';
+    var tx = row.textContent.toLowerCase();
+
+    var ok = (activePrefixes[section] === 'all' || rp === activePrefixes[section])
+          && (!type   || rt === type)
+          && (!search || tx.includes(search));
+
+    if (ok) {
+      row.style.display = '';
+      visible++;
     } else {
-      activeCommunity = el.dataset.community;
+      row.style.display = 'none';
+      detailsRow.style.display = 'none'; // Hide details if main row is filtered out
+      row.querySelector('.toggle-btn').textContent = '+'; // Reset button
     }
-    applyFilters();
+  });
+
+  document.getElementById('count' + cap).textContent = visible + ' entries';
+  document.getElementById('no'    + cap).style.display = visible === 0 ? 'block' : 'none';
+}
+
+function toggleRow(btn) {
+  var tr = btn.closest('.main-row');
+  var detailsTr = tr.nextElementSibling;
+  if (detailsTr.style.display === 'none' || detailsTr.style.display === '') {
+    detailsTr.style.display = 'table-row';
+    btn.textContent = '-';
+  } else {
+    detailsTr.style.display = 'none';
+    btn.textContent = '+';
   }
+}
 
-  function applyFilters() {
-    var search  = document.getElementById('searchCombined').value.toLowerCase();
-    var type    = document.getElementById('typeCombined').value;
-    var rows    = document.getElementById('tbodyCombined').querySelectorAll('tr');
-    var visible = 0;
+// Accordion behavior
+document.querySelectorAll('.accordion-header').forEach(header => {
+  header.addEventListener('click', () => {
+    const targetId = header.getAttribute('data-target');
+    const content = document.getElementById('content-' + targetId);
+    const icon = document.getElementById('icon-' + targetId);
+    const isActive = content.classList.contains('active');
 
-    rows.forEach(function(row) {
-      var rp = row.dataset.prefix || 'other';
-      var rt = row.dataset.type   || '';
-      var rc = row.dataset.community || 'read';
-      var tx = row.textContent.toLowerCase();
+    // Close others
+    document.querySelectorAll('.accordion-content').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('.accordion-header').forEach(h => h.classList.remove('active'));
+    document.querySelectorAll('.accordion-icon').forEach(i => i.textContent = '+');
 
-      var ok = (activePrefix === 'all' || rp === activePrefix)
-            && (activeCommunity === 'all' || rc === activeCommunity)
-            && (!type   || rt === type)
-            && (!search || tx.includes(search));
-
-      row.style.display = ok ? '' : 'none';
-      if (ok) visible++;
-    });
-
-    document.getElementById('countCombined').textContent = visible + ' entries';
-    document.getElementById('noCombined').style.display = visible === 0 ? 'block' : 'none';
-  }
+    // Toggle clicked one
+    if (!isActive) {
+      content.classList.add('active');
+      header.classList.add('active');
+      icon.textContent = '-';
+    }
+  });
+});
 </script>
 </body>
 </html>"""
@@ -491,55 +465,83 @@ pipeline {
                     keepAll              : true,
                     reportDir            : '.',
                     reportFiles          : 'SNMP_Validation.html',
-                    reportName           : 'Automated Test Report'
+                    reportName           : 'SNMP Validation Report'
                 ])
 
-                echo "Cleaning up log files..."
+                if (fileExists('SNMP_Validation.json')) {
+                    def jsonReport = readJSON file: 'SNMP_Validation.json'
+                    def status     = jsonReport.overall_status ?: "UNKNOWN"
+                    def readCount  = jsonReport.read_community?.oid_count  ?: 0
+                    def writeCount = jsonReport.write_community?.oid_count ?: 0
+
+                    def buildCauses   = currentBuild.getBuildCauses()
+                    def userCause     = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+                    def buildUserName = userCause?.userName ?: "Unknown User"
+                    def buildUserId   = userCause?.userId   ?: "unknown"
+
+                    def userEmails = [
+                        "puneet"  : "puneet.sharma@senao.com",
+                        "harman"  : "harmanjot.singh@senao.com",
+                        "mahesh"  : "mahesh.battala@senao.com",
+                        "sandeep" : "sandeep.manchikanti@senao.com",
+                        "sampath" : "sampath.marella@senao.com",
+                        "jayanth" : "jayanth.munnaluru@senao.com",
+                        "srilatha": "srilatha.tadiboina@senao.com",
+                        "phani"   : "phani.darla@senao.com",
+                        "dinesh"  : "dinesh.redddy@senao.com"
+                    ]
+                    def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+                    echo "Sending report email to: ${userEmail}"
+
+                    def emailBody = """
+<html>
+<body style="font-family: Arial, Helvetica, sans-serif; color: #333; line-height: 1.6;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; background: #ffffff;">
+    <h2 style="color: #1a56db; margin-top: 0;">SNMP Validation – Jenkins Notification</h2>
+
+    <p><strong>Build:</strong> ${currentBuild.fullDisplayName}</p>
+    <p><strong>Status:</strong>
+      <span style="color: ${currentBuild.currentResult == 'SUCCESS' ? '#28a745' : '#dc3545'}; font-weight: bold;">
+        ${currentBuild.currentResult}
+      </span>
+    </p>
+    <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
+
+    <p><strong>SNMP Status:</strong> ${status}</p>
+    <p><strong>OIDs Read:</strong> ${readCount}</p>
+    <p><strong>OIDs Write:</strong> ${writeCount}</p>
+
+    <h3 style="margin-top: 24px; color: #444;">Quick Links</h3>
+    <ul style="padding-left: 20px; margin: 8px 0;">
+      <li><a href="${env.BUILD_URL}SNMP_Validation_Report" style="color: #1a56db; text-decoration: none;">View HTML Report</a></li>
+      <li><a href="${env.BUILD_URL}" style="color: #1a56db; text-decoration: none;">Open Build Page</a></li>
+      <li><a href="${env.BUILD_URL}console" style="color: #1a56db; text-decoration: none;">View Console Output</a></li>
+    </ul>
+
+    <p style="margin-top: 32px; font-size: 13px; color: #777; border-top: 1px solid #eee; padding-top: 16px;">
+      This is an automated notification from Jenkins.<br>
+      Generated on ${new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))}
+    </p>
+  </div>
+</body>
+</html>
+"""
+
+                    emailext(
+                        subject            : "Jenkins: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                        body               : emailBody,
+                        to                 : userEmail,
+                        mimeType           : 'text/html',
+                        attachmentsPattern : "SNMP_Validation.html, SNMP_Validation.json"
+                    )
+                } else {
+                    echo "SNMP_Validation.json not found — skipping report parsing and email."
+                }
+
                 sh 'rm -f snmp_validation.log || true'
-
-                echo "-----------------------------------------"
-                echo 'Script Done!'
-                echo "-----------------------------------------"
-
-                def buildCauses   = currentBuild.getBuildCauses()
-                def userCause     = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
-                def buildUserName = userCause?.userName ?: "Unknown User"
-                def buildUserId   = userCause?.userId   ?: "unknown"
-
-                def userEmails = [
-                    "puneet"  : "puneet.sharma@senao.com",
-                    "harman"  : "harmanjot.singh@senao.com",
-                    "mahesh"  : "mahesh.battala@senao.com",
-                    "sandeep" : "sandeep.manchikanti@senao.com",
-                    "sampath" : "sampath.marella@senao.com",
-                    "jayanth" : "jayanth.munnaluru@senao.com",
-                    "srilatha": "srilatha.tadiboina@senao.com",
-                    "phani"   : "phani.darla@senao.com",
-                    "dinesh"  : "dinesh.redddy@senao.com"
-                ]
-
-                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
-
-                emailext(
-                    subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
-                    body: """
-                        <html><body>
-                            <h2 style="color:blue;">Jenkins Build Notification</h2>
-                            <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
-                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">${currentBuild.currentResult}</span></p>
-                            <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
-                            <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
-                            <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
-                            <br/><p style="color:gray;">-- Jenkins Automated Notification</p>
-                        </body></html>
-                    """,
-                    to               : userEmail,
-                    mimeType         : 'text/html',
-                    attachmentsPattern: "SNMP_Validation.html, SNMP_Validation.json"
-                )
             }
         }
-        success { echo "SNMP Validation - SUCCESS" }
-        failure { echo "SNMP Validation - FAILED"  }
+        success { echo "SNMP Validation — SUCCESS" }
+        failure { echo "SNMP Validation — FAILED"  }
     }
 }

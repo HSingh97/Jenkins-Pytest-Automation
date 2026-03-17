@@ -31,7 +31,6 @@ BUILD_PARAM_OIDS = {
     "FW Build":    ".1.3.6.1.4.1.52619.1.2.3.7.0",
 }
 
-
 def log_print(*msg):
     line = " ".join(map(str, msg))
     print(line)
@@ -165,6 +164,7 @@ def parse_snmp_output(raw_output, oid_map):
     return records
 
 
+# ── INIT LOG
 with open(LOG_FILE, "w") as f:
     f.write(f"SNMP Validation | IP: {DEVICE_IP} | {datetime.now().isoformat()}\n")
     f.write("=" * 100 + "\n")
@@ -183,7 +183,7 @@ build_params = fetch_build_params(DEVICE_IP, READ_COMMUNITY)
 for k, v in build_params.items():
     log_print(f"    {k}: {v}")
 
-# READ COMMUNITY WALK
+# ── READ COMMUNITY
 log_print(f"\n[3] Walking {DEVICE_IP} with READ community ({READ_COMMUNITY}) oid={OID} ...")
 raw_read = snmp_v2c_walk(DEVICE_IP, READ_COMMUNITY, OID)
 
@@ -195,7 +195,7 @@ else:
     read_records = parse_snmp_output(raw_read, oid_map)
     log_print(f"[PASS] Read walk complete — {len(read_records)} OIDs received")
 
-# WRITE COMMUNITY WALK
+# ── WRITE COMMUNITY
 log_print(f"\n[4] Walking {DEVICE_IP} with WRITE community ({WRITE_COMMUNITY}) oid={OID} ...")
 raw_write = snmp_v2c_walk(DEVICE_IP, WRITE_COMMUNITY, OID)
 
