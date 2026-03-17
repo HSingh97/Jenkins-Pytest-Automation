@@ -10,10 +10,14 @@ pipeline {
         stage('Preparation') {
             steps {
                 script {
-                    def deviceIP       = (params['Local IP Address']      ?: '').toString().trim()
-                    def readCommunity  = (params['Read Community']  ?: '').toString().trim()
-                    def writeCommunity = (params['Write Community'] ?: '').toString().trim()
-                    def mibFilePath    = "${env.WORKSPACE}/params['MIB_File']"
+                    // Using the updated parameter names from your UI
+                    def deviceIP       = (params['Local IP Address'] ?: '').toString().trim()
+                    def readCommunity  = (params['Read Community']   ?: '').toString().trim()
+                    def writeCommunity = (params['Write Community']  ?: '').toString().trim()
+
+                    // Jenkins File Parameters upload directly into the workspace
+                    // using the exact parameter name. No need to call params['MIB_File'] here.
+                    def mibFilePath    = "${env.WORKSPACE}/MIB_File"
 
                     echo "========================================"
                     echo " SNMP Validation — Preparation"
@@ -27,7 +31,7 @@ pipeline {
 
                     // FAIL-FAST VALIDATION: Ensure required parameters are not blank
                     if (!deviceIP || !readCommunity || !writeCommunity) {
-                        error("Validation Failed: Device_IP, Read_Community, and Write_Community parameters MUST be provided.")
+                        error("Validation Failed: Local IP Address, Read Community, and Write Community parameters MUST be provided.")
                     }
 
                     sh "rm -f SNMP_Validation.json SNMP_Validation.html snmp_validation.log || true"
@@ -58,9 +62,10 @@ pipeline {
         stage('Run SNMP Validation') {
             steps {
                 script {
-                    def deviceIP       = (params.Device_IP       ?: '').toString().trim()
-                    def readCommunity  = (params.Read_Community  ?: '').toString().trim()
-                    def writeCommunity = (params.Write_Community ?: '').toString().trim()
+                    // Ensure we use the exact same parameter names here
+                    def deviceIP       = (params['Local IP Address'] ?: '').toString().trim()
+                    def readCommunity  = (params['Read Community']   ?: '').toString().trim()
+                    def writeCommunity = (params['Write Community']  ?: '').toString().trim()
                     def mibFilePath    = "${env.WORKSPACE}/MIB_File"
                     def scriptPath     = "testCases/test_SNMP_Validation.py"
 
@@ -88,7 +93,8 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def deviceIP        = (params.Device_IP ?: '').toString().trim()
+                    // Update parameter names here too
+                    def deviceIP        = (params['Local IP Address'] ?: '').toString().trim()
                     def jsonReport      = readJSON file: 'SNMP_Validation.json'
                     def istZone         = TimeZone.getTimeZone("Asia/Kolkata")
                     def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", istZone)
@@ -161,8 +167,10 @@ pipeline {
                     def writeRows  = buildSnmpRows(writeData.data  ?: [])
                     def readCount  = readData.oid_count  ?: 0
                     def writeCount = writeData.oid_count ?: 0
-                    def readCom    = readData.community  ?: params.Read_Community
-                    def writeCom   = writeData.community ?: params.Write_Community
+
+                    // Fallback to the correct parameter names
+                    def readCom    = readData.community  ?: params['Read Community']
+                    def writeCom   = writeData.community ?: params['Write Community']
 
                     def chipBar = """
     <span class="chip active" data-prefix="all"     >All</span>
