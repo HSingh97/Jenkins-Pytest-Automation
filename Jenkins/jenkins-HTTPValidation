@@ -101,10 +101,11 @@ pipeline {
 
                     def iterationsByParam = [:]
                     if (jsonReport.iterations) {
-                        jsonReport.iterations.each { it ->
-                            def p = it.parameter ?: "Unknown"
+                        // FIX: Renamed 'it' to 'iterItem' to avoid Groovy scope collisions
+                        jsonReport.iterations.each { iterItem ->
+                            def p = iterItem.parameter ?: "Unknown"
                             if (!iterationsByParam.containsKey(p)) iterationsByParam[p] = []
-                            iterationsByParam[p].add(it)
+                            iterationsByParam[p].add(iterItem)
                         }
                     }
 
@@ -318,7 +319,6 @@ pipeline {
                                 var masterRows = document.querySelectorAll('.master-row');
                                 var categoryHeaders = document.querySelectorAll('.category-header');
 
-                                // Reset child rows and buttons when filtering
                                 document.querySelectorAll('.child-row').forEach(function(row) { row.style.display = 'none'; });
                                 document.querySelectorAll("button[id^='btn-']").forEach(function(btn) {
                                     btn.innerHTML = btn.innerHTML.replace('[-]', '[+]');
