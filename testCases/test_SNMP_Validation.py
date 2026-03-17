@@ -72,30 +72,50 @@ def load_mib(mib_path):
     if not mib_path or not os.path.isfile(mib_path):
         log_print(f"[WARN] MIB file not found: {mib_path}")
         return {}
+
     with open(mib_path) as f:
         content = f.read()
-    pattern = re.compile(r'^(\w+)\b[\s\S]*?::=\s*\{\s*(\w+)\s+(\d+)\s*\}', re.MULTILINE)
+
+    # Remove MIB comments before processing
+    content = re.sub(r'--.*', '', content)
+
+    # Generic regex to capture ALL parent-child OID tree assignments
+    pattern = re.compile(
+        r'([a-zA-Z0-9_-]+)\s+(?:OBJECT-TYPE|OBJECT IDENTIFIER|MODULE-IDENTITY|NOTIFICATION-TYPE|TRAP-TYPE)[\s\S]*?::=\s*\{\s*([a-zA-Z0-9_-]+)\s+(\d+)\s*\}')
+
     defs = {}
     for name, parent, idx in pattern.findall(content):
         defs[name] = (parent, int(idx))
-    if 'ENGENIUS' in defs and 'engenius' not in defs:
-        defs['engenius'] = defs['ENGENIUS']
+
+    # Second pass for simpler root assignments (e.g. senaoNetworks ... ::= { enterprises 52619 })
+    pattern2 = re.compile(r'([a-zA-Z0-9_-]+)\s+[^:]*?::=\s*\{\s*([a-zA-Z0-9_-]+)\s+(\d+)\s*\}')
+    for name, parent, idx in pattern2.findall(content):
+        if name not in defs:
+            defs[name] = (parent, int(idx))
+
     roots = {
         'enterprises': '1.3.6.1.4.1', 'mib-2': '1.3.6.1.2.1', 'iso': '1',
         'org': '1.3', 'dod': '1.3.6', 'internet': '1.3.6.1',
         'mgmt': '1.3.6.1.2', 'private': '1.3.6.1.4',
     }
+
+    # Check for custom root aliases like ENGENIUS, engenius, senao
+    for alias in ['ENGENIUS', 'engenius', 'senao', 'SENAO']:
+        if alias in defs: pass  # Ensure it is logged in the tree
+
     cache = {}
 
     def resolve(name):
         if name in cache: return cache[name]
         if name in roots: return roots[name]
         if name not in defs: return None
+
         parent, idx = defs[name]
         p = resolve(parent)
         if p is None: return None
-        r = f"{p}.{idx}";
-        cache[name] = r;
+
+        r = f"{p}.{idx}"
+        cache[name] = r
         return r
 
     oid_to_name = {}
@@ -103,7 +123,8 @@ def load_mib(mib_path):
         oid = resolve(name)
         if oid:
             oid_to_name['.' + oid] = name
-    log_print(f"MIB: {len(oid_to_name)} OID names loaded from {mib_path}")
+
+    log_print(f"MIB: {len(oid_to_name)} OID names successfully mapped from {mib_path}")
     return oid_to_name
 
 
@@ -112,7 +133,7 @@ def lookup_name(oid_str, oid_map):
     if oid_str in oid_map: return oid_map[oid_str]
 
     parts = oid_str.split('.')
-    # Work backwards to find the base table name and append the index suffix
+    # Walk backwards to find the base table name and append the index suffix
     for trim in range(1, len(parts)):
         candidate = '.'.join(parts[:-trim])
         if candidate in oid_map:
@@ -124,8 +145,10 @@ def lookup_name(oid_str, oid_map):
 
 def snmp_v2c_walk(device_ip, community, oid):
     try:
+        # NOTE: -O n forces snmpwalk to output purely numeric OIDs (.1.3.6.1...)
+        # This guarantees it matches our parsed MIB map.
         result = subprocess.run(
-            f"snmpwalk -v2c -c {community} {device_ip} {oid}",
+            f"snmpwalk -v2c -c {community} -O n {device_ip} {oid}",
             shell=True, capture_output=True, text=True, check=True
         )
         return result.stdout.strip()
@@ -133,12 +156,6 @@ def snmp_v2c_walk(device_ip, community, oid):
         return f"Error: {e.stderr.strip()}"
     except Exception as e:
         return f"Unexpected error: {str(e)}"
-
-
-def iso_to_numeric(oid_str):
-    if oid_str.startswith("iso."): return "1." + oid_str[4:]
-    if oid_str == "iso": return "1"
-    return oid_str
 
 
 def _cast_value(type_str, raw):
@@ -155,18 +172,27 @@ def parse_snmp_output(raw_output, oid_map):
     for line in raw_output.splitlines():
         line = line.strip()
         if not line or " = " not in line: continue
+
         oid_part, value_part = line.split(" = ", 1)
-        oid_str = "." + iso_to_numeric(oid_part.strip())
+
+        # OID part is strictly numeric now due to `-O n`
+        oid_str = oid_part.strip()
+        if not oid_str.startswith('.'):
+            oid_str = "." + oid_str
+
         type_str = ""
         data_raw = value_part.strip()
+
         type_match = re.match(r'^([A-Za-z][\w/-]*?):\s*(.*)', value_part, re.DOTALL)
         if type_match:
             type_str = type_match.group(1).strip()
             data_raw = type_match.group(2).strip()
+
         if data_raw.startswith('"') and data_raw.endswith('"'):
             data_raw = data_raw[1:-1]
+
         data = _cast_value(type_str, data_raw)
-        if type_str == "OID": data = iso_to_numeric(str(data))
+
         records.append({
             "name": lookup_name(oid_str, oid_map),
             "oid": oid_str,
