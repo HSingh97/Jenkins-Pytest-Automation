@@ -136,28 +136,22 @@ pipeline {
                             def nameDisplay = rName ?: "<em class='no-name'>—</em>"
                             def safeData = rData.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
+                            // Alert logic for -1 or error
+                            def isAlert = (rData.trim() == "-1" || rData.toLowerCase().contains("error"))
+                            def valDisplay = isAlert ? "<span class='val-alert'>${safeData}</span>" : safeData
+
                             def readIcon = rec.read_ok ? "<span class='status-icon pass'>✔</span>" : "<span class='status-icon fail'>✘</span>"
                             def writeIcon = rec.write_ok ? "<span class='status-icon pass'>✔</span>" : "<span class='status-icon fail'>✘</span>"
 
+                            // Removed the col-toggle and accordion rows. The output is now fully wrapped.
                             rows += """
 <tr class="main-row" data-prefix="${rPrefix}" data-type="${rType}">
-  <td class="col-toggle"><button class="toggle-btn" onclick="toggleRow(this)">+</button></td>
   <td class="col-name">${nameDisplay}</td>
   <td class="col-oid">${rOid}</td>
   <td class="col-type"><span class="badge ${badgeClass}">${rType}</span></td>
   <td class="center-col">${readIcon}</td>
   <td class="center-col">${writeIcon}</td>
-  <td class="col-val" style="max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeData}</td>
-</tr>
-<tr class="details-row" data-prefix="${rPrefix}" data-type="${rType}" style="display:none;">
-  <td colspan="7">
-    <div class="details-content">
-      <strong>OID:</strong> ${rOid}<br>
-      <strong>Type:</strong> ${rType}<br>
-      <strong>Value:</strong><br>
-      <pre style="margin: 8px 0 0 0; white-space: pre-wrap; font-family: monospace;">${safeData}</pre>
-    </div>
-  </td>
+  <td class="col-val">${valDisplay}</td>
 </tr>"""
                         }
                         return rows
@@ -192,75 +186,72 @@ pipeline {
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>SNMP Protocol Validation Report</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: #f8fafc; color: #1e293b; line-height: 1.6; display: flex; height: 100vh; overflow: hidden; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: #f8fafc; color: #1e293b; line-height: 1.6; display: flex; height: 100vh; overflow: hidden; font-size: 15px; }
 
-    /* Left Sidebar - Locked */
-    .sidebar { width: 320px; min-width: 320px; background: #ffffff; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; height: 100vh; overflow-y: auto; box-shadow: 2px 0 10px rgba(0,0,0,0.02); z-index: 10; }
-    .sidebar-header { padding: 24px 24px 16px 24px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; gap: 12px; }
-    .sidebar-header img { height: 36px; object-fit: contain; }
-    .sidebar-header h1 { font-size: 18px; margin: 0; color: #0f172a; font-weight: 700; line-height: 1.2; }
+    /* Modernized Left Sidebar - Locked */
+    .sidebar { width: 340px; min-width: 340px; background: #f1f5f9; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; height: 100vh; overflow-y: auto; box-shadow: inset -2px 0 10px rgba(0,0,0,0.01); z-index: 10; }
+    .sidebar-header { padding: 28px 24px 20px 24px; display: flex; align-items: center; gap: 14px; background: #ffffff; border-bottom: 1px solid #e2e8f0; }
+    .sidebar-header img { height: 40px; object-fit: contain; }
+    .sidebar-header h1 { font-size: 20px; margin: 0; color: #0f172a; font-weight: 800; line-height: 1.2; letter-spacing: -0.5px; }
 
-    .sidebar-section { padding: 20px 24px; border-bottom: 1px solid #f1f5f9; }
-    .sidebar-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; color: #64748b; margin: 0 0 12px 0; font-weight: 700; }
+    .sidebar-section { padding: 24px; border-bottom: 1px solid #e2e8f0; }
+    .sidebar-section h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; margin: 0 0 16px 0; font-weight: 800; }
 
-    .info-group { margin-bottom: 12px; }
-    .info-group:last-child { margin-bottom: 0; }
-    .info-group span { display: block; font-size: 12px; color: #64748b; margin-bottom: 2px; }
-    .info-group strong { display: block; font-size: 14px; color: #0f172a; word-wrap: break-word; }
+    .info-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 18px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); transition: transform 0.2s; }
+    .info-card:hover { border-color: #cbd5e1; transform: translateY(-1px); }
+    .info-card:last-child { margin-bottom: 0; }
+    .info-card span { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 700; margin-bottom: 4px; }
+    .info-card strong { display: block; font-size: 16px; color: #0f172a; word-wrap: break-word; font-weight: 600; }
 
     /* Main Content Area - Scrollable */
-    .main-content { flex: 1; overflow-y: auto; padding: 32px 40px; background: #f8fafc; }
+    .main-content { flex: 1; overflow-y: auto; padding: 32px 40px; background: #ffffff; }
 
-    .toolbar { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; background: #ffffff; padding: 16px 24px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+    .toolbar { display: flex; gap: 16px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; background: #f8fafc; padding: 16px 24px; border-radius: 12px; border: 1px solid #e2e8f0; }
     .search-wrap { flex: 1; min-width: 300px; position: relative; }
-    .search-wrap input { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 16px 10px 44px; font-size: 14px; background: #f8fafc; transition: all 0.2s; box-sizing: border-box; }
-    .search-wrap input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); outline: none; background: white; }
-    .search-wrap svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 18px; height: 18px; }
-    .type-select { min-width: 160px; padding: 10px 16px; font-size: 14px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fafc; cursor: pointer; }
-    .count-pill { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 999px; padding: 8px 16px; font-size: 13px; font-weight: 600; color: #1d4ed8; white-space: nowrap; }
+    .search-wrap input { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px 12px 44px; font-size: 15px; background: #ffffff; transition: all 0.2s; box-sizing: border-box; }
+    .search-wrap input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); outline: none; }
+    .search-wrap svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 20px; height: 20px; }
+    .type-select { min-width: 160px; padding: 12px 16px; font-size: 15px; border: 1px solid #cbd5e1; border-radius: 8px; background: #ffffff; cursor: pointer; }
+    .count-pill { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 999px; padding: 10px 20px; font-size: 14px; font-weight: 700; color: #1d4ed8; white-space: nowrap; }
 
-    .chip-section { padding: 0 0 16px 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .chip-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #64748b; margin-right: 4px; }
-    .chip { border: 1px solid #cbd5e1; background: #ffffff; border-radius: 999px; padding: 4px 14px; font-size: 12px; font-weight: 600; color: #475569; cursor: pointer; user-select: none; transition: all 0.2s; }
+    .chip-section { padding: 0 0 20px 0; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .chip-label { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px; color: #64748b; margin-right: 4px; }
+    .chip { border: 1px solid #cbd5e1; background: #f8fafc; border-radius: 999px; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #475569; cursor: pointer; user-select: none; transition: all 0.2s; }
     .chip:hover { border-color: #3b82f6; color: #1d4ed8; background: #eff6ff; }
     .chip.active { background: #3b82f6; border-color: #3b82f6; color: white; }
 
-    .table-card { background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+    .table-card { background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
     table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 12px 16px; border-bottom: 1px solid #e2e8f0; text-align: left; }
-    th { background: #f1f5f9; font-weight: 600; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; position: sticky; top: 0; z-index: 5; }
+    th, td { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; text-align: left; vertical-align: top; }
+    th { background: #f8fafc; font-weight: 700; color: #334155; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; position: sticky; top: 0; z-index: 5; border-bottom: 2px solid #e2e8f0; }
 
     .center-col { text-align: center; }
+    .main-row:hover td { background: #f8fafc; }
 
-    .main-row:hover td { background: #f0f9ff; }
-    .details-row td { background: #fafafa; padding: 0; border-bottom: 2px solid #e2e8f0; }
-    .details-content { padding: 16px 20px 16px 64px; border-left: 4px solid #3b82f6; color: #334155; font-size: 13px; }
+    .col-name { font-size: 15px; font-weight: 600; color: #0f172a; min-width: 180px; }
+    .col-oid { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; color: #475569; }
+    .col-type { text-align: center; min-width: 120px; }
+    .col-val { font-size: 15px; color: #334155; max-width: 500px; word-break: break-word; white-space: pre-wrap; line-height: 1.5; }
 
-    .toggle-btn { background: white; border: 1px solid #cbd5e1; border-radius: 4px; color: #3b82f6; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; cursor: pointer; transition: all 0.2s; }
-    .toggle-btn:hover { background: #eff6ff; border-color: #3b82f6; }
+    /* Alert styling for errors or -1 */
+    .val-alert { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; padding: 4px 10px; border-radius: 6px; font-weight: 600; display: inline-block; }
 
-    .col-toggle { width: 30px; padding-right: 0; }
-    .col-name { font-size: 13px; font-weight: 600; color: #0f172a; min-width: 160px; }
-    .col-oid { font-family: monospace; font-size: 12px; color: #64748b; }
-    .col-type { text-align: center; min-width: 100px; }
-    .col-val { font-size: 13px; color: #334155; }
+    .status-icon { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; font-size: 12px; font-weight: bold; }
+    .status-icon.pass { background: #dcfce7; color: #166534; box-shadow: 0 0 0 2px #bbf7d0; }
+    .status-icon.fail { background: #fee2e2; color: #b91c1c; box-shadow: 0 0 0 2px #fecaca; }
 
-    .status-icon { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; }
-    .status-icon.pass { background: #dcfce7; color: #166534; }
-    .status-icon.fail { background: #fee2e2; color: #b91c1c; }
+    .no-name { color: #94a3b8; font-style: italic; font-weight: normal; }
+    .no-results { text-align: center; padding: 60px; color: #64748b; font-size: 16px; }
 
-    .no-name { color: #94a3b8; font-style: italic; }
-    .no-results { text-align: center; padding: 60px; color: #94a3b8; font-size: 14px; }
-
-    .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
-    .badge-string   { background: #dbeafe; color: #1e40af; }
-    .badge-integer  { background: #fef9c3; color: #92400e; }
-    .badge-gauge    { background: #dcfce7; color: #166534; }
-    .badge-counter  { background: #ede9fe; color: #5b21b6; }
-    .badge-timeticks { background: #ffedd5; color: #9a3412; }
-    .badge-ip       { background: #fce7f3; color: #9d174d; }
-    .badge-oid      { background: #f1f5f9; color: #475569; }
-    .badge-hex      { background: #ecfdf5; color: #065f46; }
+    .badge { display: inline-block; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.3px; }
+    .badge-string   { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+    .badge-integer  { background: #fef9c3; color: #a16207; border: 1px solid #fde047; }
+    .badge-gauge    { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .badge-counter  { background: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
+    .badge-timeticks { background: #ffedd5; color: #c2410c; border: 1px solid #fed7aa; }
+    .badge-ip       { background: #fce7f3; color: #be185d; border: 1px solid #fbcfe8; }
+    .badge-oid      { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+    .badge-hex      { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
   </style>
 </head>
 <body>
@@ -273,19 +264,19 @@ pipeline {
 
     <div class="sidebar-section">
       <h3>Execution Context</h3>
-      <div class="info-group"><span>Pipeline Job</span><strong>${pipelineName}</strong></div>
-      <div class="info-group"><span>Execution Time</span><strong>${currentDateTime}</strong></div>
+      <div class="info-card"><span>Pipeline Job</span><strong>${pipelineName}</strong></div>
+      <div class="info-card"><span>Execution Time</span><strong>${currentDateTime}</strong></div>
     </div>
 
     <div class="sidebar-section">
       <h3>Build Parameters</h3>
-      ${buildParams.collect { "<div class='info-group'><span>${it.key}</span><strong>${it.value}</strong></div>" }.join('\n')}
+      ${buildParams.collect { "<div class='info-card'><span>${it.key}</span><strong>${it.value}</strong></div>" }.join('\n')}
     </div>
 
-    <div class="sidebar-section">
+    <div class="sidebar-section" style="border-bottom: none;">
       <h3>SNMP Security</h3>
-      <div class="info-group"><span>Read Community</span><strong>${readCom}</strong></div>
-      <div class="info-group"><span>Write Community</span><strong>${writeCom}</strong></div>
+      <div class="info-card"><span>Read Community</span><strong>${readCom}</strong></div>
+      <div class="info-card"><span>Write Community</span><strong>${writeCom}</strong></div>
     </div>
   </aside>
 
@@ -314,12 +305,11 @@ pipeline {
       <table>
         <thead>
           <tr>
-            <th class="col-toggle"></th>
             <th>Node Name</th>
             <th>Object Identifier (OID)</th>
             <th class="center-col">Syntax Type</th>
-            <th class="center-col" style="width: 70px;">Read</th>
-            <th class="center-col" style="width: 70px;">Write</th>
+            <th class="center-col" style="width: 80px;">Read</th>
+            <th class="center-col" style="width: 80px;">Write</th>
             <th>Discovered Value</th>
           </tr>
         </thead>
@@ -351,7 +341,6 @@ function applyFilters() {
   var visible = 0;
 
   rows.forEach(function(row) {
-    var detailsRow = row.nextElementSibling;
     var rp = row.dataset.prefix || 'other';
     var rt = row.dataset.type   || '';
     var tx = row.textContent.toLowerCase();
@@ -365,25 +354,11 @@ function applyFilters() {
       visible++;
     } else {
       row.style.display = 'none';
-      detailsRow.style.display = 'none';
-      row.querySelector('.toggle-btn').textContent = '+';
     }
   });
 
   document.getElementById('countDisplay').textContent = visible + ' entries';
   document.getElementById('noResults').style.display = visible === 0 ? 'block' : 'none';
-}
-
-function toggleRow(btn) {
-  var tr = btn.closest('.main-row');
-  var detailsTr = tr.nextElementSibling;
-  if (detailsTr.style.display === 'none' || detailsTr.style.display === '') {
-    detailsTr.style.display = 'table-row';
-    btn.textContent = '-';
-  } else {
-    detailsTr.style.display = 'none';
-    btn.textContent = '+';
-  }
 }
 </script>
 </body>
@@ -416,7 +391,6 @@ function toggleRow(btn) {
                     def jsonReport = readJSON file: 'SNMP_Validation.json'
                     def status     = jsonReport.overall_status ?: "UNKNOWN"
 
-                    // Parse counts from the new unified_data structure
                     def unifiedData = jsonReport.unified_data ?: []
                     def readCount   = unifiedData.count { it.read_ok }
                     def writeCount  = unifiedData.count { it.write_ok }
