@@ -14,9 +14,35 @@ pipeline {
                     def readCommunity  = (params['Read Community']   ?: '').toString().trim()
                     def writeCommunity = (params['Write Community']  ?: '').toString().trim()
 
-                    // FIX: Jenkins File Parameters upload the file into the workspace named exactly as the parameter name.
-                    def rawMibParam    = (params['MIB_File'] ?: '').toString().trim()
-                    def mibPath        = (rawMibParam == 'null' || rawMibParam == '') ? 'MIB_File' : rawMibParam
+                    // FIX: Extract the File Parameter directly from the master's build object
+                    // and write it to the agent's workspace.
+                    def extractedMib = ""
+                    try {
+                        def buildAction = currentBuild.rawBuild.getAction(hudson.model.ParametersAction.class)
+                        if (buildAction) {
+                            def fileParam = buildAction.getParameter("MIB_File")
+                            if (fileParam && fileParam.class.name.contains("FileParameterValue")) {
+                                def fileItem = fileParam.getFile()
+                                if (fileItem) {
+                                    def content = fileItem.getString()
+                                    if (content && content.trim() != "") {
+                                        extractedMib = fileParam.getOriginalFileName() ?: "uploaded_mib.txt"
+                                        writeFile file: extractedMib, text: content
+                                        env.EXTRACTED_MIB = extractedMib
+                                        echo "[SUCCESS] File Parameter '${extractedMib}' extracted and copied to Agent workspace!"
+                                    }
+                                }
+                            }
+                        }
+                    } catch (org.jenkinsci.plugins.scriptsecurity.sandbox.RejectedAccessException e) {
+                        echo "[ERROR] Script Security blocked file extraction. A Jenkins Admin must approve 'currentBuild.rawBuild' in In-Process Script Approval."
+                    } catch (Exception e) {
+                        echo "[WARN] Could not extract file parameter: ${e.message}"
+                    }
+
+                    // Determine final path to display
+                    def mibPath = env.EXTRACTED_MIB ?: (params['MIB_File'] ?: '').toString().trim()
+                    if (mibPath == 'null') mibPath = ''
 
                     echo "========================================"
                     echo " SNMP Validation - Preparation"
@@ -38,8 +64,8 @@ pipeline {
                         ls -la '${env.WORKSPACE}/'
                         echo "=== BUILD DIR ==="
                         ls -la '${env.WORKSPACE}/../builds/${env.BUILD_NUMBER}/' 2>/dev/null || echo "not found"
-                        echo "=== MIB_File param value ==="
-                        echo 'MIB_File=[${params.MIB_File}]'
+                        echo "=== EXTRACTED MIB ==="
+                        echo 'MIB_File=[${mibPath}]'
                     """
                     echo "Workspace cleaned."
                 }
@@ -70,23 +96,21 @@ pipeline {
                     def deviceIP       = (params['Local IP Address'] ?: '').toString().trim()
                     def readCommunity  = (params['Read Community']   ?: '').toString().trim()
                     def writeCommunity = (params['Write Community']  ?: '').toString().trim()
-
-                    // FIX: Jenkins File Parameters upload the file into the workspace named exactly as the parameter name.
-                    def rawMibParam    = (params['MIB_File'] ?: '').toString().trim()
-                    def mibPath        = (rawMibParam == 'null' || rawMibParam == '') ? 'MIB_File' : rawMibParam
                     def scriptPath     = "testCases/test_SNMP_Validation.py"
+
+                    // Use the extracted file from Preparation stage, or fallback to parameter string
+                    def mibPath = env.EXTRACTED_MIB ?: (params['MIB_File'] ?: '').toString().trim()
+                    if (mibPath == 'null') mibPath = ''
 
                     def wsFile = "${env.WORKSPACE}/${mibPath}"
                     def mibArg = '/dev/null'
 
                     if (mibPath) {
-                        // Try workspace path first (File Parameter behaviour)
                         def wsExists = sh(script: "test -f '${wsFile}' && echo yes || echo no", returnStdout: true).trim()
                         if (wsExists == 'yes') {
                             mibArg = wsFile
                             echo "[OK] MIB found in workspace: ${mibArg}"
                         } else {
-                            // Try as absolute path (String Parameter fallback)
                             def absExists = sh(script: "test -f '${mibPath}' && echo yes || echo no", returnStdout: true).trim()
                             if (absExists == 'yes') {
                                 mibArg = mibPath
