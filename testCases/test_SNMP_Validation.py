@@ -181,30 +181,35 @@ def lookup_name(oid_str, oid_map):
             base_name = oid_map[candidate]
             suffixes = parts[-trim:]
 
-            # Apply requested index nomenclature dynamically
-            if len(suffixes) == 1:
-                idx = suffixes[0]
-                if idx == '1':
-                    return f"2.4GHz Radio : {base_name}"
-                elif idx == '2':
-                    return f"Radio1 : {base_name}"
-                elif idx == '3':
-                    return f"Radio2 : {base_name}"
-                else:
-                    return f"Index {idx} : {base_name}"
-            else:
-                # If there are multiple suffixes, base the prefix on the primary index
-                first_idx = suffixes[0]
-                remaining = ".".join(suffixes[1:])
+            # SMART HEURISTIC: Only apply Radio nomenclature to specific wireless/radio tables
+            # This prevents system metrics (like sysMgmtApply.1) from being called "2.4GHz Radio"
+            radio_keywords = ['wireless', 'radio', 'assoc', 'dcs', 'sitesurvey', 'saresult', 'linkprofile']
+            is_radio_metric = any(kw in base_name.lower() for kw in radio_keywords)
 
+            first_idx = suffixes[0]
+
+            if is_radio_metric:
+                prefix = ""
                 if first_idx == '1':
-                    return f"2.4GHz Radio : {base_name}.{remaining}"
+                    prefix = "2.4GHz Radio : "
                 elif first_idx == '2':
-                    return f"Radio1 : {base_name}.{remaining}"
+                    prefix = "Radio1 : "
                 elif first_idx == '3':
-                    return f"Radio2 : {base_name}.{remaining}"
+                    prefix = "Radio2 : "
                 else:
-                    return f"{base_name}.{'.'.join(suffixes)}"
+                    prefix = f"Radio {first_idx} : "
+
+                if len(suffixes) == 1:
+                    return f"{prefix}{base_name}"
+                else:
+                    remaining = ".".join(suffixes[1:])
+                    return f"{prefix}{base_name}.{remaining}"
+            else:
+                # For non-radio metrics, cleanly drop the '.0' for scalar values
+                if suffixes == ['0']:
+                    return base_name
+                # For standard table indices (like ethernet.1), just append normally
+                return f"{base_name}.{'.'.join(suffixes)}"
 
     return ""
 
@@ -278,7 +283,7 @@ log_print("=" * 100)
 
 overall_status = "PASS"
 
-log_print(f"\n[1] Loading MIB with Fast-Parse: {MIB_FILE}")
+log_print(f"\n[1] Loading MIB Configuration: {MIB_FILE}")
 oid_map = load_mib_fast_parser(MIB_FILE)
 
 log_print(f"\n[2] Fetching build parameters from {DEVICE_IP} (using read community) ...")
