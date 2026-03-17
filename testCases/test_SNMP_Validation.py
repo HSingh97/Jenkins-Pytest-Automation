@@ -85,26 +85,47 @@ def load_mib_fast_parser(mib_path):
         with open(mib_path, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read()
 
-        # Strip comments
+        # 1. Strip all SNMP comments to prevent false parsing
         content = re.sub(r'--.*', '', content)
+
+        # 2. Strip all descriptions and quoted text to prevent false positive keywords
+        content = re.sub(r'"[^"]*"', '""', content)
+
         defs = {}
 
         # Split by assignments and read backwards to securely locate the base name
-        blocks = content.split('::=')
+        blocks = re.split(r'::=\s*\{', content)
         for i in range(len(blocks) - 1):
             left_side = blocks[i]
             right_side = blocks[i + 1]
 
-            match_right = re.match(r'\s*\{\s*([a-zA-Z0-9_-]+)\s+(\d+)\s*\}', right_side)
-            if match_right:
-                parent = match_right.group(1)
-                idx = int(match_right.group(2))
+            # Find the parent and index in the current block
+            match_right = re.match(r'\s*([a-zA-Z0-9_-]+)\s+(\d+)\s*\}', right_side)
+            if not match_right: continue
 
-                last_part = left_side.split('}')[-1].strip()
-                words = last_part.split()
-                if words:
-                    name = words[0]
-                    defs[name] = (parent, idx)
+            parent = match_right.group(1)
+            idx = int(match_right.group(2))
+
+            words = left_side.split()
+            if not words: continue
+
+            keywords = ["OBJECT-TYPE", "OBJECT", "MODULE-IDENTITY", "NOTIFICATION-TYPE", "TRAP-TYPE", "OBJECT-GROUP",
+                        "NOTIFICATION-GROUP"]
+            name = None
+
+            # The name is the identifier immediately preceding the keyword
+            for j in range(len(words) - 1, 0, -1):
+                if words[j] in keywords:
+                    name = words[j - 1]
+                    break
+
+            # Fallback for simple alias assignments (e.g. "senao ::= { enterprises 52619 }")
+            if not name:
+                name = words[-1]
+
+            name = re.sub(r'[^a-zA-Z0-9_-]', '', name)
+            if name:
+                defs[name] = (parent, idx)
 
         # Standard Roots
         roots = {
@@ -172,14 +193,16 @@ def lookup_name(oid_str, oid_map):
                 else:
                     return f"Index {idx} : {base_name}"
             else:
-                idx = suffixes[-1]
-                joined_mid = ".".join(suffixes[:-1])
-                if idx == '1':
-                    return f"2.4GHz Radio : {base_name}.{joined_mid}"
-                elif idx == '2':
-                    return f"Radio1 : {base_name}.{joined_mid}"
-                elif idx == '3':
-                    return f"Radio2 : {base_name}.{joined_mid}"
+                # If there are multiple suffixes, base the prefix on the primary index
+                first_idx = suffixes[0]
+                remaining = ".".join(suffixes[1:])
+
+                if first_idx == '1':
+                    return f"2.4GHz Radio : {base_name}.{remaining}"
+                elif first_idx == '2':
+                    return f"Radio1 : {base_name}.{remaining}"
+                elif first_idx == '3':
+                    return f"Radio2 : {base_name}.{remaining}"
                 else:
                     return f"{base_name}.{'.'.join(suffixes)}"
 
@@ -188,6 +211,8 @@ def lookup_name(oid_str, oid_map):
 
 def snmp_v2c_walk(device_ip, community, oid):
     try:
+        # Note: Bypassing Linux net-snmp dictionary entirely here.
+        # We fetch raw numbers (-O n) and map them dynamically in Python.
         result = subprocess.run(
             f"snmpwalk -v2c -c '{community}' -O n {device_ip} {oid}",
             shell=True, capture_output=True, text=True, check=True
@@ -253,7 +278,7 @@ log_print("=" * 100)
 
 overall_status = "PASS"
 
-log_print(f"\n[1] Loading MIB Configuration: {MIB_FILE}")
+log_print(f"\n[1] Loading MIB with Fast-Parse: {MIB_FILE}")
 oid_map = load_mib_fast_parser(MIB_FILE)
 
 log_print(f"\n[2] Fetching build parameters from {DEVICE_IP} (using read community) ...")
