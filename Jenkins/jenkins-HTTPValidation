@@ -79,7 +79,7 @@ pipeline {
                     String reportFileName = "HTTPValidation_report_${env.BUILD_ID}_${fileDate}.html"
 
                     // =========================================================
-                    // NEW: Sectioned Visibility Matrix Table
+                    // NEW: Sectioned Visibility Matrix Table with Values
                     // =========================================================
                     String currentConfigHTML = ""
                     def userRoles = ["admin", "root", "develop"]
@@ -101,6 +101,7 @@ pipeline {
                         }
                     }
 
+                    // Because we added "1. ", "2. " to the section names in Python, default string sort perfectly orders them chronologically.
                     def sortedSections = allSections.sort()
 
                     currentConfigHTML += """
@@ -110,10 +111,11 @@ pipeline {
                         <div id="visibility-matrix-container" style="transition: all 0.3s ease;">
                         <table style="margin-top: 15px;">
                             <tr>
-                                <th width="40%">Parameter Element</th>
-                                <th width="20%" style="text-align:center; background-color:#fefce8; color:#92400e;">Admin</th>
-                                <th width="20%" style="text-align:center; background-color:#eff6ff; color:#1e3a8a;">Root</th>
-                                <th width="20%" style="text-align:center; background-color:#f0fdf4; color:#166534;">Develop</th>
+                                <th width="25%">Parameter Element</th>
+                                <th width="36%">Extracted Value / Options</th>
+                                <th width="13%" style="text-align:center; background-color:#fefce8; color:#92400e;">Admin</th>
+                                <th width="13%" style="text-align:center; background-color:#eff6ff; color:#1e3a8a;">Root</th>
+                                <th width="13%" style="text-align:center; background-color:#f0fdf4; color:#166534;">Develop</th>
                             </tr>
                     """
 
@@ -121,7 +123,7 @@ pipeline {
                         sortedSections.each { sectionName ->
                             currentConfigHTML += """
                                 <tr style="background-color:#e2e8f0;">
-                                    <td colspan="4" style="font-weight:700; color:#0f172a; padding: 10px 18px;">📂 ${sectionName}</td>
+                                    <td colspan="5" style="font-weight:700; color:#0f172a; padding: 10px 18px;">📂 ${sectionName}</td>
                                 </tr>
                             """
 
@@ -130,6 +132,17 @@ pipeline {
                                 currentConfigHTML += "<tr>\n"
                                 currentConfigHTML += "<td style='padding-left: 30px;'><strong>${uiName}</strong></td>\n"
 
+                                // Extract the string value/options to display
+                                def elementValue = "<i style='color:#9ca3af;'>[Unknown]</i>"
+                                for (def r : userRoles) {
+                                    if (jsonReport.current_configs[r] && jsonReport.current_configs[r][sectionName] && jsonReport.current_configs[r][sectionName].containsKey(uiName)) {
+                                        elementValue = jsonReport.current_configs[r][sectionName][uiName]
+                                        break
+                                    }
+                                }
+                                currentConfigHTML += "<td style='word-break: break-word;'><code style='color:#d97706; background:#fef3c7; padding:2px 6px; border-radius:4px; font-size:12px;'>${elementValue}</code></td>\n"
+
+                                // Generate Checkmarks
                                 userRoles.each { role ->
                                     boolean isVisible = jsonReport.current_configs[role] &&
                                                         jsonReport.current_configs[role][sectionName] &&
@@ -141,7 +154,7 @@ pipeline {
                             }
                         }
                     } else {
-                        currentConfigHTML += "<tr><td colspan='4' style='text-align:center; color:#64748b;'>No configurations found.</td></tr>"
+                        currentConfigHTML += "<tr><td colspan='5' style='text-align:center; color:#64748b;'>No configurations found.</td></tr>"
                     }
                     currentConfigHTML += "</table></div>"
                     // =========================================================
@@ -206,7 +219,6 @@ pipeline {
                             function closeModal() { document.getElementById('logModal').style.display = 'none'; }
                             window.onclick = function(event) { if (event.target == document.getElementById('logModal')) closeModal(); }
 
-                            // NEW: Toggle for entire matrix
                             function toggleVisibilityMatrix() {
                                 var container = document.getElementById('visibility-matrix-container');
                                 var icon = document.getElementById('icon-matrix');

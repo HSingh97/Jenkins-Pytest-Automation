@@ -26,7 +26,6 @@ warnings.warn = warn
 MAIN_USER = "root"
 MAIN_PASS = "admin"
 
-# Reordered per request: Admin, Root, Develop
 DISCOVERY_USERS = [
     {"user": "admin", "pass": "admin"},
     {"user": "root", "pass": "admin"},
@@ -56,7 +55,6 @@ def write_iteration_log(iteration, content):
 
 
 def get_tabs(driver):
-    # Finds the sub-menu tabs (Properties, MIMO, etc.) commonly used in Senao/LuCI
     tabs = driver.find_elements(By.XPATH, "//*[@id='maincontent']//ul[contains(@class, 'cbi-tabmenu')]/li/a")
     if not tabs:
         tabs = driver.find_elements(By.XPATH, "//*[@id='maincontent']/div/div[1]/ul/li/a")
@@ -92,31 +90,29 @@ def test_Smart_Auto_Validator(setup, local_ip):
             driver.get(radio1_url)
             time.sleep(1.5)
 
-            # Grab background config dictionary
             all_configs = {}
             js_block_match = re.search(r'const values = \{(.*?)\};', driver.page_source, re.DOTALL)
             if js_block_match:
                 all_configs = dict(re.findall(r'"([^"]+)":\s*"([^"]*)"', js_block_match.group(1)))
 
             visible_elements_by_section = {}
-
             tabs = get_tabs(driver)
             tab_count = len(tabs) if tabs else 1
 
-            # Crawl through every tab to find what is visible
             for t_idx in range(tab_count):
-                section_name = "Wireless -> Radio 1 -> General"
+                # Number the sections so Jenkins sorts them chronologically
+                section_name = f"{t_idx + 1}. Wireless -> Radio 1 -> General"
 
                 if tabs:
                     current_tabs = get_tabs(driver)
                     tab_elem = current_tabs[t_idx]
                     tab_text = tab_elem.text.strip()
                     if tab_text:
-                        section_name = f"Wireless -> Radio 1 -> {tab_text}"
+                        section_name = f"{t_idx + 1}. Wireless -> Radio 1 -> {tab_text}"
 
                     try:
                         tab_elem.click()
-                        time.sleep(1)  # Wait for tab to render
+                        time.sleep(1)
                     except Exception:
                         pass
 
@@ -139,7 +135,12 @@ def test_Smart_Auto_Validator(setup, local_ip):
 
                     try:
                         if driver.find_element(By.NAME, name_attr).is_displayed():
-                            section_elements[ui_label] = all_configs.get(name_attr, "[Empty]")
+                            # If it's a dropdown, grab all the options. If input, grab current value.
+                            if tag.name == 'select':
+                                opts = [o.text.strip() for o in tag.find_all('option') if o.text.strip()]
+                                section_elements[ui_label] = f"Options: {opts}"
+                            else:
+                                section_elements[ui_label] = all_configs.get(name_attr, "[Empty]")
                     except Exception:
                         pass
 
@@ -173,19 +174,16 @@ def test_Smart_Auto_Validator(setup, local_ip):
 
     dynamic_test_cases = []
 
-    # 1. Manual POM injections (Assumed to be on the first tab '0')
     dynamic_test_cases.append(
         (0, Wireless.radioRadiomode_xpath, "Radio Mode Options", ["BSU", "SU"], True, "verify_options", None, By.XPATH))
     dynamic_test_cases.append(
         (0, Wireless.radioLinktype_xpath, "Link Type Options", ["PTP", "PTMP"], True, "verify_options", None, By.XPATH))
 
-    # 2. Iterate tabs to auto-generate tests for inputs
     driver.get(radio1_url)
     time.sleep(1.5)
     tabs = get_tabs(driver)
     tab_count = len(tabs) if tabs else 1
 
-    # Flatten main user's visible elements for quick checking
     main_user_visible_labels = set()
     for elements in visible_configs_by_user.get(MAIN_USER, {}).values():
         main_user_visible_labels.update(elements.keys())
@@ -266,7 +264,6 @@ def test_Smart_Auto_Validator(setup, local_ip):
         try:
             driver.get(radio1_url)
 
-            # Navigate to the correct tab for this element
             has_tabs = get_tabs(driver)
             if has_tabs:
                 try:
