@@ -469,7 +469,7 @@ pipeline {
                     keepAll              : true,
                     reportDir            : '.',
                     reportFiles          : reportFileName,
-                    reportName           : 'Automated Test Report'
+                    reportName           : 'SNMP Validation Test Report'
                 ])
 
                 echo "Cleaning up log files..."
