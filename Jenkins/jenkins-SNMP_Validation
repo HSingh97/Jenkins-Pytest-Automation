@@ -10,24 +10,22 @@ pipeline {
         stage('Preparation') {
             steps {
                 script {
-                    def deviceIP       = (params['Local IP Address']       ?: '').toString().trim()
-                    def readCommunity  = (params['Read Community']  ?: '').toString().trim()
-                    def writeCommunity = (params['Write Community'] ?: '').toString().trim()
+                    def deviceIP       = (params['Local IP Address'] ?: '').toString().trim()
+                    def readCommunity  = (params['Read Community']   ?: '').toString().trim()
+                    def writeCommunity = (params['Write Community']  ?: '').toString().trim()
 
                     echo "========================================"
-                    echo " SNMP Validation — Preparation"
+                    echo " SNMP Validation - Preparation"
                     echo "========================================"
                     echo " LOCAL IP        : ${deviceIP}"
                     echo " READ COMMUNITY  : ${readCommunity}"
                     echo " WRITE COMMUNITY : ${writeCommunity}"
-                    echo " MIB FILE        : ${params['MIB_File'] ?: params['MIB File'] ?: '(not provided)'}"
                     echo " TARGET STAND    : ${params.TARGET_STAND}"
                     echo "========================================"
 
                     if (!deviceIP) { error "Missing required parameter: Local IP Address" }
 
                     sh "rm -f SNMP_Validation.json SNMP_Validation.html snmp_validation.log || true"
-                    sh "echo '--- Workspace MIB check ---' && ls -la '${env.WORKSPACE}/' | grep -i mib || echo '[WARN] No .mib file found in workspace root'"
                     echo "Workspace cleaned."
                 }
             }
@@ -43,7 +41,6 @@ pipeline {
                 }
                 sh '''
                     which snmpget >/dev/null 2>&1 || {
-                        echo "--- Installing SNMP tools ---"
                         sudo apt-get update -qq
                         sudo apt-get install -y snmp snmp-mibs-downloader
                     }
@@ -55,36 +52,33 @@ pipeline {
         stage('Run SNMP Validation') {
             steps {
                 script {
-                    def deviceIP       = (params['Local IP Address']       ?: '').toString().trim()
-                    def readCommunity  = (params['Read Community']  ?: '').toString().trim()
-                    def writeCommunity = (params['Write Community'] ?: '').toString().trim()
+                    def deviceIP       = (params['Local IP Address'] ?: '').toString().trim()
+                    def readCommunity  = (params['Read Community']   ?: '').toString().trim()
+                    def writeCommunity = (params['Write Community']  ?: '').toString().trim()
                     def scriptPath     = "testCases/test_SNMP_Validation.py"
+                    def mibDest        = "${env.WORKSPACE}/SENAO-MIB.mib"
 
-                    def mibFilePath = "${env.WORKSPACE}/SENAO-MIB.mib"
-
+                    // Copy MIB from Jenkins fileParameters directory to workspace
+                    // Jenkins stores File Parameter uploads at:
+                    // /var/lib/jenkins/jobs/<job>/builds/<N>/fileParameters/<paramName>/<filename>
                     sh """
                         JOB_ESC=\$(echo '${env.JOB_NAME}' | sed 's|/|/jobs/|g')
                         BASE="/var/lib/jenkins/jobs/\${JOB_ESC}/builds/${env.BUILD_NUMBER}/fileParameters"
-                        echo "Searching for MIB in: \${BASE}"
-                        ls -la "\${BASE}/" 2>/dev/null || echo "fileParameters not found at \${BASE}"
+                        echo "=== fileParameters listing ==="
+                        ls -laR "\${BASE}/" 2>/dev/null || echo "Not found: \${BASE}"
+                        echo "=============================="
                         MIB=\$(ls "\${BASE}"/*/SENAO-MIB.mib "\${BASE}"/*/*.mib "\${BASE}"/*/*.MIB 2>/dev/null | head -1)
                         if [ -n "\${MIB}" ]; then
-                            cp "\${MIB}" '${mibFilePath}'
+                            cp "\${MIB}" '${mibDest}'
                             echo "[OK] MIB copied from: \${MIB}"
                         else
-                            echo "[WARN] No MIB found in \${BASE}"
+                            echo "[WARN] No MIB file found"
                         fi
                     """
 
-                    def mibOk = sh(script: "test -f '${mibFilePath}' && echo yes || echo no", returnStdout: true).trim()
-                    if (mibOk == 'yes') {
-                        echo "[OK] Using MIB file: ${mibFilePath}"
-                    } else {
-                        echo "[WARN] MIB file not found — OID names will be empty"
-                        mibFilePath = "/dev/null"
-                    }
-
-                    }
+                    def mibOk = sh(script: "test -f '${mibDest}' && echo yes || echo no", returnStdout: true).trim()
+                    def mibArg = (mibOk == 'yes') ? mibDest : '/dev/null'
+                    echo (mibOk == 'yes') ? "[OK] Using MIB: ${mibArg}" : "[WARN] MIB not found - OID names will be empty"
 
                     echo "========================================"
                     echo " Running SNMP Validation on ${deviceIP}"
@@ -97,7 +91,7 @@ pipeline {
                                 --device-ip       '${deviceIP}'        \
                                 --read-community  '${readCommunity}'   \
                                 --write-community '${writeCommunity}'  \
-                                --mib-file        '${mibFilePath}'     \
+                                --mib-file        '${mibArg}'          \
                                 | tee snmp_validation.log
                         """
                     } catch (err) {
@@ -129,27 +123,14 @@ pipeline {
                         def rows = new StringBuilder()
                         dataList.each { rec ->
                             def rName  = (rec.name  ?: "").toString()
-                            def rOid   = (rec.oid   ?: "").toString()
-                                            .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                            def rOid   = (rec.oid   ?: "").toString().replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
                             def rType  = (rec.type  ?: "").toString()
-                            def rData  = (rec.data  ?: "").toString()
-                                            .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                            def rData  = (rec.data  ?: "").toString().replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
                             def rPrefix = "other"
-                            if (rName) {
-                                def m = (rName =~ /^([a-z]+)/)
-                                if (m) rPrefix = m[0][1]
-                            }
-                            def badgeClass = [
-                                "STRING"    : "badge-string",
-                                "INTEGER"   : "badge-integer",
-                                "Gauge32"   : "badge-gauge",
-                                "Counter32" : "badge-counter",
-                                "Counter64" : "badge-counter",
-                                "Timeticks" : "badge-timeticks",
-                                "IpAddress" : "badge-ip",
-                                "OID"       : "badge-oid",
-                                "Hex-STRING": "badge-hex"
-                            ].get(rType, "badge-oid")
+                            if (rName) { def m = (rName =~ /^([a-z]+)/); if (m) rPrefix = m[0][1] }
+                            def badgeClass = ["STRING":"badge-string","INTEGER":"badge-integer","Gauge32":"badge-gauge",
+                                "Counter32":"badge-counter","Counter64":"badge-counter","Timeticks":"badge-timeticks",
+                                "IpAddress":"badge-ip","OID":"badge-oid","Hex-STRING":"badge-hex"].get(rType,"badge-oid")
                             def nameDisplay = rName ?: "<em class='no-name'>&#8212;</em>"
                             rows.append("<tr data-prefix=\"${rPrefix}\" data-type=\"${rType}\">")
                             rows.append("<td class=\"col-name\">${nameDisplay}</td>")
@@ -192,111 +173,73 @@ pipeline {
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Automated Test Report</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
   <style>
-    *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
-    body          { font-family:'Inter',-apple-system,sans-serif; background:#f4f7f6; color:#1f2937; line-height:1.6; }
-    .page         { max-width:1360px; margin:0 auto; padding:32px 24px 64px; }
-    .header       { display:flex; justify-content:space-between; align-items:center;
-                    background:linear-gradient(135deg,#ffffff 0%,#f0f4f8 100%);
-                    padding:30px 40px; border:1px solid #e2e8f0; border-radius:16px;
-                    box-shadow:0 10px 25px -5px rgba(0,0,0,0.05); }
-    .header img   { height:58px; transition:transform 0.3s; }
-    .header img:hover { transform:scale(1.05); }
-    .header-info  { text-align:right; }
-    .header-info h1 { font-size:30px; font-weight:800; color:#0f172a; letter-spacing:-0.5px; }
-    .header-info p  { margin-top:5px; font-size:14px; color:#64748b; }
-    h2            { margin:40px 0 20px; font-size:22px; font-weight:700; color:#0f172a;
-                    padding-bottom:12px; position:relative; }
-    h2::after     { content:''; position:absolute; left:0; bottom:0;
-                    width:56px; height:3px; background:#3b82f6; border-radius:3px; }
-    .params-table { width:100%; border-collapse:collapse; background:#fff;
-                    border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;
-                    box-shadow:0 4px 6px -1px rgba(0,0,0,0.04); }
-    .params-table th,.params-table td { padding:14px 20px; border-bottom:1px solid #e2e8f0;
-                    font-size:14px; text-align:left; vertical-align:middle; }
-    .params-table th { background:#f8fafc; font-weight:600; color:#475569;
-                       font-size:12px; text-transform:uppercase; letter-spacing:0.5px; }
-    .params-table tr:last-child td { border-bottom:none; }
-    .params-table tr:hover td { background:#f8fafc; }
-    .accordion    { background:#fff; border-radius:14px; overflow:hidden;
-                    border:1px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.06);
-                    margin-bottom:24px; }
-    .acc-header   { display:flex; justify-content:space-between; align-items:center;
-                    padding:20px 28px; cursor:pointer; user-select:none; transition:background 0.2s; }
-    .acc-header:hover { background:#f0f9ff; }
-    .acc-header.open  { background:#dbeafe; }
-    .acc-title    { display:flex; align-items:center; gap:14px; }
-    .acc-num      { width:32px; height:32px; border-radius:50%; background:#3b82f6; color:#fff;
-                    font-size:15px; font-weight:700; display:flex; align-items:center;
-                    justify-content:center; flex-shrink:0; }
-    .acc-header.open .acc-num   { background:#1d4ed8; }
-    .acc-label    { font-size:17px; font-weight:700; color:#0f172a; }
-    .acc-header.open .acc-label { color:#1d4ed8; }
-    .acc-meta     { font-size:13px; color:#64748b; font-weight:400; margin-left:4px; }
-    .acc-header.open .acc-meta  { color:#3b82f6; }
-    .acc-arrow    { font-size:18px; color:#94a3b8; transition:transform 0.3s; }
-    .acc-header.open .acc-arrow { transform:rotate(180deg); color:#1d4ed8; }
-    .acc-body     { max-height:0; overflow:hidden; transition:max-height 0.4s ease; }
-    .acc-body.open { max-height:99999px; }
-    .acc-inner    { padding:24px 28px; border-top:1px solid #e2e8f0; }
-    .toolbar      { display:flex; gap:14px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
-    .search-wrap  { flex:1; min-width:280px; position:relative; }
-    .search-wrap input { width:100%; border:1px solid #cbd5e1; border-radius:10px;
-                         padding:11px 16px 11px 46px; font-size:14px; font-family:'Inter',sans-serif;
-                         background:#fff; outline:none; transition:all 0.2s; }
-    .search-wrap input:focus { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,0.15); }
-    .search-wrap svg { position:absolute; left:14px; top:50%; transform:translateY(-50%);
-                       color:#94a3b8; pointer-events:none; width:20px; height:20px; }
-    .type-select  { padding:11px 16px; font-size:14px; font-family:'Inter',sans-serif;
-                    border:1px solid #cbd5e1; border-radius:10px; background:#fff;
-                    color:#1e293b; cursor:pointer; min-width:160px; outline:none; transition:all 0.2s; }
-    .type-select:focus { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,0.15); }
-    .count-pill   { background:#eff6ff; border:1px solid #bfdbfe; border-radius:999px;
-                    padding:9px 20px; font-size:14px; font-weight:600; color:#1d4ed8; white-space:nowrap; }
-    .chip-bar     { display:flex; flex-wrap:wrap; gap:8px; align-items:center;
-                    padding:14px 0; margin-bottom:16px; }
-    .chip-label   { font-size:11px; font-weight:700; text-transform:uppercase;
-                    letter-spacing:0.8px; color:#64748b; margin-right:4px; white-space:nowrap; }
-    .chip         { border:1.5px solid #e2e8f0; background:#f8fafc; border-radius:999px;
-                    padding:5px 16px; font-size:12px; font-weight:600; color:#475569;
-                    cursor:pointer; transition:all 0.15s; user-select:none; }
-    .chip:hover   { border-color:#3b82f6; color:#1d4ed8; background:#eff6ff; }
-    .chip.active  { background:#3b82f6; border-color:#3b82f6; color:#fff;
-                    box-shadow:0 2px 8px rgba(59,130,246,0.3); }
-    .data-table-wrap { border-radius:12px; overflow:hidden; border:1px solid #e2e8f0; }
-    table         { width:100%; border-collapse:collapse; background:#fff; }
-    thead tr      { background:#f1f5f9; }
-    th            { padding:13px 20px; font-weight:600; color:#475569; font-size:12px;
-                    text-transform:uppercase; letter-spacing:0.5px; border-bottom:2px solid #e2e8f0; text-align:left; }
-    tbody tr      { border-bottom:1px solid #f1f5f9; transition:background 0.12s; }
-    tbody tr:last-child { border-bottom:none; }
-    tbody tr:hover td { background:#f0f9ff; }
-    tbody tr:hover .col-oid { color:#3b82f6 !important; }
-    td            { padding:12px 20px; vertical-align:middle; }
-    .col-name     { font-size:13.5px; font-weight:600; color:#0f172a; min-width:180px; }
-    .col-oid      { font-family:'JetBrains Mono',monospace; font-size:12px; color:#64748b; }
-    .col-type     { text-align:center; min-width:120px; }
-    .col-val      { font-size:13px; color:#334155; max-width:400px; word-break:break-all; }
-    .no-name      { color:#94a3b8; font-style:italic; }
-    .no-results   { text-align:center; padding:60px 20px; color:#94a3b8; font-size:15px; }
-    .badge        { display:inline-block; padding:4px 12px; border-radius:999px; font-size:11px; font-weight:700; letter-spacing:0.3px; }
-    .badge-string   { background:#dbeafe; color:#1e40af; }
-    .badge-integer  { background:#fef9c3; color:#92400e; }
-    .badge-gauge    { background:#dcfce7; color:#166534; }
-    .badge-counter  { background:#ede9fe; color:#5b21b6; }
-    .badge-timeticks { background:#ffedd5; color:#9a3412; }
-    .badge-ip       { background:#fce7f3; color:#9d174d; }
-    .badge-oid      { background:#f1f5f9; color:#475569; }
-    .badge-hex      { background:#ecfdf5; color:#065f46; }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Inter',-apple-system,sans-serif;background:#f4f7f6;color:#1f2937;line-height:1.6}
+    .page{max-width:1360px;margin:0 auto;padding:32px 24px 64px}
+    .header{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#fff 0%,#f0f4f8 100%);padding:30px 40px;border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 10px 25px -5px rgba(0,0,0,0.05)}
+    .header img{height:58px;transition:transform 0.3s}.header img:hover{transform:scale(1.05)}
+    .header-info{text-align:right}
+    .header-info h1{font-size:30px;font-weight:800;color:#0f172a;letter-spacing:-0.5px}
+    .header-info p{margin-top:5px;font-size:14px;color:#64748b}
+    h2{margin:40px 0 20px;font-size:22px;font-weight:700;color:#0f172a;padding-bottom:12px;position:relative}
+    h2::after{content:'';position:absolute;left:0;bottom:0;width:56px;height:3px;background:#3b82f6;border-radius:3px}
+    .params-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px -1px rgba(0,0,0,0.04)}
+    .params-table th,.params-table td{padding:14px 20px;border-bottom:1px solid #e2e8f0;font-size:14px;text-align:left;vertical-align:middle}
+    .params-table th{background:#f8fafc;font-weight:600;color:#475569;font-size:12px;text-transform:uppercase;letter-spacing:0.5px}
+    .params-table tr:last-child td{border-bottom:none}.params-table tr:hover td{background:#f8fafc}
+    .accordion{background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 4px 6px -1px rgba(0,0,0,0.06);margin-bottom:24px}
+    .acc-header{display:flex;justify-content:space-between;align-items:center;padding:20px 28px;cursor:pointer;user-select:none;transition:background 0.2s}
+    .acc-header:hover{background:#f0f9ff}.acc-header.open{background:#dbeafe}
+    .acc-title{display:flex;align-items:center;gap:14px}
+    .acc-num{width:32px;height:32px;border-radius:50%;background:#3b82f6;color:#fff;font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .acc-header.open .acc-num{background:#1d4ed8}
+    .acc-label{font-size:17px;font-weight:700;color:#0f172a}.acc-header.open .acc-label{color:#1d4ed8}
+    .acc-meta{font-size:13px;color:#64748b;font-weight:400;margin-left:4px}.acc-header.open .acc-meta{color:#3b82f6}
+    .acc-arrow{font-size:18px;color:#94a3b8;transition:transform 0.3s}.acc-header.open .acc-arrow{transform:rotate(180deg);color:#1d4ed8}
+    .acc-body{max-height:0;overflow:hidden;transition:max-height 0.4s ease}
+    .acc-body.open{max-height:99999px}
+    .acc-inner{padding:24px 28px;border-top:1px solid #e2e8f0}
+    .toolbar{display:flex;gap:14px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+    .search-wrap{flex:1;min-width:280px;position:relative}
+    .search-wrap input{width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:11px 16px 11px 46px;font-size:14px;font-family:'Inter',sans-serif;background:#fff;outline:none;transition:all 0.2s}
+    .search-wrap input:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,0.15)}
+    .search-wrap svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#94a3b8;pointer-events:none;width:20px;height:20px}
+    .type-select{padding:11px 16px;font-size:14px;font-family:'Inter',sans-serif;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#1e293b;cursor:pointer;min-width:160px;outline:none;transition:all 0.2s}
+    .type-select:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,0.15)}
+    .count-pill{background:#eff6ff;border:1px solid #bfdbfe;border-radius:999px;padding:9px 20px;font-size:14px;font-weight:600;color:#1d4ed8;white-space:nowrap}
+    .chip-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:14px 0;margin-bottom:16px}
+    .chip-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#64748b;margin-right:4px;white-space:nowrap}
+    .chip{border:1.5px solid #e2e8f0;background:#f8fafc;border-radius:999px;padding:5px 16px;font-size:12px;font-weight:600;color:#475569;cursor:pointer;transition:all 0.15s;user-select:none}
+    .chip:hover{border-color:#3b82f6;color:#1d4ed8;background:#eff6ff}
+    .chip.active{background:#3b82f6;border-color:#3b82f6;color:#fff;box-shadow:0 2px 8px rgba(59,130,246,0.3)}
+    .data-table-wrap{border-radius:12px;overflow:hidden;border:1px solid #e2e8f0}
+    table{width:100%;border-collapse:collapse;background:#fff}
+    thead tr{background:#f1f5f9}
+    th{padding:13px 20px;font-weight:600;color:#475569;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #e2e8f0;text-align:left}
+    tbody tr{border-bottom:1px solid #f1f5f9;transition:background 0.12s}
+    tbody tr:last-child{border-bottom:none}
+    tbody tr:hover td{background:#f0f9ff}
+    tbody tr:hover .col-oid{color:#3b82f6 !important}
+    td{padding:12px 20px;vertical-align:middle}
+    .col-name{font-size:13.5px;font-weight:600;color:#0f172a;min-width:180px}
+    .col-oid{font-family:'JetBrains Mono',monospace;font-size:12px;color:#64748b}
+    .col-type{text-align:center;min-width:120px}
+    .col-val{font-size:13px;color:#334155;max-width:400px;word-break:break-all}
+    .no-name{color:#94a3b8;font-style:italic}
+    .no-results{text-align:center;padding:60px 20px;color:#94a3b8;font-size:15px}
+    .badge{display:inline-block;padding:4px 12px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:0.3px}
+    .badge-string{background:#dbeafe;color:#1e40af}.badge-integer{background:#fef9c3;color:#92400e}
+    .badge-gauge{background:#dcfce7;color:#166534}.badge-counter{background:#ede9fe;color:#5b21b6}
+    .badge-timeticks{background:#ffedd5;color:#9a3412}.badge-ip{background:#fce7f3;color:#9d174d}
+    .badge-oid{background:#f1f5f9;color:#475569}.badge-hex{background:#ecfdf5;color:#065f46}
   </style>
 </head>
 <body>
 <div class="page">
-
   <div class="header">
-    <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
+    <img src="${companyLogoUrl}" alt="Senao Networks"/>
     <div class="header-info">
       <h1>Automated Test Report</h1>
       <p><strong>Pipeline:</strong> ${pipelineName}</p>
@@ -325,9 +268,7 @@ pipeline {
       <div class="acc-inner">
         <div class="toolbar">
           <div class="search-wrap">
-            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-            </svg>
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             <input type="text" id="searchRead" placeholder="Search name, OID, or value..." oninput="applyFilters('read')"/>
           </div>
           <select class="type-select" id="typeRead" onchange="applyFilters('read')">
@@ -340,10 +281,8 @@ pipeline {
         </div>
         <div class="chip-bar" id="chipRead"><span class="chip-label">Category</span>${chipBar}</div>
         <div class="data-table-wrap">
-          <table>
-            <thead><tr><th>Name</th><th>OID</th><th style="text-align:center;">Type</th><th>Value</th></tr></thead>
-            <tbody id="tbodyRead">${readRows}</tbody>
-          </table>
+          <table><thead><tr><th>Name</th><th>OID</th><th style="text-align:center;">Type</th><th>Value</th></tr></thead>
+          <tbody id="tbodyRead">${readRows}</tbody></table>
           <div class="no-results" id="noRead" style="display:none;">No matching entries found.</div>
         </div>
       </div>
@@ -363,9 +302,7 @@ pipeline {
       <div class="acc-inner">
         <div class="toolbar">
           <div class="search-wrap">
-            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-            </svg>
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             <input type="text" id="searchWrite" placeholder="Search name, OID, or value..." oninput="applyFilters('write')"/>
           </div>
           <select class="type-select" id="typeWrite" onchange="applyFilters('write')">
@@ -378,10 +315,8 @@ pipeline {
         </div>
         <div class="chip-bar" id="chipWrite"><span class="chip-label">Category</span>${chipBar}</div>
         <div class="data-table-wrap">
-          <table>
-            <thead><tr><th>Name</th><th>OID</th><th style="text-align:center;">Type</th><th>Value</th></tr></thead>
-            <tbody id="tbodyWrite">${writeRows}</tbody>
-          </table>
+          <table><thead><tr><th>Name</th><th>OID</th><th style="text-align:center;">Type</th><th>Value</th></tr></thead>
+          <tbody id="tbodyWrite">${writeRows}</tbody></table>
           <div class="no-results" id="noWrite" style="display:none;">No matching entries found.</div>
         </div>
       </div>
@@ -391,36 +326,26 @@ pipeline {
 </div>
 <script>
   var activePrefixes = { read: 'all', write: 'all' };
-
-  document.querySelectorAll('.acc-header').forEach(function(header) {
-    header.addEventListener('click', function() {
-      var section = header.getAttribute('data-section');
-      var body    = document.getElementById('body-' + section);
-      var isOpen  = body.classList.contains('open');
+  document.querySelectorAll('.acc-header').forEach(function(h) {
+    h.addEventListener('click', function() {
+      var sec  = h.getAttribute('data-section');
+      var body = document.getElementById('body-' + sec);
+      var open = body.classList.contains('open');
       document.querySelectorAll('.acc-body').forEach(function(b)  { b.classList.remove('open'); });
-      document.querySelectorAll('.acc-header').forEach(function(h) { h.classList.remove('open'); });
-      if (!isOpen) {
-        body.classList.add('open');
-        header.classList.add('open');
-      }
+      document.querySelectorAll('.acc-header').forEach(function(x) { x.classList.remove('open'); });
+      if (!open) { body.classList.add('open'); h.classList.add('open'); }
     });
   });
-
   (function() {
-    var first = document.querySelector('.acc-header');
-    if (first) {
-      first.classList.add('open');
-      document.getElementById('body-' + first.getAttribute('data-section')).classList.add('open');
-    }
+    var f = document.querySelector('.acc-header');
+    if (f) { f.classList.add('open'); document.getElementById('body-' + f.getAttribute('data-section')).classList.add('open'); }
   })();
-
-  document.getElementById('chipRead').querySelectorAll('.chip').forEach(function(chip) {
-    chip.addEventListener('click', function() { setChip('read', this); });
+  document.getElementById('chipRead').querySelectorAll('.chip').forEach(function(c) {
+    c.addEventListener('click', function() { setChip('read', c); });
   });
-  document.getElementById('chipWrite').querySelectorAll('.chip').forEach(function(chip) {
-    chip.addEventListener('click', function() { setChip('write', this); });
+  document.getElementById('chipWrite').querySelectorAll('.chip').forEach(function(c) {
+    c.addEventListener('click', function() { setChip('write', c); });
   });
-
   function setChip(section, el) {
     var cap = section.charAt(0).toUpperCase() + section.slice(1);
     document.getElementById('chip' + cap).querySelectorAll('.chip').forEach(function(c) { c.classList.remove('active'); });
@@ -428,7 +353,6 @@ pipeline {
     activePrefixes[section] = el.dataset.prefix;
     applyFilters(section);
   }
-
   function applyFilters(section) {
     var cap     = section.charAt(0).toUpperCase() + section.slice(1);
     var search  = document.getElementById('search' + cap).value.toLowerCase();
@@ -462,9 +386,7 @@ pipeline {
     post {
         always {
             script {
-                def istZone         = TimeZone.getTimeZone("Asia/Kolkata")
-                def fileDate        = Calendar.getInstance(istZone).getTime().format("yyyyMMdd", istZone)
-                def reportFileName  = "SNMP_Validation.html"
+                def reportFileName = "SNMP_Validation.html"
 
                 archiveArtifacts artifacts: 'SNMP_Validation.json, SNMP_Validation.html, snmp_validation.log',
                                  fingerprint: true,
@@ -531,7 +453,7 @@ pipeline {
                 )
             }
         }
-        success { echo "SNMP Validation — SUCCESS" }
-        failure { echo "SNMP Validation — FAILED"  }
+        success { echo "SNMP Validation - SUCCESS" }
+        failure { echo "SNMP Validation - FAILED"  }
     }
 }
