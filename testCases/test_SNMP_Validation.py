@@ -4,7 +4,7 @@ import os
 import re
 import subprocess
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--device-ip",        required=True)
@@ -37,7 +37,6 @@ def log_print(*msg):
     with open(LOG_FILE, "a") as f:
         f.write(line + "\n")
 
-
 def snmp_get(device_ip, community, oid):
     try:
         result = subprocess.run(
@@ -54,7 +53,6 @@ def snmp_get(device_ip, community, oid):
     except Exception:
         return "N/A"
 
-
 def fetch_build_params(device_ip, community):
     params = {}
     for label, oid in BUILD_PARAM_OIDS.items():
@@ -65,7 +63,6 @@ def fetch_build_params(device_ip, community):
     bld  = params.pop("FW Build",   "0")
     params["FW Version"] = f"{maj}.{min_}.{rel}.{bld}"
     return params
-
 
 def load_mib(mib_path):
     if not mib_path or not os.path.isfile(mib_path):
@@ -101,7 +98,6 @@ def load_mib(mib_path):
     log_print(f"MIB: {len(oid_to_name)} OID names loaded from {mib_path}")
     return oid_to_name
 
-
 def lookup_name(oid_str, oid_map):
     if not oid_map: return ""
     if oid_str in oid_map: return oid_map[oid_str]
@@ -110,7 +106,6 @@ def lookup_name(oid_str, oid_map):
         candidate = '.'.join(parts[:-trim])
         if candidate in oid_map: return oid_map[candidate]
     return ""
-
 
 def snmp_v2c_walk(device_ip, community, oid):
     try:
@@ -124,19 +119,16 @@ def snmp_v2c_walk(device_ip, community, oid):
     except Exception as e:
         return f"Unexpected error: {str(e)}"
 
-
 def iso_to_numeric(oid_str):
     if oid_str.startswith("iso."): return "1." + oid_str[4:]
     if oid_str == "iso": return "1"
     return oid_str
-
 
 def _cast_value(type_str, raw):
     if type_str in ("INTEGER", "Counter32", "Counter64", "Gauge32"):
         try: return int(raw)
         except ValueError: return raw
     return raw
-
 
 def parse_snmp_output(raw_output, oid_map):
     records = []
@@ -187,10 +179,10 @@ for k, v in build_params.items():
 log_print(f"\n[3] Walking {DEVICE_IP} with READ community ({READ_COMMUNITY}) oid={OID} ...")
 raw_read = snmp_v2c_walk(DEVICE_IP, READ_COMMUNITY, OID)
 
+read_records = []
 if raw_read.startswith("Error"):
     log_print(f"[FAIL] Read community walk failed: {raw_read}")
     overall_status = "FAIL"
-    read_records = []
 else:
     read_records = parse_snmp_output(raw_read, oid_map)
     log_print(f"[PASS] Read walk complete — {len(read_records)} OIDs received")
@@ -199,31 +191,57 @@ else:
 log_print(f"\n[4] Walking {DEVICE_IP} with WRITE community ({WRITE_COMMUNITY}) oid={OID} ...")
 raw_write = snmp_v2c_walk(DEVICE_IP, WRITE_COMMUNITY, OID)
 
+write_records = []
 if raw_write.startswith("Error"):
     log_print(f"[FAIL] Write community walk failed: {raw_write}")
     overall_status = "FAIL"
-    write_records = []
 else:
     write_records = parse_snmp_output(raw_write, oid_map)
     log_print(f"[PASS] Write walk complete — {len(write_records)} OIDs received")
 
-log_print(f"\n[5] Saving result to {RESULT_FILE} ...")
+# ── UNIFY DATA FOR SINGLE TABLE
+log_print("\n[5] Merging Access Records...")
+unified_dict = {}
+
+# Map read records
+for r in read_records:
+    unified_dict[r['oid']] = {
+        "name": r['name'],
+        "oid": r['oid'],
+        "type": r['type'],
+        "data": r['data'],
+        "read_ok": True,
+        "write_ok": False
+    }
+
+# Map write records
+for w in write_records:
+    if w['oid'] in unified_dict:
+        unified_dict[w['oid']]['write_ok'] = True
+    else:
+        unified_dict[w['oid']] = {
+            "name": w['name'],
+            "oid": w['oid'],
+            "type": w['type'],
+            "data": w['data'],
+            "read_ok": False,
+            "write_ok": True
+        }
+
+# Sort numerically by OID string
+def sort_key(rec):
+    return [int(x) for x in rec['oid'].strip('.').split('.') if x.isdigit()]
+
+unified_list = sorted(unified_dict.values(), key=sort_key)
+
+log_print(f"\n[6] Saving result to {RESULT_FILE} ...")
 result = {
     "timestamp":       datetime.now().isoformat(),
     "device_ip":       DEVICE_IP,
     "root_oid":        OID,
     "overall_status":  overall_status,
     "build_params":    build_params,
-    "read_community":  {
-        "community":  READ_COMMUNITY,
-        "oid_count":  len(read_records),
-        "data":       read_records,
-    },
-    "write_community": {
-        "community":  WRITE_COMMUNITY,
-        "oid_count":  len(write_records),
-        "data":       write_records,
-    },
+    "unified_data":    unified_list
 }
 
 with open(RESULT_FILE, "w") as f:

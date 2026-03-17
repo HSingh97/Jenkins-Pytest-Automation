@@ -13,7 +13,6 @@ pipeline {
                     def deviceIP       = (params['Local IP Address'] ?: '').toString().trim()
                     def readCommunity  = (params['Read Community']   ?: '').toString().trim()
                     def writeCommunity = (params['Write Community']  ?: '').toString().trim()
-
                     def mibFilePath    = "${env.WORKSPACE}/MIB_File"
 
                     echo "========================================"
@@ -26,6 +25,7 @@ pipeline {
                     echo " TARGET STAND    : ${params.TARGET_STAND}"
                     echo "========================================"
 
+                    // FAIL-FAST VALIDATION
                     if (!deviceIP || !readCommunity || !writeCommunity) {
                         error("Validation Failed: Local IP Address, Read Community, and Write Community parameters MUST be provided.")
                     }
@@ -88,11 +88,10 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    // Update parameter names here too
                     def deviceIP        = (params['Local IP Address'] ?: '').toString().trim()
                     def jsonReport      = readJSON file: 'SNMP_Validation.json'
                     def istZone         = TimeZone.getTimeZone("Asia/Kolkata")
-                    def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", istZone)
+                    def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss", istZone)
                     def pipelineName    = env.JOB_NAME
                     def companyLogoUrl  = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
@@ -103,6 +102,10 @@ pipeline {
                         "IP Address"  : bp["IP Address"]  ?: deviceIP,
                         "FW Version"  : bp["FW Version"]  ?: "N/A",
                     ]
+
+                    def unifiedData = jsonReport.unified_data ?: []
+                    def readCom     = params['Read Community']
+                    def writeCom    = params['Write Community']
 
                     def buildSnmpRows = { dataList ->
                         def rows = ""
@@ -131,8 +134,10 @@ pipeline {
                             ].get(rType, "badge-oid")
 
                             def nameDisplay = rName ?: "<em class='no-name'>—</em>"
-
                             def safeData = rData.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+                            def readIcon = rec.read_ok ? "<span class='status-icon pass'>✔</span>" : "<span class='status-icon fail'>✘</span>"
+                            def writeIcon = rec.write_ok ? "<span class='status-icon pass'>✔</span>" : "<span class='status-icon fail'>✘</span>"
 
                             rows += """
 <tr class="main-row" data-prefix="${rPrefix}" data-type="${rType}">
@@ -140,10 +145,12 @@ pipeline {
   <td class="col-name">${nameDisplay}</td>
   <td class="col-oid">${rOid}</td>
   <td class="col-type"><span class="badge ${badgeClass}">${rType}</span></td>
+  <td class="center-col">${readIcon}</td>
+  <td class="center-col">${writeIcon}</td>
   <td class="col-val" style="max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeData}</td>
 </tr>
 <tr class="details-row" data-prefix="${rPrefix}" data-type="${rType}" style="display:none;">
-  <td colspan="5">
+  <td colspan="7">
     <div class="details-content">
       <strong>OID:</strong> ${rOid}<br>
       <strong>Type:</strong> ${rType}<br>
@@ -156,16 +163,8 @@ pipeline {
                         return rows
                     }
 
-                    def readData   = jsonReport.read_community  ?: [:]
-                    def writeData  = jsonReport.write_community ?: [:]
-                    def readRows   = buildSnmpRows(readData.data   ?: [])
-                    def writeRows  = buildSnmpRows(writeData.data  ?: [])
-                    def readCount  = readData.oid_count  ?: 0
-                    def writeCount = writeData.oid_count ?: 0
-
-                    // Fallback to the correct parameter names
-                    def readCom    = readData.community  ?: params['Read Community']
-                    def writeCom   = writeData.community ?: params['Write Community']
+                    def tableRows = buildSnmpRows(unifiedData)
+                    def totalEntries = unifiedData.size()
 
                     def chipBar = """
     <span class="chip active" data-prefix="all"     >All</span>
@@ -191,52 +190,69 @@ pipeline {
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SNMP Validation Report</title>
+  <title>SNMP Protocol Validation Report</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: #f8fafc; color: #1e293b; line-height: 1.6; }
-    .container { max-width: 1320px; margin: 32px auto; padding: 0 16px; }
-    .header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #ffffff, #f8fafc); padding: 28px 36px; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); }
-    .header img { height: 70px; }
-    .header-info { text-align: right; }
-    .header-info h1 { margin: 0; font-size: 32px; font-weight: 800; color: #0f172a; }
-    .header-info p { margin: 6px 0; font-size: 15px; color: #64748b; }
-    h2 { margin: 40px 0 20px; font-size: 24px; font-weight: 700; color: #0f172a; position: relative; padding-bottom: 12px; }
-    h2:after { content: ''; position: absolute; left: 0; bottom: 0; width: 60px; height: 3px; background: #3b82f6; border-radius: 3px; }
-    .accordion-section { background: white; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 24px; }
-    .accordion-header { padding: 18px 24px; background: #f8fafc; cursor: pointer; font-size: 18px; font-weight: 600; color: #1e293b; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s ease; }
-    .accordion-header:hover { background: #eff6ff; }
-    .accordion-header.active { background: #dbeafe; color: #1d4ed8; }
-    .accordion-icon { font-size: 22px; font-weight: bold; transition: transform 0.3s ease; }
-    .accordion-content { max-height: 0; overflow: hidden; transition: max-height 0.35s ease, padding 0.35s ease; padding: 0 24px; }
-    .accordion-content.active { max-height: 15000px; padding: 24px; }
-    .toolbar { display: flex; gap: 16px; align-items: center; margin: 20px 0 16px; flex-wrap: wrap; }
-    .search-wrap { flex: 1; min-width: 320px; position: relative; }
-    .search-wrap input { width: 100%; border: 1px solid #cbd5e1; border-radius: 10px; padding: 12px 16px 12px 48px; font-size: 15px; background: white; }
-    .search-wrap input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); outline: none; }
-    .search-wrap svg { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 20px; height: 20px; }
-    .type-select { min-width: 180px; padding: 12px 16px; font-size: 14px; border: 1px solid #cbd5e1; border-radius: 10px; background: white; cursor: pointer; }
-    .count-pill { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 999px; padding: 10px 20px; font-size: 14px; font-weight: 600; color: #1d4ed8; }
-    table { width: 100%; border-collapse: collapse; margin-top: 16px; background: white; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
-    th, td { padding: 14px 20px; border-bottom: 1px solid #e2e8f0; text-align: left; }
-    th { background: #f1f5f9; font-weight: 600; color: #475569; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
-    .main-row:hover td { background: #f0f9ff; }
-    .details-row td { background: #fafafa; padding: 0; border-bottom: 2px solid #e2e8f0; }
-    .details-content { padding: 16px 20px 16px 64px; border-left: 4px solid #3b82f6; color: #334155; font-size: 14px; }
-    .toggle-btn { background: white; border: 1px solid #cbd5e1; border-radius: 4px; color: #3b82f6; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold; cursor: pointer; transition: all 0.2s; }
-    .toggle-btn:hover { background: #eff6ff; border-color: #3b82f6; }
-    .chip-section { padding: 12px 20px; background: #ffffff; border-bottom: 1px solid #e2e8f0; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-    .chip-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #64748b; margin-right: 8px; }
-    .chip { border: 1.5px solid #e2e8f0; background: #f8fafc; border-radius: 999px; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #475569; cursor: pointer; user-select: none; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: #f8fafc; color: #1e293b; line-height: 1.6; display: flex; height: 100vh; overflow: hidden; }
+
+    /* Left Sidebar - Locked */
+    .sidebar { width: 320px; min-width: 320px; background: #ffffff; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; height: 100vh; overflow-y: auto; box-shadow: 2px 0 10px rgba(0,0,0,0.02); z-index: 10; }
+    .sidebar-header { padding: 24px 24px 16px 24px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; gap: 12px; }
+    .sidebar-header img { height: 36px; object-fit: contain; }
+    .sidebar-header h1 { font-size: 18px; margin: 0; color: #0f172a; font-weight: 700; line-height: 1.2; }
+
+    .sidebar-section { padding: 20px 24px; border-bottom: 1px solid #f1f5f9; }
+    .sidebar-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; color: #64748b; margin: 0 0 12px 0; font-weight: 700; }
+
+    .info-group { margin-bottom: 12px; }
+    .info-group:last-child { margin-bottom: 0; }
+    .info-group span { display: block; font-size: 12px; color: #64748b; margin-bottom: 2px; }
+    .info-group strong { display: block; font-size: 14px; color: #0f172a; word-wrap: break-word; }
+
+    /* Main Content Area - Scrollable */
+    .main-content { flex: 1; overflow-y: auto; padding: 32px 40px; background: #f8fafc; }
+
+    .toolbar { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; background: #ffffff; padding: 16px 24px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+    .search-wrap { flex: 1; min-width: 300px; position: relative; }
+    .search-wrap input { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 16px 10px 44px; font-size: 14px; background: #f8fafc; transition: all 0.2s; box-sizing: border-box; }
+    .search-wrap input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); outline: none; background: white; }
+    .search-wrap svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 18px; height: 18px; }
+    .type-select { min-width: 160px; padding: 10px 16px; font-size: 14px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fafc; cursor: pointer; }
+    .count-pill { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 999px; padding: 8px 16px; font-size: 13px; font-weight: 600; color: #1d4ed8; white-space: nowrap; }
+
+    .chip-section { padding: 0 0 16px 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .chip-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #64748b; margin-right: 4px; }
+    .chip { border: 1px solid #cbd5e1; background: #ffffff; border-radius: 999px; padding: 4px 14px; font-size: 12px; font-weight: 600; color: #475569; cursor: pointer; user-select: none; transition: all 0.2s; }
     .chip:hover { border-color: #3b82f6; color: #1d4ed8; background: #eff6ff; }
     .chip.active { background: #3b82f6; border-color: #3b82f6; color: white; }
-    .col-toggle { width: 40px; text-align: center; padding-right: 0; }
-    .col-name { font-size: 14px; font-weight: 600; color: #0f172a; min-width: 180px; }
-    .col-oid { font-family: monospace; font-size: 13px; color: #64748b; }
-    .col-type { text-align: center; min-width: 120px; }
-    .col-val { font-size: 14px; color: #334155; max-width: 300px; word-break: break-all; }
+
+    .table-card { background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px 16px; border-bottom: 1px solid #e2e8f0; text-align: left; }
+    th { background: #f1f5f9; font-weight: 600; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; position: sticky; top: 0; z-index: 5; }
+
+    .center-col { text-align: center; }
+
+    .main-row:hover td { background: #f0f9ff; }
+    .details-row td { background: #fafafa; padding: 0; border-bottom: 2px solid #e2e8f0; }
+    .details-content { padding: 16px 20px 16px 64px; border-left: 4px solid #3b82f6; color: #334155; font-size: 13px; }
+
+    .toggle-btn { background: white; border: 1px solid #cbd5e1; border-radius: 4px; color: #3b82f6; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; cursor: pointer; transition: all 0.2s; }
+    .toggle-btn:hover { background: #eff6ff; border-color: #3b82f6; }
+
+    .col-toggle { width: 30px; padding-right: 0; }
+    .col-name { font-size: 13px; font-weight: 600; color: #0f172a; min-width: 160px; }
+    .col-oid { font-family: monospace; font-size: 12px; color: #64748b; }
+    .col-type { text-align: center; min-width: 100px; }
+    .col-val { font-size: 13px; color: #334155; }
+
+    .status-icon { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; }
+    .status-icon.pass { background: #dcfce7; color: #166534; }
+    .status-icon.fail { background: #fee2e2; color: #b91c1c; }
+
     .no-name { color: #94a3b8; font-style: italic; }
-    .no-results { text-align: center; padding: 60px; color: #94a3b8; font-size: 15px; }
-    .badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .no-results { text-align: center; padding: 60px; color: #94a3b8; font-size: 14px; }
+
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
     .badge-string   { background: #dbeafe; color: #1e40af; }
     .badge-integer  { background: #fef9c3; color: #92400e; }
     .badge-gauge    { background: #dcfce7; color: #166534; }
@@ -248,114 +264,90 @@ pipeline {
   </style>
 </head>
 <body>
-<div class="container">
 
-  <div class="header">
-    <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
-    <div class="header-info">
-      <h1>SNMP Validation Report</h1>
-      <p><strong>Pipeline:</strong> ${pipelineName}</p>
-      <p><strong>Date & Time:</strong> ${currentDateTime}</p>
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <img src="${companyLogoUrl}" alt="Senao"/>
+      <h1>SNMP Protocol<br>Validation</h1>
     </div>
-  </div>
 
-  <h2>Build Parameters</h2>
-  <table style="max-width: 600px;">
-    <tr><th>Parameter</th><th>Value</th></tr>
-    ${buildParams.collect { "<tr><td style='width: 150px;'><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
-  </table>
-
-  <h2>SNMP Data</h2>
-
-  <div class="accordion-section">
-    <div class="accordion-header" data-target="read">
-      <span>1. Community Read — ${readCom}</span>
-      <span class="accordion-icon" id="icon-read">+</span>
+    <div class="sidebar-section">
+      <h3>Execution Context</h3>
+      <div class="info-group"><span>Pipeline Job</span><strong>${pipelineName}</strong></div>
+      <div class="info-group"><span>Execution Time</span><strong>${currentDateTime}</strong></div>
     </div>
-    <div class="accordion-content" id="content-read">
-      <div class="toolbar">
-        <div class="search-wrap">
-          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-          </svg>
-          <input type="text" id="searchRead" placeholder="Search name, OID, or value…" oninput="applyFilters('read')"/>
-        </div>
-        <select class="type-select" id="typeRead" onchange="applyFilters('read')">
-          <option value="">All Types</option>
-          <option>STRING</option><option>INTEGER</option><option>Gauge32</option>
-          <option>Counter32</option><option>Counter64</option><option>Timeticks</option>
-          <option>IpAddress</option><option>OID</option><option>Hex-STRING</option>
-        </select>
-        <div class="count-pill" id="countRead">${readCount} entries</div>
+
+    <div class="sidebar-section">
+      <h3>Build Parameters</h3>
+      ${buildParams.collect { "<div class='info-group'><span>${it.key}</span><strong>${it.value}</strong></div>" }.join('\n')}
+    </div>
+
+    <div class="sidebar-section">
+      <h3>SNMP Security</h3>
+      <div class="info-group"><span>Read Community</span><strong>${readCom}</strong></div>
+      <div class="info-group"><span>Write Community</span><strong>${writeCom}</strong></div>
+    </div>
+  </aside>
+
+  <main class="main-content">
+
+    <div class="toolbar">
+      <div class="search-wrap">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="searchInput" placeholder="Search OID, name, or value…" oninput="applyFilters()"/>
       </div>
-      <div class="chip-section" id="chipRead"><span class="chip-label">Category</span>${chipBar}</div>
-      <div class="table-card">
-        <table>
-          <thead><tr><th></th><th>Name</th><th>OID</th><th style="text-align:center;">Type</th><th>Value</th></tr></thead>
-          <tbody id="bodyRead">${readRows}</tbody>
-        </table>
-        <div class="no-results" id="noRead" style="display:none;">No matching entries found.</div>
-      </div>
+      <select class="type-select" id="typeSelect" onchange="applyFilters()">
+        <option value="">All Types</option>
+        <option>STRING</option><option>INTEGER</option><option>Gauge32</option>
+        <option>Counter32</option><option>Counter64</option><option>Timeticks</option>
+        <option>IpAddress</option><option>OID</option><option>Hex-STRING</option>
+      </select>
+      <div class="count-pill" id="countDisplay">${totalEntries} entries</div>
     </div>
-  </div>
 
-  <div class="accordion-section">
-    <div class="accordion-header" data-target="write">
-      <span>2. Community Write — ${writeCom}</span>
-      <span class="accordion-icon" id="icon-write">+</span>
+    <div class="chip-section" id="chipContainer">
+      <span class="chip-label">Filters:</span>
+      ${chipBar}
     </div>
-    <div class="accordion-content" id="content-write">
-      <div class="toolbar">
-        <div class="search-wrap">
-          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-          </svg>
-          <input type="text" id="searchWrite" placeholder="Search name, OID, or value…" oninput="applyFilters('write')"/>
-        </div>
-        <select class="type-select" id="typeWrite" onchange="applyFilters('write')">
-          <option value="">All Types</option>
-          <option>STRING</option><option>INTEGER</option><option>Gauge32</option>
-          <option>Counter32</option><option>Counter64</option><option>Timeticks</option>
-          <option>IpAddress</option><option>OID</option><option>Hex-STRING</option>
-        </select>
-        <div class="count-pill" id="countWrite">${writeCount} entries</div>
-      </div>
-      <div class="chip-section" id="chipWrite"><span class="chip-label">Category</span>${chipBar}</div>
-      <div class="table-card">
-        <table>
-          <thead><tr><th></th><th>Name</th><th>OID</th><th style="text-align:center;">Type</th><th>Value</th></tr></thead>
-          <tbody id="bodyWrite">${writeRows}</tbody>
-        </table>
-        <div class="no-results" id="noWrite" style="display:none;">No matching entries found.</div>
-      </div>
-    </div>
-  </div>
 
-</div>
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th class="col-toggle"></th>
+            <th>Node Name</th>
+            <th>Object Identifier (OID)</th>
+            <th class="center-col">Syntax Type</th>
+            <th class="center-col" style="width: 70px;">Read</th>
+            <th class="center-col" style="width: 70px;">Write</th>
+            <th>Discovered Value</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+          ${tableRows}
+        </tbody>
+      </table>
+      <div class="no-results" id="noResults" style="display:none;">No matching OIDs found based on your filters.</div>
+    </div>
+
+  </main>
 
 <script>
-var activePrefixes = { read: 'all', write: 'all' };
+var activePrefix = 'all';
 
-document.getElementById('chipRead').querySelectorAll('.chip').forEach(function(chip) {
-  chip.addEventListener('click', function() { setChip('read', this); });
+document.getElementById('chipContainer').querySelectorAll('.chip').forEach(function(chip) {
+  chip.addEventListener('click', function() {
+    document.getElementById('chipContainer').querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    this.classList.add('active');
+    activePrefix = this.dataset.prefix;
+    applyFilters();
+  });
 });
-document.getElementById('chipWrite').querySelectorAll('.chip').forEach(function(chip) {
-  chip.addEventListener('click', function() { setChip('write', this); });
-});
 
-function setChip(section, el) {
-  var cap = section.charAt(0).toUpperCase() + section.slice(1);
-  document.getElementById('chip' + cap).querySelectorAll('.chip').forEach(function(c) { c.classList.remove('active'); });
-  el.classList.add('active');
-  activePrefixes[section] = el.dataset.prefix;
-  applyFilters(section);
-}
-
-function applyFilters(section) {
-  var cap    = section.charAt(0).toUpperCase() + section.slice(1);
-  var search = document.getElementById('search' + cap).value.toLowerCase();
-  var type   = document.getElementById('type'   + cap).value;
-  var rows   = document.getElementById('body'   + cap).querySelectorAll('.main-row');
+function applyFilters() {
+  var search  = document.getElementById('searchInput').value.toLowerCase();
+  var typeVal = document.getElementById('typeSelect').value;
+  var rows    = document.getElementById('tableBody').querySelectorAll('.main-row');
   var visible = 0;
 
   rows.forEach(function(row) {
@@ -364,9 +356,9 @@ function applyFilters(section) {
     var rt = row.dataset.type   || '';
     var tx = row.textContent.toLowerCase();
 
-    var ok = (activePrefixes[section] === 'all' || rp === activePrefixes[section])
-          && (!type   || rt === type)
-          && (!search || tx.includes(search));
+    var ok = (activePrefix === 'all' || rp === activePrefix)
+          && (!typeVal || rt === typeVal)
+          && (!search  || tx.includes(search));
 
     if (ok) {
       row.style.display = '';
@@ -378,8 +370,8 @@ function applyFilters(section) {
     }
   });
 
-  document.getElementById('count' + cap).textContent = visible + ' entries';
-  document.getElementById('no'    + cap).style.display = visible === 0 ? 'block' : 'none';
+  document.getElementById('countDisplay').textContent = visible + ' entries';
+  document.getElementById('noResults').style.display = visible === 0 ? 'block' : 'none';
 }
 
 function toggleRow(btn) {
@@ -393,25 +385,6 @@ function toggleRow(btn) {
     btn.textContent = '+';
   }
 }
-
-document.querySelectorAll('.accordion-header').forEach(header => {
-  header.addEventListener('click', () => {
-    const targetId = header.getAttribute('data-target');
-    const content = document.getElementById('content-' + targetId);
-    const icon = document.getElementById('icon-' + targetId);
-    const isActive = content.classList.contains('active');
-
-    document.querySelectorAll('.accordion-content').forEach(c => c.classList.remove('active'));
-    document.querySelectorAll('.accordion-header').forEach(h => h.classList.remove('active'));
-    document.querySelectorAll('.accordion-icon').forEach(i => i.textContent = '+');
-
-    if (!isActive) {
-      content.classList.add('active');
-      header.classList.add('active');
-      icon.textContent = '-';
-    }
-  });
-});
 </script>
 </body>
 </html>"""
@@ -438,77 +411,6 @@ document.querySelectorAll('.accordion-header').forEach(header => {
                     reportFiles          : 'SNMP_Validation.html',
                     reportName           : 'SNMP Validation Report'
                 ])
-
-                if (fileExists('SNMP_Validation.json')) {
-                    def jsonReport = readJSON file: 'SNMP_Validation.json'
-                    def status     = jsonReport.overall_status ?: "UNKNOWN"
-                    def readCount  = jsonReport.read_community?.oid_count  ?: 0
-                    def writeCount = jsonReport.write_community?.oid_count ?: 0
-
-                    def buildCauses   = currentBuild.getBuildCauses()
-                    def userCause     = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
-                    def buildUserName = userCause?.userName ?: "Unknown User"
-                    def buildUserId   = userCause?.userId   ?: "unknown"
-
-                    def userEmails = [
-                        "puneet"  : "puneet.sharma@senao.com",
-                        "harman"  : "harmanjot.singh@senao.com",
-                        "mahesh"  : "mahesh.battala@senao.com",
-                        "sandeep" : "sandeep.manchikanti@senao.com",
-                        "sampath" : "sampath.marella@senao.com",
-                        "jayanth" : "jayanth.munnaluru@senao.com",
-                        "srilatha": "srilatha.tadiboina@senao.com",
-                        "phani"   : "phani.darla@senao.com",
-                        "dinesh"  : "dinesh.redddy@senao.com"
-                    ]
-                    def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
-                    echo "Sending report email to: ${userEmail}"
-
-                    def emailBody = """
-<html>
-<body style="font-family: Arial, Helvetica, sans-serif; color: #333; line-height: 1.6;">
-  <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; background: #ffffff;">
-    <h2 style="color: #1a56db; margin-top: 0;">SNMP Validation – Jenkins Notification</h2>
-
-    <p><strong>Build:</strong> ${currentBuild.fullDisplayName}</p>
-    <p><strong>Status:</strong>
-      <span style="color: ${currentBuild.currentResult == 'SUCCESS' ? '#28a745' : '#dc3545'}; font-weight: bold;">
-        ${currentBuild.currentResult}
-      </span>
-    </p>
-    <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
-
-    <p><strong>SNMP Status:</strong> ${status}</p>
-    <p><strong>OIDs Read:</strong> ${readCount}</p>
-    <p><strong>OIDs Write:</strong> ${writeCount}</p>
-
-    <h3 style="margin-top: 24px; color: #444;">Quick Links</h3>
-    <ul style="padding-left: 20px; margin: 8px 0;">
-      <li><a href="${env.BUILD_URL}SNMP_Validation_Report" style="color: #1a56db; text-decoration: none;">View HTML Report</a></li>
-      <li><a href="${env.BUILD_URL}" style="color: #1a56db; text-decoration: none;">Open Build Page</a></li>
-      <li><a href="${env.BUILD_URL}console" style="color: #1a56db; text-decoration: none;">View Console Output</a></li>
-    </ul>
-
-    <p style="margin-top: 32px; font-size: 13px; color: #777; border-top: 1px solid #eee; padding-top: 16px;">
-      This is an automated notification from Jenkins.<br>
-      Generated on ${new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))}
-    </p>
-  </div>
-</body>
-</html>
-"""
-
-                    emailext(
-                        subject            : "Jenkins: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
-                        body               : emailBody,
-                        to                 : userEmail,
-                        mimeType           : 'text/html',
-                        attachmentsPattern : "SNMP_Validation.html, SNMP_Validation.json"
-                    )
-                } else {
-                    echo "SNMP_Validation.json not found — skipping report parsing and email."
-                }
-
                 sh 'rm -f snmp_validation.log || true'
             }
         }
