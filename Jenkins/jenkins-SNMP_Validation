@@ -14,7 +14,20 @@ pipeline {
                     def readCommunity  = (params.Read_Community  ?: '').toString().trim()
                     def writeCommunity = (params.Write_Community ?: '').toString().trim()
                     def mibFileName    = (params.MIB_File        ?: '').toString().trim()
+                    // Jenkins File Parameter places the uploaded file in the workspace root
+                    // The parameter value is the original filename only
                     def mibFilePath    = "${env.WORKSPACE}/${mibFileName}"
+                    // Debug: list workspace to confirm file is there
+                    sh "echo '--- Workspace MIB check ---' && ls -la '${env.WORKSPACE}/' | grep -i '.mib' || echo '[WARN] No .mib file found in workspace root'"
+                    // If file not found at expected path, search workspace
+                    sh """
+                        if [ ! -f '${mibFilePath}' ]; then
+                            echo '[WARN] MIB not at expected path, searching workspace...'
+                            find '${env.WORKSPACE}' -name '*.mib' -o -name '*.MIB' 2>/dev/null | head -5
+                        else
+                            echo '[OK] MIB file found: ${mibFilePath}'
+                        fi
+                    """
 
                     echo "========================================"
                     echo " SNMP Validation — Preparation"
@@ -59,7 +72,18 @@ pipeline {
                     def deviceIP       = (params.Device_IP       ?: '').toString().trim()
                     def readCommunity  = (params.Read_Community  ?: '').toString().trim()
                     def writeCommunity = (params.Write_Community ?: '').toString().trim()
-                    def mibFilePath    = "${env.WORKSPACE}/${(params.MIB_File ?: '').toString().trim()}"
+                    def mibFileName2   = (params.MIB_File ?: '').toString().trim()
+                    def mibFilePath    = "${env.WORKSPACE}/${mibFileName2}"
+                    // Auto-discover MIB if not at expected path
+                    def mibCheck = sh(script: """
+                        if [ -f '${mibFilePath}' ]; then
+                            echo "${mibFilePath}"
+                        else
+                            find '${env.WORKSPACE}' -maxdepth 2 \( -name '*.mib' -o -name '*.MIB' \) 2>/dev/null | head -1
+                        fi
+                    """, returnStdout: true).trim()
+                    if (mibCheck) mibFilePath = mibCheck
+                    echo "Using MIB file: ${mibFilePath}"
                     def scriptPath     = "testCases/test_SNMP_Validation.py"
 
                     echo "========================================"
@@ -294,7 +318,7 @@ pipeline {
   <div class="header">
     <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
     <div class="header-info">
-      <h1>SNMP Validation Report</h1>
+      <h1>Automated Test Report</h1>
       <p><strong>Pipeline:</strong> ${pipelineName}</p>
       <p><strong>Date &amp; Time:</strong> ${currentDateTime}</p>
     </div>
@@ -485,7 +509,7 @@ pipeline {
                     keepAll              : true,
                     reportDir            : '.',
                     reportFiles          : 'SNMP_Validation.html',
-                    reportName           : 'SNMP Validation Report'
+                    reportName           : 'Automated Test Report'
                 ])
 
                 echo "-----------------------------------------"
