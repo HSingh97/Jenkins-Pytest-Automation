@@ -67,7 +67,7 @@ pipeline {
                         BASE="/var/lib/jenkins/jobs/\${JOB_ESC}/builds/${env.BUILD_NUMBER}/fileParameters"
                         echo "Searching for MIB in: \${BASE}"
                         ls -la "\${BASE}/" 2>/dev/null || echo "fileParameters not found at \${BASE}"
-                        MIB=\$(find "\${BASE}" \( -name "*.mib" -o -name "*.MIB" \) 2>/dev/null | head -1)
+                        MIB=\$(ls "\${BASE}"/*/SENAO-MIB.mib "\${BASE}"/*/*.mib "\${BASE}"/*/*.MIB 2>/dev/null | head -1)
                         if [ -n "\${MIB}" ]; then
                             cp "\${MIB}" '${mibFilePath}'
                             echo "[OK] MIB copied from: \${MIB}"
