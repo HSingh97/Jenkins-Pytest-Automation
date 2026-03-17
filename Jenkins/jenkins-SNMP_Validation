@@ -10,22 +10,22 @@ pipeline {
         stage('Preparation') {
             steps {
                 script {
-                    def deviceIP       = (params.Device_IP       ?: '').toString().trim()
-                    def readCommunity  = (params.Read_Community  ?: '').toString().trim()
-                    def writeCommunity = (params.Write_Community ?: '').toString().trim()
+                    def deviceIP       = (params['Local IP Address']       ?: '').toString().trim()
+                    def readCommunity  = (params['Read Community']  ?: '').toString().trim()
+                    def writeCommunity = (params['Write Community'] ?: '').toString().trim()
                     def mibFilePath    = "${env.WORKSPACE}/${mibFileName}"
 
                     echo "========================================"
                     echo " SNMP Validation — Preparation"
                     echo "========================================"
-                    echo " DEVICE IP       : ${deviceIP}"
+                    echo " LOCAL IP        : ${deviceIP}"
                     echo " READ COMMUNITY  : ${readCommunity}"
                     echo " WRITE COMMUNITY : ${writeCommunity}"
-                    echo " MIB FILE        : ${(params.MIB_File ?: '').toString().trim()}"
+                    echo " MIB FILE        : ${params['MIB File'] ?: '(not provided)'}"
                     echo " TARGET STAND    : ${params.TARGET_STAND}"
                     echo "========================================"
 
-                    if (!deviceIP) { error "Missing required parameter: Device_IP" }
+                    if (!deviceIP) { error "Missing required parameter: Local IP Address" }
 
                     sh "rm -f SNMP_Validation.json SNMP_Validation.html snmp_validation.log || true"
                     sh "echo '--- Workspace MIB check ---' && ls -la '${env.WORKSPACE}/' | grep -i mib || echo '[WARN] No .mib file found in workspace root'"
@@ -56,19 +56,37 @@ pipeline {
         stage('Run SNMP Validation') {
             steps {
                 script {
-                    def deviceIP       = (params.Device_IP       ?: '').toString().trim()
-                    def readCommunity  = (params.Read_Community  ?: '').toString().trim()
-                    def writeCommunity = (params.Write_Community ?: '').toString().trim()
+                    def deviceIP       = (params['Local IP Address']       ?: '').toString().trim()
+                    def readCommunity  = (params['Read Community']  ?: '').toString().trim()
+                    def writeCommunity = (params['Write Community'] ?: '').toString().trim()
                     def scriptPath     = "testCases/test_SNMP_Validation.py"
 
+                    def customMibFile = params['MIB File']
+                    def mibFilePath   = "${env.WORKSPACE}/SENAO-MIB.mib"
 
-                    def mibFilePath = (params.MIB_File ?: '').toString().trim()
+                    if (customMibFile) {
+                        sh "mv -f '${customMibFile}' '${mibFilePath}' 2>/dev/null || true"
+                    }
+
+                    // If mv didn't work (File Param returns name not path), try workspace root
                     def mibOk = sh(script: "test -f '${mibFilePath}' && echo yes || echo no", returnStdout: true).trim()
                     if (mibOk != 'yes') {
-                        echo "[WARN] MIB file not found at: ${mibFilePath} — OID names will be empty"
-                        mibFilePath = "/dev/null"
+                        // Jenkins File Parameter copies the file to workspace with original name
+                        sh """
+                            FILE=\$(ls -1 '${env.WORKSPACE}'/*.mib '${env.WORKSPACE}'/*.MIB 2>/dev/null | head -1)
+                            if [ -n "\$FILE" ]; then
+                                cp "\$FILE" '${mibFilePath}'
+                                echo "[OK] MIB found in workspace: \$FILE"
+                            fi
+                        """
+                        mibOk = sh(script: "test -f '${mibFilePath}' && echo yes || echo no", returnStdout: true).trim()
+                    }
+
+                    if (mibOk == 'yes') {
+                        echo "[OK] Using MIB file: ${mibFilePath}"
                     } else {
-                        echo "[OK] MIB file: ${mibFilePath}"
+                        echo "[WARN] MIB file not found — OID names will be empty"
+                        mibFilePath = "/dev/null"
                     }
 
                     echo "========================================"
@@ -95,7 +113,7 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def deviceIP        = (params.Device_IP ?: '').toString().trim()
+                    def deviceIP        = (params['Local IP Address'] ?: '').toString().trim()
                     def jsonReport      = readJSON file: 'SNMP_Validation.json'
                     def istZone         = TimeZone.getTimeZone("Asia/Kolkata")
                     def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss z", istZone)
