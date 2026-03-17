@@ -20,7 +20,7 @@ pipeline {
                     echo " LOCAL IP        : ${deviceIP}"
                     echo " READ COMMUNITY  : ${readCommunity}"
                     echo " WRITE COMMUNITY : ${writeCommunity}"
-                    echo " MIB FILE        : ${params['MIB File'] ?: '(not provided)'}"
+                    echo " MIB FILE        : ${params['MIB_File'] ?: params['MIB File'] ?: '(not provided)'}"
                     echo " TARGET STAND    : ${params.TARGET_STAND}"
                     echo "========================================"
 
@@ -60,34 +60,19 @@ pipeline {
                     def writeCommunity = (params['Write Community'] ?: '').toString().trim()
                     def scriptPath     = "testCases/test_SNMP_Validation.py"
 
-                    // Jenkins File Parameter stores uploaded file at:
-                    // /var/lib/jenkins/jobs/<job>/builds/<N>/fileParameters/<paramName>/<filename>
-                    // We copy it to workspace so Python can read it.
                     def mibFilePath = "${env.WORKSPACE}/SENAO-MIB.mib"
 
                     sh """
-                        # Build the exact fileParameters directory path
-                        JOB_ESCAPED=\$(echo "${env.JOB_NAME}" | sed 's|/|/jobs/|g')
-                        MIB_DIR="/var/lib/jenkins/jobs/\${JOB_ESCAPED}/builds/${env.BUILD_NUMBER}/fileParameters/MIB File"
-
-                        echo "Looking in: \${MIB_DIR}"
-
-                        if [ -d "\${MIB_DIR}" ]; then
-                            MIB_FILE=\$(ls -1 "\${MIB_DIR}/" 2>/dev/null | head -1)
-                            if [ -n "\${MIB_FILE}" ]; then
-                                cp "\${MIB_DIR}/\${MIB_FILE}" '${mibFilePath}'
-                                echo "[OK] MIB copied: \${MIB_FILE}"
-                            fi
+                        JOB_ESC=\$(echo '${env.JOB_NAME}' | sed 's|/|/jobs/|g')
+                        BASE="/var/lib/jenkins/jobs/\${JOB_ESC}/builds/${env.BUILD_NUMBER}/fileParameters"
+                        echo "Searching for MIB in: \${BASE}"
+                        ls -la "\${BASE}/" 2>/dev/null || echo "fileParameters not found at \${BASE}"
+                        MIB=\$(find "\${BASE}" \( -name "*.mib" -o -name "*.MIB" \) 2>/dev/null | head -1)
+                        if [ -n "\${MIB}" ]; then
+                            cp "\${MIB}" '${mibFilePath}'
+                            echo "[OK] MIB copied from: \${MIB}"
                         else
-                            echo "Directory not found, trying alternate name..."
-                            MIB_DIR2="/var/lib/jenkins/jobs/\${JOB_ESCAPED}/builds/${env.BUILD_NUMBER}/fileParameters/MIB_File"
-                            if [ -d "\${MIB_DIR2}" ]; then
-                                MIB_FILE=\$(ls -1 "\${MIB_DIR2}/" 2>/dev/null | head -1)
-                                if [ -n "\${MIB_FILE}" ]; then
-                                    cp "\${MIB_DIR2}/\${MIB_FILE}" '${mibFilePath}'
-                                    echo "[OK] MIB copied from alt path: \${MIB_FILE}"
-                                fi
-                            fi
+                            echo "[WARN] No MIB found in \${BASE}"
                         fi
                     """
 
@@ -97,6 +82,8 @@ pipeline {
                     } else {
                         echo "[WARN] MIB file not found — OID names will be empty"
                         mibFilePath = "/dev/null"
+                    }
+
                     }
 
                     echo "========================================"
