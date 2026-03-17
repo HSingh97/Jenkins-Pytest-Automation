@@ -13,7 +13,7 @@ pipeline {
                     def deviceIP       = (params['Local IP Address'] ?: '').toString().trim()
                     def readCommunity  = (params['Read Community']   ?: '').toString().trim()
                     def writeCommunity = (params['Write Community']  ?: '').toString().trim()
-                    def mibPath        = (params['MIB_File']         ?: '').toString().trim()
+                    def mibFilename    = (params['MIB_File']         ?: '').toString().trim()
 
                     echo "========================================"
                     echo " SNMP Validation - Preparation"
@@ -21,24 +21,30 @@ pipeline {
                     echo " LOCAL IP        : ${deviceIP}"
                     echo " READ COMMUNITY  : ${readCommunity}"
                     echo " WRITE COMMUNITY : ${writeCommunity}"
-                    echo " MIB FILE        : ${mibPath}"
+                    echo " MIB FILE PARAM  : '${mibFilename}'"
                     echo " TARGET STAND    : ${params.TARGET_STAND}"
+                    echo " WORKSPACE       : ${env.WORKSPACE}"
                     echo "========================================"
 
-                    if (!deviceIP) { error "Missing required parameter: Local IP Address" }
+                    if (!deviceIP) {
+                        error "Missing required parameter: Local IP Address"
+                    }
 
                     sh "rm -f SNMP_Validation.json SNMP_Validation.html snmp_validation.log || true"
 
-                    // DEBUG: show everything Jenkins has access to for this build
+                    // Show useful debug info
                     sh """
-                        echo "=== WORKSPACE ==="
-                        ls -la '${env.WORKSPACE}/'
-                        echo "=== BUILD DIR ==="
-                        ls -la '${env.WORKSPACE}/../builds/${env.BUILD_NUMBER}/' 2>/dev/null || echo "not found"
-                        echo "=== MIB_File param value ==="
-                        echo 'MIB_File=[${params.MIB_File}]'
+                        echo "=== Workspace root contents ==="
+                        ls -la '${env.WORKSPACE}' || true
+                        echo ""
+                        echo "=== @tmp directory (if exists) ==="
+                        ls -la '${env.WORKSPACE}/@tmp' 2>/dev/null || echo "No @tmp folder"
+                        echo ""
+                        echo "=== @script directory (if exists) ==="
+                        ls -la '${env.WORKSPACE}@script' 2>/dev/null || echo "No @script folder"
                     """
-                    echo "Workspace cleaned."
+
+                    echo "Preparation done."
                 }
             }
         }
@@ -47,16 +53,21 @@ pipeline {
             steps {
                 script {
                     echo "========================================"
-                    echo " Installing Dependencies"
+                    echo " Installing Python dependencies"
                     echo "========================================"
-                    sh "sh utilities/requirements.txt"
+                    sh """
+                        pip3 install --upgrade pip || true
+                        pip3 install -r utilities/requirements.txt || true
+                    """
                 }
+
                 sh '''
+                    echo "Checking/Installing system packages..."
                     which snmpget >/dev/null 2>&1 || {
                         sudo apt-get update -qq
                         sudo apt-get install -y snmp snmp-mibs-downloader
                     }
-                    which python3 >/dev/null 2>&1 || sudo apt-get install -y python3
+                    which python3 >/dev/null 2>&1 || sudo apt-get install -y python3 python3-pip
                 '''
             }
         }
@@ -67,51 +78,78 @@ pipeline {
                     def deviceIP       = (params['Local IP Address'] ?: '').toString().trim()
                     def readCommunity  = (params['Read Community']   ?: '').toString().trim()
                     def writeCommunity = (params['Write Community']  ?: '').toString().trim()
-                    def mibPath        = (params['MIB_File']         ?: '').toString().trim()
-                    def scriptPath     = "testCases/test_SNMP_Validation.py"
+                    def mibFilename    = (params['MIB_File']         ?: '').toString().trim()
 
-                    def wsFile = "${env.WORKSPACE}/${mibPath}"
                     def mibArg = '/dev/null'
 
-                    if (mibPath) {
-                        // Try workspace path first (File Parameter behaviour)
-                        def wsExists = sh(script: "test -f '${wsFile}' && echo yes || echo no", returnStdout: true).trim()
-                        if (wsExists == 'yes') {
-                            mibArg = wsFile
-                            echo "[OK] MIB found in workspace: ${mibArg}"
-                        } else {
-                            // Try as absolute path (String Parameter fallback)
-                            def absExists = sh(script: "test -f '${mibPath}' && echo yes || echo no", returnStdout: true).trim()
-                            if (absExists == 'yes') {
-                                mibArg = mibPath
-                                echo "[OK] MIB found at path: ${mibArg}"
-                            } else {
-                                echo "[WARN] MIB not found — workspace listing:"
-                                sh "ls -la '${env.WORKSPACE}/' || true"
-                                echo "[WARN] OID names will be empty"
+                    if (mibFilename?.trim()) {
+
+                        echo "========================================"
+                        echo " Searching for uploaded MIB file: ${mibFilename}"
+                        echo "========================================"
+
+                        // All common places where Jenkins puts File Parameter uploads
+                        def locations = [
+                            "${env.WORKSPACE}/${mibFilename}",
+                            "${env.WORKSPACE}/@tmp/${mibFilename}",
+                            "${env.WORKSPACE}@tmp/${mibFilename}",
+                            "${env.WORKSPACE}@script/${mibFilename}",
+                            "${env.WORKSPACE}/@tmp/hudson${mibFilename}",
+                            "${env.WORKSPACE}/@tmp/upload/${mibFilename}",
+                            "${env.WORKSPACE}/@tmp/upload_${mibFilename}"
+                        ]
+
+                        def found = false
+                        def foundPath = null
+
+                        for (loc in locations) {
+                            def exists = sh(script: "[ -f '${loc}' ] && echo yes || echo no", returnStdout: true).trim()
+                            if (exists == 'yes') {
+                                found = true
+                                foundPath = loc
+                                break
                             }
                         }
+
+                        if (found) {
+                            mibArg = foundPath
+                            echo "[SUCCESS] MIB file found → ${mibArg}"
+                            sh "ls -l '${mibArg}' || true"
+                            sh "head -n 8 '${mibArg}' || echo '(file is empty or not readable)'"
+                        } else {
+                            echo "[WARNING] Could not locate MIB file '${mibFilename}' anywhere"
+                            echo "Final debug search:"
+                            sh """
+                                echo "Looking in workspace root:"
+                                ls -la '${env.WORKSPACE}' | grep -i '${mibFilename}' || true
+                                echo ""
+                                echo "Searching entire workspace (may take time):"
+                                find '${env.WORKSPACE}' -type f -name '*${mibFilename}*' 2>/dev/null | head -n 10 || echo "Nothing found"
+                            """
+                            echo "→ Using no MIB file (OIDs will be numeric only)"
+                        }
                     } else {
-                        echo "[WARN] No MIB provided — OID names will be empty"
+                        echo "[INFO] No MIB_File parameter was provided"
                     }
-                    mibPath = mibArg
 
                     echo "========================================"
-                    echo " Running SNMP Validation on ${deviceIP}"
+                    echo " Starting SNMP validation on ${deviceIP}"
+                    echo " MIB argument : ${mibArg}"
                     echo "========================================"
 
                     try {
                         sh """
                             set -x
-                            python3 ${scriptPath} \
-                                --device-ip       '${deviceIP}'        \
-                                --read-community  '${readCommunity}'   \
-                                --write-community '${writeCommunity}'  \
-                                --mib-file        '${mibArg}'         \
+                            python3 testCases/test_SNMP_Validation.py \
+                                --device-ip       '${deviceIP}'          \
+                                --read-community  '${readCommunity}'     \
+                                --write-community '${writeCommunity}'    \
+                                --mib-file        '${mibArg}'            \
                                 | tee snmp_validation.log
                         """
-                    } catch (err) {
-                        echo "SNMP Validation error: ${err}"
+                    } catch (Exception err) {
+                        echo "Python script failed: ${err.getMessage()}"
+                        currentBuild.result = 'UNSTABLE'   // or 'FAILURE' if you prefer hard fail
                     }
                 }
             }
@@ -143,12 +181,15 @@ pipeline {
                             def rType  = (rec.type  ?: "").toString()
                             def rData  = (rec.data  ?: "").toString().replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
                             def rPrefix = "other"
-                            if (rName) { def m = (rName =~ /^([a-z]+)/); if (m) rPrefix = m[0][1] }
+                            if (rName) {
+                                def m = (rName =~ /^([a-z]+)/)
+                                if (m) rPrefix = m[0][1]
+                            }
                             def badgeClass = [
-                                "STRING":"badge-string","INTEGER":"badge-integer","Gauge32":"badge-gauge",
-                                "Counter32":"badge-counter","Counter64":"badge-counter","Timeticks":"badge-timeticks",
-                                "IpAddress":"badge-ip","OID":"badge-oid","Hex-STRING":"badge-hex"
-                            ].get(rType,"badge-oid")
+                                "STRING":"badge-string", "INTEGER":"badge-integer", "Gauge32":"badge-gauge",
+                                "Counter32":"badge-counter", "Counter64":"badge-counter", "Timeticks":"badge-timeticks",
+                                "IpAddress":"badge-ip", "OID":"badge-oid", "Hex-STRING":"badge-hex"
+                            ].get(rType, "badge-oid")
                             def nameDisplay = rName ?: "<em class='no-name'>&#8212;</em>"
                             rows.append("<tr data-prefix=\"${rPrefix}\" data-type=\"${rType}\">")
                             rows.append("<td class=\"col-name\">${nameDisplay}</td>")
@@ -167,23 +208,25 @@ pipeline {
                     def readCount  = readData.oid_count  ?: 0
                     def writeCount = writeData.oid_count ?: 0
 
-                    def chipBar = '<span class="chip active" data-prefix="all">All</span>' +
-                        '<span class="chip" data-prefix="wireless">Wireless</span>' +
-                        '<span class="chip" data-prefix="assoc">Assoc</span>' +
-                        '<span class="chip" data-prefix="sys">System</span>' +
-                        '<span class="chip" data-prefix="ethernet">Ethernet</span>' +
-                        '<span class="chip" data-prefix="network">Network</span>' +
-                        '<span class="chip" data-prefix="vlan">VLAN</span>' +
-                        '<span class="chip" data-prefix="dcs">DCS</span>' +
-                        '<span class="chip" data-prefix="dfs">DFS</span>' +
-                        '<span class="chip" data-prefix="dhcp">DHCP</span>' +
-                        '<span class="chip" data-prefix="snmp">SNMP</span>' +
-                        '<span class="chip" data-prefix="radius">RADIUS</span>' +
-                        '<span class="chip" data-prefix="link">Link</span>' +
-                        '<span class="chip" data-prefix="gps">GPS</span>' +
-                        '<span class="chip" data-prefix="ntp">NTP</span>' +
-                        '<span class="chip" data-prefix="qinq">QinQ</span>' +
-                        '<span class="chip" data-prefix="other">Other</span>'
+                    def chipBar = '''
+                        <span class="chip active" data-prefix="all">All</span>
+                        <span class="chip" data-prefix="wireless">Wireless</span>
+                        <span class="chip" data-prefix="assoc">Assoc</span>
+                        <span class="chip" data-prefix="sys">System</span>
+                        <span class="chip" data-prefix="ethernet">Ethernet</span>
+                        <span class="chip" data-prefix="network">Network</span>
+                        <span class="chip" data-prefix="vlan">VLAN</span>
+                        <span class="chip" data-prefix="dcs">DCS</span>
+                        <span class="chip" data-prefix="dfs">DFS</span>
+                        <span class="chip" data-prefix="dhcp">DHCP</span>
+                        <span class="chip" data-prefix="snmp">SNMP</span>
+                        <span class="chip" data-prefix="radius">RADIUS</span>
+                        <span class="chip" data-prefix="link">Link</span>
+                        <span class="chip" data-prefix="gps">GPS</span>
+                        <span class="chip" data-prefix="ntp">NTP</span>
+                        <span class="chip" data-prefix="qinq">QinQ</span>
+                        <span class="chip" data-prefix="other">Other</span>
+                    '''
 
                     def htmlContent = """<!DOCTYPE html>
 <html lang="en">
@@ -400,7 +443,6 @@ pipeline {
             }
         }
     }
-
     post {
         always {
             script {
