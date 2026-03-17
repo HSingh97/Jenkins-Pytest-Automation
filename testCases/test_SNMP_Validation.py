@@ -182,24 +182,27 @@ def lookup_name(oid_str, oid_map):
             radio_keywords = ['wireless', 'radio', 'assoc', 'dcs', 'sitesurvey', 'saresult', 'linkprofile']
             is_radio_metric = any(kw in base_name.lower() for kw in radio_keywords)
 
-            first_idx = suffixes[0]
-
             if is_radio_metric:
-                prefix = ""
-                if first_idx == '1':
-                    prefix = "2.4GHz Radio : "
-                elif first_idx == '2':
-                    prefix = "Radio1 : "
-                elif first_idx == '3':
-                    prefix = "Radio2 : "
-                else:
-                    prefix = f"Radio {first_idx} : "
+                first_idx = suffixes[0]
 
+                radio_str = ""
+                if first_idx == '1':
+                    radio_str = "2.4GHz Radio"
+                elif first_idx == '2':
+                    radio_str = "Radio1"
+                elif first_idx == '3':
+                    radio_str = "Radio2"
+                else:
+                    radio_str = f"Radio {first_idx}"
+
+                # Apply appropriate indexing dynamically
                 if len(suffixes) == 1:
-                    return f"{prefix}{base_name}"
+                    return f"{radio_str} : {base_name}"
+                elif len(suffixes) == 2:
+                    return f"{radio_str} (SU{suffixes[1]}) : {base_name}"
                 else:
                     remaining = ".".join(suffixes[1:])
-                    return f"{prefix}{base_name}.{remaining}"
+                    return f"{radio_str} (Index {remaining}) : {base_name}"
             else:
                 # For non-radio metrics, cleanly drop the '.0' for scalar values
                 if suffixes == ['0']:
@@ -344,6 +347,17 @@ def sort_key(rec):
 
 unified_list = sorted(unified_dict.values(), key=sort_key)
 
+# ── FILTER RADIO2 IF APPLICABLE
+device_name = build_params.get("Device Name", "")
+# Tri-band models keep Radio2. Dual-band models drop Radio2.
+is_triband = "EOC655" in device_name or "UBR655" in device_name
+
+final_unified_list = []
+for rec in unified_list:
+    if not is_triband and rec['name'].startswith("Radio2"):
+        continue
+    final_unified_list.append(rec)
+
 log_print(f"\n[6] Saving result to {RESULT_FILE} ...")
 result = {
     "timestamp": datetime.now().isoformat(),
@@ -351,7 +365,7 @@ result = {
     "root_oid": OID,
     "overall_status": overall_status,
     "build_params": build_params,
-    "unified_data": unified_list
+    "unified_data": final_unified_list
 }
 
 with open(RESULT_FILE, "w") as f:
