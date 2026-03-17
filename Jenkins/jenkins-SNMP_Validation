@@ -13,9 +13,6 @@ pipeline {
                     def deviceIP       = (params.Device_IP       ?: '').toString().trim()
                     def readCommunity  = (params.Read_Community  ?: '').toString().trim()
                     def writeCommunity = (params.Write_Community ?: '').toString().trim()
-
-                    // Jenkins "File Parameter" saves the uploaded file in the workspace
-                    // with the exact name of the parameter variable.
                     def mibFilePath    = "${env.WORKSPACE}/MIB_File"
 
                     echo "========================================"
@@ -27,6 +24,11 @@ pipeline {
                     echo " MIB FILE PATH   : ${mibFilePath}"
                     echo " TARGET STAND    : ${params.TARGET_STAND}"
                     echo "========================================"
+
+                    // FAIL-FAST VALIDATION: Ensure required parameters are not blank
+                    if (!deviceIP || !readCommunity || !writeCommunity) {
+                        error("Validation Failed: Device_IP, Read_Community, and Write_Community parameters MUST be provided.")
+                    }
 
                     sh "rm -f SNMP_Validation.json SNMP_Validation.html snmp_validation.log || true"
                     echo "Workspace cleaned."
@@ -129,10 +131,8 @@ pipeline {
 
                             def nameDisplay = rName ?: "<em class='no-name'>—</em>"
 
-                            // Escape HTML in the raw data for safe rendering in the details block
                             def safeData = rData.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-                            // Implement +/- logic with a main row and a hidden details row
                             rows += """
 <tr class="main-row" data-prefix="${rPrefix}" data-type="${rType}">
   <td class="col-toggle"><button class="toggle-btn" onclick="toggleRow(this)">+</button></td>
@@ -190,41 +190,22 @@ pipeline {
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>SNMP Validation Report</title>
   <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      margin: 0; padding: 0; background: #f8fafc; color: #1e293b; line-height: 1.6;
-    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: #f8fafc; color: #1e293b; line-height: 1.6; }
     .container { max-width: 1320px; margin: 32px auto; padding: 0 16px; }
-    .header {
-      display: flex; justify-content: space-between; align-items: center;
-      background: linear-gradient(135deg, #ffffff, #f8fafc); padding: 28px 36px;
-      border-radius: 16px; border: 1px solid #e2e8f0;
-      box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05);
-    }
+    .header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #ffffff, #f8fafc); padding: 28px 36px; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); }
     .header img { height: 70px; }
     .header-info { text-align: right; }
     .header-info h1 { margin: 0; font-size: 32px; font-weight: 800; color: #0f172a; }
     .header-info p { margin: 6px 0; font-size: 15px; color: #64748b; }
-
     h2 { margin: 40px 0 20px; font-size: 24px; font-weight: 700; color: #0f172a; position: relative; padding-bottom: 12px; }
     h2:after { content: ''; position: absolute; left: 0; bottom: 0; width: 60px; height: 3px; background: #3b82f6; border-radius: 3px; }
-
-    .accordion-section {
-      background: white; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0;
-      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 24px;
-    }
-    .accordion-header {
-      padding: 18px 24px; background: #f8fafc; cursor: pointer; font-size: 18px;
-      font-weight: 600; color: #1e293b; display: flex; justify-content: space-between;
-      align-items: center; transition: all 0.2s ease;
-    }
+    .accordion-section { background: white; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 24px; }
+    .accordion-header { padding: 18px 24px; background: #f8fafc; cursor: pointer; font-size: 18px; font-weight: 600; color: #1e293b; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s ease; }
     .accordion-header:hover { background: #eff6ff; }
     .accordion-header.active { background: #dbeafe; color: #1d4ed8; }
     .accordion-icon { font-size: 22px; font-weight: bold; transition: transform 0.3s ease; }
-
     .accordion-content { max-height: 0; overflow: hidden; transition: max-height 0.35s ease, padding 0.35s ease; padding: 0 24px; }
     .accordion-content.active { max-height: 15000px; padding: 24px; }
-
     .toolbar { display: flex; gap: 16px; align-items: center; margin: 20px 0 16px; flex-wrap: wrap; }
     .search-wrap { flex: 1; min-width: 320px; position: relative; }
     .search-wrap input { width: 100%; border: 1px solid #cbd5e1; border-radius: 10px; padding: 12px 16px 12px 48px; font-size: 15px; background: white; }
@@ -232,34 +213,24 @@ pipeline {
     .search-wrap svg { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 20px; height: 20px; }
     .type-select { min-width: 180px; padding: 12px 16px; font-size: 14px; border: 1px solid #cbd5e1; border-radius: 10px; background: white; cursor: pointer; }
     .count-pill { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 999px; padding: 10px 20px; font-size: 14px; font-weight: 600; color: #1d4ed8; }
-
     table { width: 100%; border-collapse: collapse; margin-top: 16px; background: white; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
     th, td { padding: 14px 20px; border-bottom: 1px solid #e2e8f0; text-align: left; }
     th { background: #f1f5f9; font-weight: 600; color: #475569; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
-
     .main-row:hover td { background: #f0f9ff; }
     .details-row td { background: #fafafa; padding: 0; border-bottom: 2px solid #e2e8f0; }
     .details-content { padding: 16px 20px 16px 64px; border-left: 4px solid #3b82f6; color: #334155; font-size: 14px; }
-
-    .toggle-btn {
-      background: white; border: 1px solid #cbd5e1; border-radius: 4px; color: #3b82f6;
-      width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
-      font-size: 16px; font-weight: bold; cursor: pointer; transition: all 0.2s;
-    }
+    .toggle-btn { background: white; border: 1px solid #cbd5e1; border-radius: 4px; color: #3b82f6; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold; cursor: pointer; transition: all 0.2s; }
     .toggle-btn:hover { background: #eff6ff; border-color: #3b82f6; }
-
     .chip-section { padding: 12px 20px; background: #ffffff; border-bottom: 1px solid #e2e8f0; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
     .chip-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #64748b; margin-right: 8px; }
     .chip { border: 1.5px solid #e2e8f0; background: #f8fafc; border-radius: 999px; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #475569; cursor: pointer; user-select: none; }
     .chip:hover { border-color: #3b82f6; color: #1d4ed8; background: #eff6ff; }
     .chip.active { background: #3b82f6; border-color: #3b82f6; color: white; }
-
     .col-toggle { width: 40px; text-align: center; padding-right: 0; }
     .col-name { font-size: 14px; font-weight: 600; color: #0f172a; min-width: 180px; }
     .col-oid { font-family: monospace; font-size: 13px; color: #64748b; }
     .col-type { text-align: center; min-width: 120px; }
     .col-val { font-size: 14px; color: #334155; max-width: 300px; word-break: break-all; }
-
     .no-name { color: #94a3b8; font-style: italic; }
     .no-results { text-align: center; padding: 60px; color: #94a3b8; font-size: 15px; }
     .badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; }
@@ -399,8 +370,8 @@ function applyFilters(section) {
       visible++;
     } else {
       row.style.display = 'none';
-      detailsRow.style.display = 'none'; // Hide details if main row is filtered out
-      row.querySelector('.toggle-btn').textContent = '+'; // Reset button
+      detailsRow.style.display = 'none';
+      row.querySelector('.toggle-btn').textContent = '+';
     }
   });
 
@@ -420,7 +391,6 @@ function toggleRow(btn) {
   }
 }
 
-// Accordion behavior
 document.querySelectorAll('.accordion-header').forEach(header => {
   header.addEventListener('click', () => {
     const targetId = header.getAttribute('data-target');
@@ -428,12 +398,10 @@ document.querySelectorAll('.accordion-header').forEach(header => {
     const icon = document.getElementById('icon-' + targetId);
     const isActive = content.classList.contains('active');
 
-    // Close others
     document.querySelectorAll('.accordion-content').forEach(c => c.classList.remove('active'));
     document.querySelectorAll('.accordion-header').forEach(h => h.classList.remove('active'));
     document.querySelectorAll('.accordion-icon').forEach(i => i.textContent = '+');
 
-    // Toggle clicked one
     if (!isActive) {
       content.classList.add('active');
       header.classList.add('active');
