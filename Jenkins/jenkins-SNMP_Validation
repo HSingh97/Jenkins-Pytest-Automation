@@ -26,6 +26,8 @@ pipeline {
                     echo " TARGET STAND    : ${params.TARGET_STAND}"
                     echo "========================================"
 
+                    if (!deviceIP) { error "Missing required parameter: Device_IP" }
+
                     sh "rm -f SNMP_Validation.json SNMP_Validation.html snmp_validation.log || true"
                     echo "Workspace cleaned."
                 }
@@ -99,13 +101,16 @@ pipeline {
                         "FW Version"  : bp["FW Version"]  ?: "N/A",
                     ]
 
+                    // Build SNMP table rows — iterate ALL records and escape HTML chars
                     def buildSnmpRows = { dataList ->
-                        def rows = ""
+                        def rows = new StringBuilder()
                         dataList.each { rec ->
-                            def rName  = rec.name ?: ""
-                            def rOid   = rec.oid  ?: ""
-                            def rType  = rec.type ?: ""
-                            def rData  = rec.data?.toString() ?: ""
+                            def rName  = (rec.name  ?: "").toString()
+                            def rOid   = (rec.oid   ?: "").toString()
+                                            .replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+                            def rType  = (rec.type  ?: "").toString()
+                            def rData  = (rec.data  ?: "").toString()
+                                            .replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
                             def rPrefix = "other"
                             if (rName) {
                                 def m = (rName =~ /^([a-z]+)/)
@@ -123,14 +128,14 @@ pipeline {
                                 "Hex-STRING": "badge-hex"
                             ].get(rType, "badge-oid")
                             def nameDisplay = rName ?: "<em class='no-name'>—</em>"
-                            rows += """<tr data-prefix="${rPrefix}" data-type="${rType}">
+                            rows.append("""<tr data-prefix="${rPrefix}" data-type="${rType}">
   <td class="col-name">${nameDisplay}</td>
   <td class="col-oid">${rOid}</td>
   <td class="col-type"><span class="badge ${badgeClass}">${rType}</span></td>
   <td class="col-val">${rData}</td>
-</tr>"""
+</tr>""")
                         }
-                        return rows
+                        return rows.toString()
                     }
 
                     def readData   = jsonReport.read_community  ?: [:]
@@ -139,27 +144,24 @@ pipeline {
                     def writeRows  = buildSnmpRows(writeData.data  ?: [])
                     def readCount  = readData.oid_count  ?: 0
                     def writeCount = writeData.oid_count ?: 0
-                    def readCom    = readData.community  ?: params.Read_Community
-                    def writeCom   = writeData.community ?: params.Write_Community
 
-                    def chipBar = """
-    <span class="chip active" data-prefix="all"     >All</span>
-    <span class="chip"        data-prefix="wireless" >Wireless</span>
-    <span class="chip"        data-prefix="assoc"    >Assoc</span>
-    <span class="chip"        data-prefix="sys"      >System</span>
-    <span class="chip"        data-prefix="ethernet" >Ethernet</span>
-    <span class="chip"        data-prefix="network"  >Network</span>
-    <span class="chip"        data-prefix="vlan"     >VLAN</span>
-    <span class="chip"        data-prefix="dcs"      >DCS</span>
-    <span class="chip"        data-prefix="dfs"      >DFS</span>
-    <span class="chip"        data-prefix="dhcp"     >DHCP</span>
-    <span class="chip"        data-prefix="snmp"     >SNMP</span>
-    <span class="chip"        data-prefix="radius"   >RADIUS</span>
-    <span class="chip"        data-prefix="link"     >Link</span>
-    <span class="chip"        data-prefix="gps"      >GPS</span>
-    <span class="chip"        data-prefix="ntp"      >NTP</span>
-    <span class="chip"        data-prefix="qinq"     >QinQ</span>
-    <span class="chip"        data-prefix="other"    >Other</span>"""
+                    def chipBar = """<span class="chip active" data-prefix="all">All</span>
+    <span class="chip" data-prefix="wireless">Wireless</span>
+    <span class="chip" data-prefix="assoc">Assoc</span>
+    <span class="chip" data-prefix="sys">System</span>
+    <span class="chip" data-prefix="ethernet">Ethernet</span>
+    <span class="chip" data-prefix="network">Network</span>
+    <span class="chip" data-prefix="vlan">VLAN</span>
+    <span class="chip" data-prefix="dcs">DCS</span>
+    <span class="chip" data-prefix="dfs">DFS</span>
+    <span class="chip" data-prefix="dhcp">DHCP</span>
+    <span class="chip" data-prefix="snmp">SNMP</span>
+    <span class="chip" data-prefix="radius">RADIUS</span>
+    <span class="chip" data-prefix="link">Link</span>
+    <span class="chip" data-prefix="gps">GPS</span>
+    <span class="chip" data-prefix="ntp">NTP</span>
+    <span class="chip" data-prefix="qinq">QinQ</span>
+    <span class="chip" data-prefix="other">Other</span>"""
 
                     def htmlContent = """<!DOCTYPE html>
 <html lang="en">
@@ -167,176 +169,114 @@ pipeline {
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>SNMP Validation Report</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
   <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      margin: 0; padding: 0;
-      background: #f8fafc;
-      color: #1e293b;
-      line-height: 1.6;
-    }
-    .container {
-      max-width: 1320px;
-      margin: 32px auto;
-      padding: 0 16px;
-    }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: linear-gradient(135deg, #ffffff, #f8fafc);
-      padding: 28px 36px;
-      border-radius: 16px;
-      border: 1px solid #e2e8f0;
-      box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05), 0 8px 10px -6px rgba(0,0,0,0.02);
-    }
-    .header img { height: 70px; }
-    .header-info { text-align: right; }
-    .header-info h1 { margin: 0; font-size: 32px; font-weight: 800; color: #0f172a; }
-    .header-info p { margin: 6px 0; font-size: 15px; color: #64748b; }
+    *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body            { font-family: 'Inter', -apple-system, sans-serif; background: #f4f7f6; color: #1f2937; line-height: 1.6; }
+    .page           { max-width: 1360px; margin: 0 auto; padding: 32px 24px 64px; }
 
-    h2 {
-      margin: 40px 0 20px;
-      font-size: 24px;
-      font-weight: 700;
-      color: #0f172a;
-      position: relative;
-      padding-bottom: 12px;
-    }
-    h2:after {
-      content: '';
-      position: absolute;
-      left: 0; bottom: 0;
-      width: 60px; height: 3px;
-      background: #3b82f6;
-      border-radius: 3px;
-    }
+    /* ── HEADER ── */
+    .header         { display: flex; justify-content: space-between; align-items: center;
+                      background: linear-gradient(135deg, #ffffff 0%, #f0f4f8 100%);
+                      padding: 30px 40px; border: 1px solid #e2e8f0; border-radius: 16px;
+                      box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); margin-bottom: 0; }
+    .header img     { height: 58px; transition: transform 0.3s; }
+    .header img:hover { transform: scale(1.05); }
+    .header-info    { text-align: right; }
+    .header-info h1 { font-size: 30px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; }
+    .header-info p  { margin-top: 5px; font-size: 14px; color: #64748b; }
 
-    /* Accordion */
-    .accordion-section {
-      background: white;
-      border-radius: 12px;
-      overflow: hidden;
-      border: 1px solid #e2e8f0;
-      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
-      margin-bottom: 24px;
-    }
-    .accordion-header {
-      padding: 18px 24px;
-      background: #f8fafc;
-      cursor: pointer;
-      font-size: 18px;
-      font-weight: 600;
-      color: #1e293b;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      transition: all 0.2s ease;
-    }
-    .accordion-header:hover {
-      background: #eff6ff;
-    }
-    .accordion-header.active {
-      background: #dbeafe;
-      color: #1d4ed8;
-    }
-    .accordion-icon {
-      font-size: 20px;
-      transition: transform 0.3s ease;
-    }
-    .accordion-header.active .accordion-icon {
-      transform: rotate(180deg);
-    }
-    .accordion-content {
-      max-height: 0;
-      overflow: hidden;
-      transition: max-height 0.35s ease, padding 0.35s ease;
-      padding: 0 24px;
-    }
-    .accordion-content.active {
-      max-height: 5000px;
-      padding: 24px;
-    }
+    /* ── SECTION HEADING ── */
+    h2              { margin: 40px 0 20px; font-size: 22px; font-weight: 700; color: #0f172a;
+                      padding-bottom: 12px; position: relative; }
+    h2::after       { content: ''; position: absolute; left: 0; bottom: 0;
+                      width: 56px; height: 3px; background: #3b82f6; border-radius: 3px; }
 
-    .toolbar {
-      display: flex;
-      gap: 16px;
-      align-items: center;
-      margin: 20px 0 16px;
-      flex-wrap: wrap;
-    }
-    .search-wrap {
-      flex: 1;
-      min-width: 320px;
-      position: relative;
-    }
-    .search-wrap input {
-      width: 100%;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 12px 16px 12px 48px;
-      font-size: 15px;
-      background: white;
-      transition: all 0.2s;
-    }
-    .search-wrap input:focus {
-      border-color: #3b82f6;
-      box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
-      outline: none;
-    }
-    .search-wrap svg {
-      position: absolute;
-      left: 16px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: #94a3b8;
-      width: 20px;
-      height: 20px;
-    }
-    .type-select {
-      min-width: 180px;
-      padding: 12px 16px;
-      font-size: 14px;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      background: white;
-      color: #1e293b;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .type-select:focus {
-      border-color: #3b82f6;
-      box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
-      outline: none;
-    }
-    .count-pill {
-      background: #eff6ff;
-      border: 1px solid #bfdbfe;
-      border-radius: 999px;
-      padding: 10px 20px;
-      font-size: 14px;
-      font-weight: 600;
-      color: #1d4ed8;
-      white-space: nowrap;
-    }
+    /* ── BUILD PARAMS TABLE ── */
+    .params-table   { width: 100%; border-collapse: collapse; background: #fff;
+                      border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;
+                      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04); }
+    .params-table th, .params-table td { padding: 14px 20px; border-bottom: 1px solid #e2e8f0;
+                      font-size: 14px; text-align: left; vertical-align: middle; }
+    .params-table th { background: #f8fafc; font-weight: 600; color: #475569;
+                       font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .params-table tr:last-child td { border-bottom: none; }
+    .params-table tr:hover td { background: #f8fafc; }
 
-    table { width: 100%; border-collapse: collapse; margin-top: 16px; background: white; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
-    th, td { padding: 14px 20px; border-bottom: 1px solid #e2e8f0; text-align: left; }
-    th { background: #f1f5f9; font-weight: 600; color: #475569; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
-    tr:hover td { background: #f0f9ff; }
-    .chip-section { padding: 12px 20px; background: #ffffff; border-bottom: 1px solid #e2e8f0; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-    .chip-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #64748b; margin-right: 8px; white-space: nowrap; }
-    .chip { border: 1.5px solid #e2e8f0; background: #f8fafc; border-radius: 999px; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #475569; cursor: pointer; transition: all 0.2s; user-select: none; }
-    .chip:hover { border-color: #3b82f6; color: #1d4ed8; background: #eff6ff; }
-    .chip.active { background: #3b82f6; border-color: #3b82f6; color: white; }
-    .table-card { background: white; }
-    .col-name { font-size: 14px; font-weight: 600; color: #0f172a; min-width: 180px; }
-    .col-oid { font-family: monospace; font-size: 13px; color: #64748b; }
-    .col-type { text-align: center; min-width: 120px; }
-    .col-val { font-size: 14px; color: #334155; max-width: 400px; word-break: break-all; }
-    .no-name { color: #94a3b8; font-style: italic; }
-    .no-results { text-align: center; padding: 60px; color: #94a3b8; font-size: 15px; }
-    .badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    /* ── ACCORDION ── */
+    .accordion      { background: #fff; border-radius: 14px; overflow: hidden;
+                      border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.06);
+                      margin-bottom: 24px; }
+    .acc-header     { display: flex; justify-content: space-between; align-items: center;
+                      padding: 20px 28px; cursor: pointer; user-select: none;
+                      transition: background 0.2s; }
+    .acc-header:hover { background: #f0f9ff; }
+    .acc-header.open  { background: #dbeafe; }
+    .acc-title      { display: flex; align-items: center; gap: 14px; }
+    .acc-num        { width: 32px; height: 32px; border-radius: 50%; background: #3b82f6;
+                      color: #fff; font-size: 15px; font-weight: 700;
+                      display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .acc-header.open .acc-num { background: #1d4ed8; }
+    .acc-label      { font-size: 17px; font-weight: 700; color: #0f172a; }
+    .acc-header.open .acc-label { color: #1d4ed8; }
+    .acc-meta       { font-size: 13px; color: #64748b; font-weight: 400; margin-left: 4px; }
+    .acc-header.open .acc-meta { color: #3b82f6; }
+    .acc-arrow      { font-size: 18px; color: #94a3b8; transition: transform 0.3s; }
+    .acc-header.open .acc-arrow { transform: rotate(180deg); color: #1d4ed8; }
+    .acc-body       { max-height: 0; overflow: hidden; transition: max-height 0.4s ease; }
+    .acc-body.open  { max-height: 99999px; }
+    .acc-inner      { padding: 24px 28px; border-top: 1px solid #e2e8f0; }
+
+    /* ── TOOLBAR ── */
+    .toolbar        { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+    .search-wrap    { flex: 1; min-width: 280px; position: relative; }
+    .search-wrap input { width: 100%; border: 1px solid #cbd5e1; border-radius: 10px;
+                         padding: 11px 16px 11px 46px; font-size: 14px; font-family: 'Inter', sans-serif;
+                         background: #fff; outline: none; transition: all 0.2s; }
+    .search-wrap input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+    .search-wrap svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+                       color: #94a3b8; pointer-events: none; width: 20px; height: 20px; }
+    .type-select    { padding: 11px 16px; font-size: 14px; font-family: 'Inter', sans-serif;
+                      border: 1px solid #cbd5e1; border-radius: 10px; background: #fff;
+                      color: #1e293b; cursor: pointer; min-width: 160px; outline: none; transition: all 0.2s; }
+    .type-select:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+    .count-pill     { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 999px;
+                      padding: 9px 20px; font-size: 14px; font-weight: 600; color: #1d4ed8; white-space: nowrap; }
+
+    /* ── CHIPS ── */
+    .chip-bar       { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+                      padding: 14px 0; margin-bottom: 16px; }
+    .chip-label     { font-size: 11px; font-weight: 700; text-transform: uppercase;
+                      letter-spacing: 0.8px; color: #64748b; margin-right: 4px; white-space: nowrap; }
+    .chip           { border: 1.5px solid #e2e8f0; background: #f8fafc; border-radius: 999px;
+                      padding: 5px 16px; font-size: 12px; font-weight: 600; color: #475569;
+                      cursor: pointer; transition: all 0.15s; user-select: none; }
+    .chip:hover     { border-color: #3b82f6; color: #1d4ed8; background: #eff6ff; }
+    .chip.active    { background: #3b82f6; border-color: #3b82f6; color: #fff;
+                      box-shadow: 0 2px 8px rgba(59,130,246,0.3); }
+
+    /* ── DATA TABLE ── */
+    .data-table-wrap { border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; }
+    table           { width: 100%; border-collapse: collapse; background: #fff; }
+    thead tr        { background: #f1f5f9; }
+    th              { padding: 13px 20px; font-weight: 600; color: #475569; font-size: 12px;
+                      text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #e2e8f0;
+                      text-align: left; }
+    tbody tr        { border-bottom: 1px solid #f1f5f9; transition: background 0.12s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover td { background: #f0f9ff; }
+    tbody tr:hover .col-oid { color: #3b82f6 !important; }
+    td              { padding: 12px 20px; vertical-align: middle; }
+    .col-name       { font-size: 13.5px; font-weight: 600; color: #0f172a; min-width: 180px; }
+    .col-oid        { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #64748b; }
+    .col-type       { text-align: center; min-width: 120px; }
+    .col-val        { font-size: 13px; color: #334155; max-width: 400px; word-break: break-all; }
+    .no-name        { color: #94a3b8; font-style: italic; }
+    .no-results     { text-align: center; padding: 60px 20px; color: #94a3b8; font-size: 15px; }
+
+    /* ── BADGES ── */
+    .badge          { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.3px; }
     .badge-string   { background: #dbeafe; color: #1e40af; }
     .badge-integer  { background: #fef9c3; color: #92400e; }
     .badge-gauge    { background: #dcfce7; color: #166534; }
@@ -348,85 +288,108 @@ pipeline {
   </style>
 </head>
 <body>
-<div class="container">
+<div class="page">
 
+  <!-- HEADER -->
   <div class="header">
     <img src="${companyLogoUrl}" alt="Senao Networks, Inc."/>
     <div class="header-info">
       <h1>SNMP Validation Report</h1>
       <p><strong>Pipeline:</strong> ${pipelineName}</p>
-      <p><strong>Date & Time:</strong> ${currentDateTime}</p>
+      <p><strong>Date &amp; Time:</strong> ${currentDateTime}</p>
     </div>
   </div>
 
+  <!-- BUILD PARAMS -->
   <h2>Build Parameters</h2>
-  <table>
+  <table class="params-table">
     <tr><th>Parameter</th><th>Value</th></tr>
-    ${buildParams.collect { "<tr><td><b>${it.key}</b></td><td>${it.value}</td></tr>" }.join('\n')}
+    ${buildParams.collect { "<tr><td><strong>${it.key}</strong></td><td>${it.value}</td></tr>" }.join('\n')}
   </table>
 
+  <!-- SNMP DATA -->
   <h2>SNMP Data</h2>
 
-  <div class="accordion-section">
-    <div class="accordion-header" data-target="read">
-      <span>1. Community Read — ${readCom}</span>
-      <span class="accordion-icon">▼</span>
-    </div>
-    <div class="accordion-content" id="content-read">
-      <div class="toolbar">
-        <div class="search-wrap">
-          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-          </svg>
-          <input type="text" id="searchRead" placeholder="Search name, OID, or value…" oninput="applyFilters('read')"/>
-        </div>
-        <select class="type-select" id="typeRead" onchange="applyFilters('read')">
-          <option value="">All Types</option>
-          <option>STRING</option><option>INTEGER</option><option>Gauge32</option>
-          <option>Counter32</option><option>Counter64</option><option>Timeticks</option>
-          <option>IpAddress</option><option>OID</option><option>Hex-STRING</option>
-        </select>
-        <div class="count-pill" id="countRead">${readCount} entries</div>
+  <!-- ACCORDION 1 — READ -->
+  <div class="accordion">
+    <div class="acc-header" data-section="read">
+      <div class="acc-title">
+        <span class="acc-num">1</span>
+        <span class="acc-label">Community Read</span>
+        <span class="acc-meta">&mdash; ${readCount} OIDs</span>
       </div>
-      <div class="chip-section" id="chipRead"><span class="chip-label">Category</span>${chipBar}</div>
-      <div class="table-card">
-        <table>
-          <thead><tr><th>Name</th><th>OID</th><th style="text-align:center;">Type</th><th>Value</th></tr></thead>
-          <tbody id="bodyRead">${readRows}</tbody>
-        </table>
-        <div class="no-results" id="noRead" style="display:none;">No matching entries found.</div>
+      <span class="acc-arrow">&#9660;</span>
+    </div>
+    <div class="acc-body" id="body-read">
+      <div class="acc-inner">
+        <div class="toolbar">
+          <div class="search-wrap">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+            <input type="text" id="searchRead" placeholder="Search name, OID, or value…" oninput="applyFilters('read')"/>
+          </div>
+          <select class="type-select" id="typeRead" onchange="applyFilters('read')">
+            <option value="">All Types</option>
+            <option>STRING</option><option>INTEGER</option><option>Gauge32</option>
+            <option>Counter32</option><option>Counter64</option><option>Timeticks</option>
+            <option>IpAddress</option><option>OID</option><option>Hex-STRING</option>
+          </select>
+          <div class="count-pill" id="countRead">${readCount} entries</div>
+        </div>
+        <div class="chip-bar" id="chipRead">
+          <span class="chip-label">Category</span>
+          ${chipBar}
+        </div>
+        <div class="data-table-wrap">
+          <table>
+            <thead><tr><th>Name</th><th>OID</th><th style="text-align:center;">Type</th><th>Value</th></tr></thead>
+            <tbody id="tbodyRead">${readRows}</tbody>
+          </table>
+          <div class="no-results" id="noRead" style="display:none;">No matching entries found.</div>
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="accordion-section">
-    <div class="accordion-header" data-target="write">
-      <span>2. Community Write — ${writeCom}</span>
-      <span class="accordion-icon">▼</span>
-    </div>
-    <div class="accordion-content" id="content-write">
-      <div class="toolbar">
-        <div class="search-wrap">
-          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-          </svg>
-          <input type="text" id="searchWrite" placeholder="Search name, OID, or value…" oninput="applyFilters('write')"/>
-        </div>
-        <select class="type-select" id="typeWrite" onchange="applyFilters('write')">
-          <option value="">All Types</option>
-          <option>STRING</option><option>INTEGER</option><option>Gauge32</option>
-          <option>Counter32</option><option>Counter64</option><option>Timeticks</option>
-          <option>IpAddress</option><option>OID</option><option>Hex-STRING</option>
-        </select>
-        <div class="count-pill" id="countWrite">${writeCount} entries</div>
+  <!-- ACCORDION 2 — WRITE -->
+  <div class="accordion">
+    <div class="acc-header" data-section="write">
+      <div class="acc-title">
+        <span class="acc-num">2</span>
+        <span class="acc-label">Community Write</span>
+        <span class="acc-meta">&mdash; ${writeCount} OIDs</span>
       </div>
-      <div class="chip-section" id="chipWrite"><span class="chip-label">Category</span>${chipBar}</div>
-      <div class="table-card">
-        <table>
-          <thead><tr><th>Name</th><th>OID</th><th style="text-align:center;">Type</th><th>Value</th></tr></thead>
-          <tbody id="bodyWrite">${writeRows}</tbody>
-        </table>
-        <div class="no-results" id="noWrite" style="display:none;">No matching entries found.</div>
+      <span class="acc-arrow">&#9660;</span>
+    </div>
+    <div class="acc-body" id="body-write">
+      <div class="acc-inner">
+        <div class="toolbar">
+          <div class="search-wrap">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+            <input type="text" id="searchWrite" placeholder="Search name, OID, or value…" oninput="applyFilters('write')"/>
+          </div>
+          <select class="type-select" id="typeWrite" onchange="applyFilters('write')">
+            <option value="">All Types</option>
+            <option>STRING</option><option>INTEGER</option><option>Gauge32</option>
+            <option>Counter32</option><option>Counter64</option><option>Timeticks</option>
+            <option>IpAddress</option><option>OID</option><option>Hex-STRING</option>
+          </select>
+          <div class="count-pill" id="countWrite">${writeCount} entries</div>
+        </div>
+        <div class="chip-bar" id="chipWrite">
+          <span class="chip-label">Category</span>
+          ${chipBar}
+        </div>
+        <div class="data-table-wrap">
+          <table>
+            <thead><tr><th>Name</th><th>OID</th><th style="text-align:center;">Type</th><th>Value</th></tr></thead>
+            <tbody id="tbodyWrite">${writeRows}</tbody>
+          </table>
+          <div class="no-results" id="noWrite" style="display:none;">No matching entries found.</div>
+        </div>
       </div>
     </div>
   </div>
@@ -434,61 +397,70 @@ pipeline {
 </div>
 
 <script>
-var activePrefixes = { read: 'all', write: 'all' };
+  var activePrefixes = { read: 'all', write: 'all' };
 
-document.getElementById('chipRead').querySelectorAll('.chip').forEach(function(chip) {
-  chip.addEventListener('click', function() { setChip('read', this); });
-});
-document.getElementById('chipWrite').querySelectorAll('.chip').forEach(function(chip) {
-  chip.addEventListener('click', function() { setChip('write', this); });
-});
+  // ── Accordion ──────────────────────────────────────────────────────────────
+  document.querySelectorAll('.acc-header').forEach(function(header) {
+    header.addEventListener('click', function() {
+      var section = header.getAttribute('data-section');
+      var body    = document.getElementById('body-' + section);
+      var isOpen  = body.classList.contains('open');
 
-function setChip(section, el) {
-  var cap = section.charAt(0).toUpperCase() + section.slice(1);
-  document.getElementById('chip' + cap).querySelectorAll('.chip').forEach(function(c) { c.classList.remove('active'); });
-  el.classList.add('active');
-  activePrefixes[section] = el.dataset.prefix;
-  applyFilters(section);
-}
+      document.querySelectorAll('.acc-body').forEach(function(b)  { b.classList.remove('open'); });
+      document.querySelectorAll('.acc-header').forEach(function(h) { h.classList.remove('open'); });
 
-function applyFilters(section) {
-  var cap    = section.charAt(0).toUpperCase() + section.slice(1);
-  var search = document.getElementById('search' + cap).value.toLowerCase();
-  var type   = document.getElementById('type'   + cap).value;
-  var rows   = document.getElementById('body'   + cap).querySelectorAll('tr');
-  var visible = 0;
-  rows.forEach(function(row) {
-    var rp = row.dataset.prefix || 'other';
-    var rt = row.dataset.type   || '';
-    var tx = row.textContent.toLowerCase();
-    var ok = (activePrefixes[section] === 'all' || rp === activePrefixes[section])
-          && (!type   || rt === type)
-          && (!search || tx.includes(search));
-    row.style.display = ok ? '' : 'none';
-    if (ok) visible++;
+      if (!isOpen) {
+        body.classList.add('open');
+        header.classList.add('open');
+      }
+    });
   });
-  document.getElementById('count' + cap).textContent = visible + ' entries';
-  document.getElementById('no'    + cap).style.display = visible === 0 ? 'block' : 'none';
-}
 
-// Accordion behavior
-document.querySelectorAll('.accordion-header').forEach(header => {
-  header.addEventListener('click', () => {
-    const targetId = header.getAttribute('data-target');
-    const content = document.getElementById('content-' + targetId);
-    const isActive = content.classList.contains('active');
-
-    // Close others
-    document.querySelectorAll('.accordion-content').forEach(c => c.classList.remove('active'));
-    document.querySelectorAll('.accordion-header').forEach(h => h.classList.remove('active'));
-
-    // Toggle clicked one
-    if (!isActive) {
-      content.classList.add('active');
-      header.classList.add('active');
+  // Open first accordion by default
+  (function() {
+    var first = document.querySelector('.acc-header');
+    if (first) {
+      first.classList.add('open');
+      var sec = first.getAttribute('data-section');
+      document.getElementById('body-' + sec).classList.add('open');
     }
+  })();
+
+  // ── Chip filters ───────────────────────────────────────────────────────────
+  document.getElementById('chipRead').querySelectorAll('.chip').forEach(function(chip) {
+    chip.addEventListener('click', function() { setChip('read', this); });
   });
-});
+  document.getElementById('chipWrite').querySelectorAll('.chip').forEach(function(chip) {
+    chip.addEventListener('click', function() { setChip('write', this); });
+  });
+
+  function setChip(section, el) {
+    var cap = section.charAt(0).toUpperCase() + section.slice(1);
+    document.getElementById('chip' + cap).querySelectorAll('.chip').forEach(function(c) { c.classList.remove('active'); });
+    el.classList.add('active');
+    activePrefixes[section] = el.dataset.prefix;
+    applyFilters(section);
+  }
+
+  function applyFilters(section) {
+    var cap    = section.charAt(0).toUpperCase() + section.slice(1);
+    var search = document.getElementById('search' + cap).value.toLowerCase();
+    var type   = document.getElementById('type'   + cap).value;
+    var rows   = document.getElementById('tbody'  + cap).querySelectorAll('tr');
+    var visible = 0;
+    rows.forEach(function(row) {
+      var rp = row.dataset.prefix || 'other';
+      var rt = row.dataset.type   || '';
+      var tx = row.textContent.toLowerCase();
+      var ok = (activePrefixes[section] === 'all' || rp === activePrefixes[section])
+            && (!type   || rt === type)
+            && (!search || tx.includes(search));
+      row.style.display = ok ? '' : 'none';
+      if (ok) visible++;
+    });
+    document.getElementById('count' + cap).textContent = visible + ' entries';
+    document.getElementById('no'    + cap).style.display = visible === 0 ? 'block' : 'none';
+  }
 </script>
 </body>
 </html>"""
@@ -516,6 +488,10 @@ document.querySelectorAll('.accordion-header').forEach(header => {
                     reportName           : 'SNMP Validation Report'
                 ])
 
+                echo "-----------------------------------------"
+                echo " Post Actions"
+                echo "-----------------------------------------"
+
                 if (fileExists('SNMP_Validation.json')) {
                     def jsonReport = readJSON file: 'SNMP_Validation.json'
                     def status     = jsonReport.overall_status ?: "UNKNOWN"
@@ -541,52 +517,91 @@ document.querySelectorAll('.accordion-header').forEach(header => {
                     def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
                     echo "Sending report email to: ${userEmail}"
 
+                    def istZone  = TimeZone.getTimeZone("Asia/Kolkata")
+                    def genTime  = new Date().format("dd MMM yyyy, HH:mm:ss z", istZone)
+
                     def emailBody = """
 <html>
-<body style="font-family: Arial, Helvetica, sans-serif; color: #333; line-height: 1.6;">
-  <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; background: #ffffff;">
-    <h2 style="color: #1a56db; margin-top: 0;">SNMP Validation – Jenkins Notification</h2>
-
-    <p><strong>Build:</strong> ${currentBuild.fullDisplayName}</p>
-    <p><strong>Status:</strong>
-      <span style="color: ${currentBuild.currentResult == 'SUCCESS' ? '#28a745' : '#dc3545'}; font-weight: bold;">
-        ${currentBuild.currentResult}
-      </span>
-    </p>
-    <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
-
-    <p><strong>SNMP Status:</strong> ${status}</p>
-    <p><strong>OIDs Read:</strong> ${readCount}</p>
-    <p><strong>OIDs Write:</strong> ${writeCount}</p>
-
-    <h3 style="margin-top: 24px; color: #444;">Quick Links</h3>
-    <ul style="padding-left: 20px; margin: 8px 0;">
-      <li><a href="${env.BUILD_URL}SNMP_Validation_Report" style="color: #1a56db; text-decoration: none;">View HTML Report</a></li>
-      <li><a href="${env.BUILD_URL}" style="color: #1a56db; text-decoration: none;">Open Build Page</a></li>
-      <li><a href="${env.BUILD_URL}console" style="color: #1a56db; text-decoration: none;">View Console Output</a></li>
-    </ul>
-
-    <p style="margin-top: 32px; font-size: 13px; color: #777; border-top: 1px solid #eee; padding-top: 16px;">
-      This is an automated notification from Jenkins.<br>
-      Generated on ${new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))}
-    </p>
+<body style="font-family: 'Segoe UI', Arial, sans-serif; color: #1f2937; line-height: 1.6; background: #f9fafb;">
+  <div style="max-width: 620px; margin: 0 auto; padding: 24px;">
+    <div style="background: linear-gradient(135deg,#1d4ed8,#3b82f6); border-radius: 12px 12px 0 0; padding: 28px 32px;">
+      <h2 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">SNMP Validation — Jenkins Notification</h2>
+      <p style="color: #bfdbfe; margin: 6px 0 0; font-size: 14px;">${currentBuild.fullDisplayName}</p>
+    </div>
+    <div style="background: #fff; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px; padding: 28px 32px;">
+      <table style="width:100%; border-collapse:collapse; margin-bottom:24px;">
+        <tr>
+          <td style="padding:10px 0; border-bottom:1px solid #f3f4f6; font-weight:600; color:#374151; width:45%;">Build Status</td>
+          <td style="padding:10px 0; border-bottom:1px solid #f3f4f6;">
+            <span style="background:${currentBuild.currentResult == 'SUCCESS' ? '#d1fae5' : '#fee2e2'};
+                         color:${currentBuild.currentResult == 'SUCCESS' ? '#065f46' : '#991b1b'};
+                         padding:4px 14px; border-radius:999px; font-weight:700; font-size:13px;">
+              ${currentBuild.currentResult}
+            </span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:10px 0; border-bottom:1px solid #f3f4f6; font-weight:600; color:#374151;">SNMP Status</td>
+          <td style="padding:10px 0; border-bottom:1px solid #f3f4f6;">
+            <span style="background:${status == 'PASS' ? '#d1fae5' : '#fee2e2'};
+                         color:${status == 'PASS' ? '#065f46' : '#991b1b'};
+                         padding:4px 14px; border-radius:999px; font-weight:700; font-size:13px;">${status}</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:10px 0; border-bottom:1px solid #f3f4f6; font-weight:600; color:#374151;">Started By</td>
+          <td style="padding:10px 0; border-bottom:1px solid #f3f4f6;">${buildUserName} (${buildUserId})</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 0; border-bottom:1px solid #f3f4f6; font-weight:600; color:#374151;">OIDs Collected (Read)</td>
+          <td style="padding:10px 0; border-bottom:1px solid #f3f4f6; font-family:monospace;">${readCount}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 0; font-weight:600; color:#374151;">OIDs Collected (Write)</td>
+          <td style="padding:10px 0; font-family:monospace;">${writeCount}</td>
+        </tr>
+      </table>
+      <h3 style="font-size:15px; color:#374151; margin-bottom:12px;">Quick Links</h3>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <a href="${env.BUILD_URL}SNMP_Validation_Report"
+           style="background:#eff6ff; border:1px solid #bfdbfe; color:#1d4ed8; padding:10px 16px;
+                  border-radius:8px; text-decoration:none; font-weight:600; font-size:14px;">
+          &#128196; View HTML Report
+        </a>
+        <a href="${env.BUILD_URL}"
+           style="background:#f8fafc; border:1px solid #e2e8f0; color:#374151; padding:10px 16px;
+                  border-radius:8px; text-decoration:none; font-weight:600; font-size:14px;">
+          &#128279; Open Build Page
+        </a>
+        <a href="${env.BUILD_URL}console"
+           style="background:#f8fafc; border:1px solid #e2e8f0; color:#374151; padding:10px 16px;
+                  border-radius:8px; text-decoration:none; font-weight:600; font-size:14px;">
+          &#128196; Console Output
+        </a>
+      </div>
+      <p style="margin-top:28px; font-size:12px; color:#9ca3af; border-top:1px solid #f3f4f6; padding-top:16px;">
+        Automated notification generated on ${genTime}
+      </p>
+    </div>
   </div>
 </body>
-</html>
-"""
+</html>"""
 
                     emailext(
-                        subject            : "Jenkins: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                        subject            : "Jenkins: ${currentBuild.fullDisplayName} — ${currentBuild.currentResult}",
                         body               : emailBody,
                         to                 : userEmail,
                         mimeType           : 'text/html',
                         attachmentsPattern : "SNMP_Validation.html, SNMP_Validation.json"
                     )
                 } else {
-                    echo "SNMP_Validation.json not found — skipping report parsing and email."
+                    echo "SNMP_Validation.json not found — skipping email."
                 }
 
                 sh 'rm -f snmp_validation.log || true'
+                echo "-----------------------------------------"
+                echo " Script Done!"
+                echo "-----------------------------------------"
             }
         }
         success { echo "SNMP Validation — SUCCESS" }
