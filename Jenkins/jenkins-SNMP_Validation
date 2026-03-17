@@ -411,6 +411,80 @@ function toggleRow(btn) {
                     reportFiles          : 'SNMP_Validation.html',
                     reportName           : 'SNMP Validation Report'
                 ])
+
+                if (fileExists('SNMP_Validation.json')) {
+                    def jsonReport = readJSON file: 'SNMP_Validation.json'
+                    def status     = jsonReport.overall_status ?: "UNKNOWN"
+
+                    // Parse counts from the new unified_data structure
+                    def unifiedData = jsonReport.unified_data ?: []
+                    def readCount   = unifiedData.count { it.read_ok }
+                    def writeCount  = unifiedData.count { it.write_ok }
+
+                    def buildCauses   = currentBuild.getBuildCauses()
+                    def userCause     = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+                    def buildUserName = userCause?.userName ?: "Unknown User"
+                    def buildUserId   = userCause?.userId   ?: "unknown"
+
+                    def userEmails = [
+                        "puneet"  : "puneet.sharma@senao.com",
+                        "harman"  : "harmanjot.singh@senao.com",
+                        "mahesh"  : "mahesh.battala@senao.com",
+                        "sandeep" : "sandeep.manchikanti@senao.com",
+                        "sampath" : "sampath.marella@senao.com",
+                        "jayanth" : "jayanth.munnaluru@senao.com",
+                        "srilatha": "srilatha.tadiboina@senao.com",
+                        "phani"   : "phani.darla@senao.com",
+                        "dinesh"  : "dinesh.redddy@senao.com"
+                    ]
+                    def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+                    echo "Sending report email to: ${userEmail}"
+
+                    def emailBody = """
+<html>
+<body style="font-family: Arial, Helvetica, sans-serif; color: #333; line-height: 1.6;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; background: #ffffff;">
+    <h2 style="color: #1a56db; margin-top: 0;">SNMP Validation – Jenkins Notification</h2>
+
+    <p><strong>Build:</strong> ${currentBuild.fullDisplayName}</p>
+    <p><strong>Status:</strong>
+      <span style="color: ${currentBuild.currentResult == 'SUCCESS' ? '#28a745' : '#dc3545'}; font-weight: bold;">
+        ${currentBuild.currentResult}
+      </span>
+    </p>
+    <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
+
+    <p><strong>SNMP Status:</strong> ${status}</p>
+    <p><strong>OIDs Read:</strong> ${readCount}</p>
+    <p><strong>OIDs Write:</strong> ${writeCount}</p>
+
+    <h3 style="margin-top: 24px; color: #444;">Quick Links</h3>
+    <ul style="padding-left: 20px; margin: 8px 0;">
+      <li><a href="${env.BUILD_URL}SNMP_Validation_Report" style="color: #1a56db; text-decoration: none;">View HTML Report</a></li>
+      <li><a href="${env.BUILD_URL}" style="color: #1a56db; text-decoration: none;">Open Build Page</a></li>
+      <li><a href="${env.BUILD_URL}console" style="color: #1a56db; text-decoration: none;">View Console Output</a></li>
+    </ul>
+
+    <p style="margin-top: 32px; font-size: 13px; color: #777; border-top: 1px solid #eee; padding-top: 16px;">
+      This is an automated notification from Jenkins.<br>
+      Generated on ${new Date().format("dd MMM yyyy, HH:mm:ss z", TimeZone.getTimeZone("Asia/Kolkata"))}
+    </p>
+  </div>
+</body>
+</html>
+"""
+
+                    emailext(
+                        subject            : "Jenkins: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                        body               : emailBody,
+                        to                 : userEmail,
+                        mimeType           : 'text/html',
+                        attachmentsPattern : "SNMP_Validation.html, SNMP_Validation.json"
+                    )
+                } else {
+                    echo "SNMP_Validation.json not found — skipping report parsing and email."
+                }
+
                 sh 'rm -f snmp_validation.log || true'
             }
         }
