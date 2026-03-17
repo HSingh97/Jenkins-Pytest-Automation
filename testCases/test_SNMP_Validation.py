@@ -83,8 +83,6 @@ def load_mib_with_snmptranslate(mib_path):
         return oid_to_name
 
     try:
-        # Prefixing the file path with '+' tells net-snmp to bypass
-        # standard directory checks and forcefully load this specific file.
         cmd = f"snmptranslate -Tz -m '+{mib_path}'"
         log_print(f"Executing: {cmd}")
 

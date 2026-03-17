@@ -27,26 +27,24 @@ pipeline {
                         error("Validation Failed: Local IP Address, Read Community, and Write Community parameters MUST be provided.")
                     }
 
-                    // Smart-Find the uploaded MIB file (handles original filenames with spaces)
-                    def findMibCmd = '''
-                        if [ -f "MIB_File" ]; then
-                            echo "MIB_File"
-                        else
-                            ls -1 *.mib 2>/dev/null | head -n 1
-                        fi
-                    '''
-                    def foundFileName = sh(script: findMibCmd, returnStdout: true).trim()
+                    // Clean workspace of old files
+                    sh "rm -f *.json *.html *.log *.mib || true"
+                    echo "Workspace cleaned."
 
-                    if (!foundFileName) {
-                        error("❌ CRITICAL ERROR: No MIB file found in workspace! Please ensure you uploaded the file via 'Choose File'.")
+                    // FOOLPROOF FILE TRANSFER WORKAROUND
+                    // Reads the Multi-line string and physically creates the file on the Agent
+                    def mibTextContent = params['MIB_Text'] ?: ''
+                    def mibFilePath = ""
+
+                    if (mibTextContent.trim() != "") {
+                        writeFile file: 'uploaded_senao.mib', text: mibTextContent
+                        mibFilePath = "${env.WORKSPACE}/uploaded_senao.mib"
+                        echo "✅ MIB File successfully generated on Agent from Multi-line String Parameter."
+                    } else {
+                        error("❌ CRITICAL ERROR: No MIB data provided!\n\nSOLUTION:\n1. Edit your Jenkins Job Configuration.\n2. Delete the 'File Parameter'.\n3. Add a 'Multi-line String Parameter' named 'MIB_Text'.\n4. Copy/paste your MIB file contents into that box when building.")
                     }
 
-                    env.MIB_FILE_PATH = "${env.WORKSPACE}/${foundFileName}"
-                    echo "✅ MIB File securely located at: ${env.MIB_FILE_PATH}"
-
-                    // Clean workspace of old reports
-                    sh "rm -f *.json *.html *.log || true"
-                    echo "Workspace cleaned."
+                    env.MIB_FILE_PATH = mibFilePath
                 }
             }
         }
@@ -217,14 +215,15 @@ pipeline {
     }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: var(--bg-page); color: var(--text-main); line-height: 1.6; display: flex; height: 100vh; overflow: hidden; font-size: 15px; }
 
-    /* Left Sidebar */
-    .sidebar { width: 280px; min-width: 280px; background: var(--bg-sidebar); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; height: 100vh; overflow-y: auto; box-shadow: 4px 0 15px rgba(0,0,0,0.02); z-index: 10; }
+    /* Slightly Wider Sidebar (300px) */
+    .sidebar { width: 300px; min-width: 300px; background: var(--bg-sidebar); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; height: 100vh; overflow-y: auto; box-shadow: 4px 0 15px rgba(0,0,0,0.02); z-index: 10; }
 
-    .sidebar-header { padding: 24px 20px 20px 20px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; background: var(--bg-sidebar); border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 20; }
-    .sidebar-header img { height: 38px; object-fit: contain; }
+    /* Logo -> Title -> Build Params */
+    .sidebar-header { padding: 28px 24px 20px 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; background: var(--bg-sidebar); border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 20; }
+    .sidebar-header img { height: 42px; object-fit: contain; }
     .sidebar-header h1 { font-size: 20px; margin: 0; color: var(--text-main); font-weight: 800; line-height: 1.3; }
 
-    .sidebar-section { padding: 20px; border-bottom: 1px solid var(--border-color); }
+    .sidebar-section { padding: 20px 24px; border-bottom: 1px solid var(--border-color); }
     .sidebar-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin: 0 0 14px 0; font-weight: 800; }
 
     .info-card { background: #f8fafc; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; transition: transform 0.2s, box-shadow 0.2s; }
@@ -397,7 +396,6 @@ function applyFilters() {
                     writeFile file: reportFileName, text: htmlContent
                     echo "Report generated: ${reportFileName}"
 
-                    // Pass dynamic filename to an environment variable so post{} block can read it easily
                     env.REPORT_FILE_NAME = reportFileName
                 }
             }
@@ -407,7 +405,6 @@ function applyFilters() {
     post {
         always {
             script {
-                // Archive all json/log/html files since name is dynamic
                 archiveArtifacts artifacts: '*.json, *.html, snmp_validation.log',
                                  fingerprint: true,
                                  allowEmptyArchive: true
