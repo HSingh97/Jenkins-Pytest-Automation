@@ -78,45 +78,73 @@ pipeline {
                     String fileDate = Calendar.getInstance(istZone).getTime().format("yyyyMMdd", istZone)
                     String reportFileName = "HTTPValidation_report_${env.BUILD_ID}_${fileDate}.html"
 
-                    // Build Visibility Matrix Table
+                    // =========================================================
+                    // NEW: Sectioned Visibility Matrix Table
+                    // =========================================================
                     String currentConfigHTML = ""
-                    def allKeys = [] as Set
-                    def userRoles = ["root", "admin", "develop"]
+                    def userRoles = ["admin", "root", "develop"]
+
+                    def allSections = [] as Set
+                    def keysPerSection = [:]
 
                     if (jsonReport.current_configs) {
-                        jsonReport.current_configs.each { role, configs ->
-                            if (configs) allKeys.addAll(configs.keySet())
+                        jsonReport.current_configs.each { role, sections ->
+                            if (sections) {
+                                sections.each { sectionName, configs ->
+                                    allSections.add(sectionName)
+                                    if (!keysPerSection.containsKey(sectionName)) {
+                                        keysPerSection[sectionName] = [] as Set
+                                    }
+                                    if (configs) keysPerSection[sectionName].addAll(configs.keySet())
+                                }
+                            }
                         }
                     }
 
-                    def sortedKeys = allKeys.sort()
+                    def sortedSections = allSections.sort()
 
                     currentConfigHTML += """
+                        <h2 onclick="toggleVisibilityMatrix()" style="cursor:pointer; user-select:none; transition: color 0.2s;" onmouseover="this.style.color='#3b82f6'" onmouseout="this.style.color='#0f172a'">
+                            <span id="icon-matrix" style="color:#3b82f6; font-family:monospace; font-weight:900;">[-]</span> Visibility Matrix
+                        </h2>
+                        <div id="visibility-matrix-container" style="transition: all 0.3s ease;">
                         <table style="margin-top: 15px;">
                             <tr>
                                 <th width="40%">Parameter Element</th>
-                                <th width="20%" style="text-align:center; background-color:#eff6ff; color:#1e3a8a;">Root</th>
                                 <th width="20%" style="text-align:center; background-color:#fefce8; color:#92400e;">Admin</th>
+                                <th width="20%" style="text-align:center; background-color:#eff6ff; color:#1e3a8a;">Root</th>
                                 <th width="20%" style="text-align:center; background-color:#f0fdf4; color:#166534;">Develop</th>
                             </tr>
                     """
 
-                    if (sortedKeys.size() > 0) {
-                        sortedKeys.each { uiName ->
-                            currentConfigHTML += "<tr>\n"
-                            currentConfigHTML += "<td><strong>${uiName}</strong></td>\n"
+                    if (sortedSections.size() > 0) {
+                        sortedSections.each { sectionName ->
+                            currentConfigHTML += """
+                                <tr style="background-color:#e2e8f0;">
+                                    <td colspan="4" style="font-weight:700; color:#0f172a; padding: 10px 18px;">📂 ${sectionName}</td>
+                                </tr>
+                            """
 
-                            userRoles.each { role ->
-                                boolean isVisible = jsonReport.current_configs[role] && jsonReport.current_configs[role].containsKey(uiName)
-                                def icon = isVisible ? "<span style='color:#10b981; font-size:18px; font-weight:bold;'>&#10003;</span>" : "<span style='color:#ef4444; font-size:18px; font-weight:bold;'>&#10007;</span>"
-                                currentConfigHTML += "<td style='text-align:center;'>${icon}</td>\n"
+                            def sortedKeys = keysPerSection[sectionName].sort()
+                            sortedKeys.each { uiName ->
+                                currentConfigHTML += "<tr>\n"
+                                currentConfigHTML += "<td style='padding-left: 30px;'><strong>${uiName}</strong></td>\n"
+
+                                userRoles.each { role ->
+                                    boolean isVisible = jsonReport.current_configs[role] &&
+                                                        jsonReport.current_configs[role][sectionName] &&
+                                                        jsonReport.current_configs[role][sectionName].containsKey(uiName)
+                                    def icon = isVisible ? "<span style='color:#10b981; font-size:18px; font-weight:bold;'>&#10003;</span>" : "<span style='color:#ef4444; font-size:18px; font-weight:bold;'>&#10007;</span>"
+                                    currentConfigHTML += "<td style='text-align:center;'>${icon}</td>\n"
+                                }
+                                currentConfigHTML += "</tr>\n"
                             }
-                            currentConfigHTML += "</tr>\n"
                         }
                     } else {
                         currentConfigHTML += "<tr><td colspan='4' style='text-align:center; color:#64748b;'>No configurations found.</td></tr>"
                     }
-                    currentConfigHTML += "</table>"
+                    currentConfigHTML += "</table></div>"
+                    // =========================================================
 
                     String htmlContent = """
                     <html>
@@ -127,7 +155,6 @@ pipeline {
                             body { font-family: 'Inter', -apple-system, sans-serif; margin: 0; padding: 0; background-color: #f4f7f6; color: #1f2937; }
                             .container { max-width: 1200px; margin: 30px auto; padding: 30px; background: #ffffff; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); }
                             .header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #ffffff 0%, #f0f4f8 100%); padding: 30px 40px; border: 1px solid #e2e8f0; border-radius: 12px; }
-                            /* Reduced logo size to 45px per request */
                             .header img { height: 45px; transition: transform 0.3s ease; }
                             .header img:hover { transform: scale(1.05); }
                             .header-info { text-align: right; }
@@ -178,6 +205,19 @@ pipeline {
                             function showLog(logDataId) { document.getElementById('log-content-pre').innerHTML = document.getElementById(logDataId).innerHTML; document.getElementById('logModal').style.display = 'block'; }
                             function closeModal() { document.getElementById('logModal').style.display = 'none'; }
                             window.onclick = function(event) { if (event.target == document.getElementById('logModal')) closeModal(); }
+
+                            // NEW: Toggle for entire matrix
+                            function toggleVisibilityMatrix() {
+                                var container = document.getElementById('visibility-matrix-container');
+                                var icon = document.getElementById('icon-matrix');
+                                if (container.style.display === 'none') {
+                                    container.style.display = 'block';
+                                    icon.innerHTML = '[-]';
+                                } else {
+                                    container.style.display = 'none';
+                                    icon.innerHTML = '[+]';
+                                }
+                            }
 
                             function toggleSection(paramId) {
                                 var rows = document.querySelectorAll('.row-' + paramId);
@@ -259,7 +299,6 @@ pipeline {
 
                             <br><hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 30px 0;">
 
-                            <h2>Visibility Matrix</h2>
                             ${currentConfigHTML}
 
                             <br><hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 30px 0;">
@@ -283,7 +322,6 @@ pipeline {
                         groupedByParam.each { paramName, results ->
                             def safeParamId = paramName.replaceAll("\\s+","_").replaceAll("[^a-zA-Z0-9_]","")
 
-                            // Check if all iterations under this parameter passed
                             boolean allPass = results.every { it.status == "PASS" }
                             String overallStatusHtml = allPass ? "<span class='status-pass' style='font-size:11px;'>ALL PASS</span>" : "<span class='status-fail' style='font-size:11px;'>FAIL DETECTED</span>"
 
@@ -317,7 +355,6 @@ pipeline {
 
                                 def logButton = "<button class='log-button' onclick=\"showLog('${logDataId}')\">See Logs</button>"
 
-                                // Set initially hidden with inline style display:none
                                 tableRows += """
                                     <tr class="row-${safeParamId}" data-status="${rawStatus}" style="display:none;">
                                         <td>${iteration}</td>
