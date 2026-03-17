@@ -13,7 +13,6 @@ pipeline {
                     def deviceIP       = (params.Device_IP       ?: '').toString().trim()
                     def readCommunity  = (params.Read_Community  ?: '').toString().trim()
                     def writeCommunity = (params.Write_Community ?: '').toString().trim()
-                    def mibFileName    = (params.MIB_File        ?: '').toString().trim()
                     def mibFilePath    = "${env.WORKSPACE}/${mibFileName}"
 
                     echo "========================================"
@@ -22,7 +21,7 @@ pipeline {
                     echo " DEVICE IP       : ${deviceIP}"
                     echo " READ COMMUNITY  : ${readCommunity}"
                     echo " WRITE COMMUNITY : ${writeCommunity}"
-                    echo " MIB FILE        : ${mibFilePath}"
+                    echo " MIB FILE        : ${(params.MIB_File ?: '').toString().trim()}"
                     echo " TARGET STAND    : ${params.TARGET_STAND}"
                     echo "========================================"
 
@@ -60,34 +59,14 @@ pipeline {
                     def deviceIP       = (params.Device_IP       ?: '').toString().trim()
                     def readCommunity  = (params.Read_Community  ?: '').toString().trim()
                     def writeCommunity = (params.Write_Community ?: '').toString().trim()
-                    def mibFileName    = (params.MIB_File        ?: '').toString().trim()
                     def scriptPath     = "testCases/test_SNMP_Validation.py"
 
-                    // Jenkins File Parameter places the uploaded file in fileParameters dir.
-                    // Spaces in job names break shell tests, so we use Python to find the file.
-                    def mibFilePath = sh(script: """
-                        python3 -c "
-import os, glob
-build_num = '${env.BUILD_NUMBER}'
-job_path  = '${env.JOB_NAME}'.replace('/', '/jobs/')
-base      = '/var/lib/jenkins/jobs/' + job_path + '/builds/' + build_num + '/fileParameters/MIB_File'
-# Search the fileParameters dir for this build
-matches = glob.glob(base + '/*')
-if matches:
-    print(matches[0])
-    raise SystemExit(0)
-# Fallback: search all builds for MIB_File param, pick most recent
-all_builds = glob.glob('/var/lib/jenkins/jobs/' + job_path + '/builds/*/fileParameters/MIB_File/*')
-all_builds.sort(reverse=True)
-if all_builds:
-    print(all_builds[0])
-    raise SystemExit(0)
-print('/dev/null')
-"
-                    """, returnStdout: true).trim()
 
-                    if (mibFilePath == '/dev/null') {
-                        echo "[WARN] MIB file not found — OID names will be empty"
+                    def mibFilePath = (params.MIB_File ?: '').toString().trim()
+                    def mibOk = sh(script: "test -f '${mibFilePath}' && echo yes || echo no", returnStdout: true).trim()
+                    if (mibOk != 'yes') {
+                        echo "[WARN] MIB file not found at: ${mibFilePath} — OID names will be empty"
+                        mibFilePath = "/dev/null"
                     } else {
                         echo "[OK] MIB file: ${mibFilePath}"
                     }
