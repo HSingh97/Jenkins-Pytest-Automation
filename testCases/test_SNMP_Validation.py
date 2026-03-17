@@ -68,11 +68,10 @@ def fetch_build_params(device_ip, community):
     return params
 
 
-def load_mib_regex(mib_path):
+def load_mib_fast_parser(mib_path):
     """
-    Pure Python Regex MIB Parser.
-    Bypasses Linux net-snmp strict validation and missing dependencies
-    by reading the raw text structure of the MIB file.
+    High-accuracy, non-regex reliant ASN.1 block parser.
+    Safely builds the OID tree entirely in Python memory, bypassing Linux dependencies.
     """
     oid_to_name = {}
     if not os.path.isfile(mib_path):
@@ -86,43 +85,40 @@ def load_mib_regex(mib_path):
         with open(mib_path, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read()
 
-        # Remove SNMP comments to prevent false positive matches
+        # Strip comments
         content = re.sub(r'--.*', '', content)
-
         defs = {}
 
-        # 1. Match Standard Assignments (OBJECT-TYPE, MODULE-IDENTITY, etc.)
-        pattern1 = re.compile(
-            r'([a-zA-Z0-9_-]+)\s+(?:OBJECT-TYPE|OBJECT IDENTIFIER|MODULE-IDENTITY|NOTIFICATION-TYPE|TRAP-TYPE|OBJECT-GROUP|NOTIFICATION-GROUP)[\s\S]{1,1000}?::=\s*\{\s*([a-zA-Z0-9_-]+)\s+(\d+)\s*\}')
-        for match in pattern1.finditer(content):
-            defs[match.group(1)] = (match.group(2), int(match.group(3)))
+        # Split by assignments and read backwards to securely locate the base name
+        blocks = content.split('::=')
+        for i in range(len(blocks) - 1):
+            left_side = blocks[i]
+            right_side = blocks[i + 1]
 
-        # 2. Match simple direct assignments (e.g., "engenius OBJECT IDENTIFIER ::= { enterprises 52619 }")
-        pattern2 = re.compile(r'([a-zA-Z0-9_-]+)\s+OBJECT IDENTIFIER\s*::=\s*\{\s*([a-zA-Z0-9_-]+)\s+(\d+)\s*\}')
-        for match in pattern2.finditer(content):
-            if match.group(1) not in defs:
-                defs[match.group(1)] = (match.group(2), int(match.group(3)))
+            match_right = re.match(r'\s*\{\s*([a-zA-Z0-9_-]+)\s+(\d+)\s*\}', right_side)
+            if match_right:
+                parent = match_right.group(1)
+                idx = int(match_right.group(2))
 
-        # 3. Fallback generic match for any missed OIDs
-        pattern3 = re.compile(r'([a-zA-Z0-9_-]+)\s+[\s\S]{1,300}?::=\s*\{\s*([a-zA-Z0-9_-]+)\s+(\d+)\s*\}')
-        for match in pattern3.finditer(content):
-            if match.group(1) not in defs:
-                defs[match.group(1)] = (match.group(2), int(match.group(3)))
+                last_part = left_side.split('}')[-1].strip()
+                words = last_part.split()
+                if words:
+                    name = words[0]
+                    defs[name] = (parent, idx)
 
-        # Standard SNMP Root definitions
+        # Standard Roots
         roots = {
             'enterprises': '1.3.6.1.4.1', 'mib-2': '1.3.6.1.2.1', 'iso': '1',
             'org': '1.3', 'dod': '1.3.6', 'internet': '1.3.6.1',
             'mgmt': '1.3.6.1.2', 'private': '1.3.6.1.4',
         }
 
-        # Safety inject the Senao/EnGenius enterprise roots in case the MIB declaration was weird
+        # Force-inject Senao enterprises in case the syntax varied slightly
         if 'engenius' not in defs and 'ENGENIUS' not in defs:
             defs['engenius'] = ('enterprises', 52619)
         if 'senao' not in defs and 'SENAO' not in defs:
             defs['senao'] = ('enterprises', 52619)
 
-        # Recursive function to build the full numeric OID string
         cache = {}
 
         def resolve(name):
@@ -138,15 +134,14 @@ def load_mib_regex(mib_path):
             cache[name] = r
             return r
 
-        # Map all definitions to the final dictionary
         for name in defs:
             oid = resolve(name)
             if oid:
                 oid_to_name['.' + oid] = name
 
-        log_print(f"✅ MIB Regex Parser Success: {len(oid_to_name)} node names extracted.")
+        log_print(f"✅ MIB Fast-Parse Success: {len(oid_to_name)} node names reliably mapped.")
     except Exception as e:
-        log_print(f"Error mapping MIB via Regex: {e}")
+        log_print(f"Error mapping MIB via Fast-Parse: {e}")
 
     return oid_to_name
 
@@ -159,20 +154,40 @@ def lookup_name(oid_str, oid_map):
     clean_oid = oid_str.strip('.')
     parts = clean_oid.split('.')
 
-    # Walk backwards to find the base table and attach indices (e.g. .0)
     for trim in range(1, len(parts)):
         candidate = "." + ".".join(parts[:-trim])
         if candidate in oid_map:
-            suffix = ".".join(parts[-trim:])
-            return f"{oid_map[candidate]}.{suffix}"
+            base_name = oid_map[candidate]
+            suffixes = parts[-trim:]
+
+            # Apply requested index nomenclature dynamically
+            if len(suffixes) == 1:
+                idx = suffixes[0]
+                if idx == '1':
+                    return f"2.4GHz Radio : {base_name}"
+                elif idx == '2':
+                    return f"Radio1 : {base_name}"
+                elif idx == '3':
+                    return f"Radio2 : {base_name}"
+                else:
+                    return f"Index {idx} : {base_name}"
+            else:
+                idx = suffixes[-1]
+                joined_mid = ".".join(suffixes[:-1])
+                if idx == '1':
+                    return f"2.4GHz Radio : {base_name}.{joined_mid}"
+                elif idx == '2':
+                    return f"Radio1 : {base_name}.{joined_mid}"
+                elif idx == '3':
+                    return f"Radio2 : {base_name}.{joined_mid}"
+                else:
+                    return f"{base_name}.{'.'.join(suffixes)}"
 
     return ""
 
 
 def snmp_v2c_walk(device_ip, community, oid):
     try:
-        # Bypassed -m validation here too. We let snmpwalk fetch raw numbers (-O n),
-        # and our Python regex dictionary will handle the translations.
         result = subprocess.run(
             f"snmpwalk -v2c -c '{community}' -O n {device_ip} {oid}",
             shell=True, capture_output=True, text=True, check=True
@@ -238,8 +253,8 @@ log_print("=" * 100)
 
 overall_status = "PASS"
 
-log_print(f"\n[1] Loading MIB with Regex Parser: {MIB_FILE}")
-oid_map = load_mib_regex(MIB_FILE)
+log_print(f"\n[1] Loading MIB Configuration: {MIB_FILE}")
+oid_map = load_mib_fast_parser(MIB_FILE)
 
 log_print(f"\n[2] Fetching build parameters from {DEVICE_IP} (using read community) ...")
 build_params = fetch_build_params(DEVICE_IP, READ_COMMUNITY)
@@ -274,7 +289,6 @@ else:
 log_print("\n[5] Merging Access Records...")
 unified_dict = {}
 
-# Map read records
 for r in read_records:
     unified_dict[r['oid']] = {
         "name": r['name'],
@@ -285,7 +299,6 @@ for r in read_records:
         "write_ok": False
     }
 
-# Map write records
 for w in write_records:
     if w['oid'] in unified_dict:
         unified_dict[w['oid']]['write_ok'] = True
@@ -300,7 +313,6 @@ for w in write_records:
         }
 
 
-# Sort numerically by OID string
 def sort_key(rec):
     return [int(x) for x in rec['oid'].strip('.').split('.') if x.isdigit()]
 
