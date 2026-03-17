@@ -60,30 +60,38 @@ pipeline {
                     def writeCommunity = (params['Write Community'] ?: '').toString().trim()
                     def scriptPath     = "testCases/test_SNMP_Validation.py"
 
-                    // Jenkins File Parameter: the uploaded file is placed directly in
-                    // the workspace with its original filename. params['MIB File'] gives that filename.
-                    // Pattern from example: treat the param value as the file reference and mv to fixed name.
-                    def customMibFile = params['MIB File']
-                    def mibFilePath   = "${env.WORKSPACE}/SENAO-MIB.mib"
+                    // Jenkins File Parameter stores uploaded file at:
+                    // /var/lib/jenkins/jobs/<job>/builds/<N>/fileParameters/<paramName>/<filename>
+                    // We copy it to workspace so Python can read it.
+                    def mibFilePath = "${env.WORKSPACE}/SENAO-MIB.mib"
 
-                    if (customMibFile) {
-                        sh "mv -f '${customMibFile}' '${mibFilePath}' 2>/dev/null || true"
-                    }
+                    sh """
+                        # Build the exact fileParameters directory path
+                        JOB_ESCAPED=\$(echo "${env.JOB_NAME}" | sed 's|/|/jobs/|g')
+                        MIB_DIR="/var/lib/jenkins/jobs/\${JOB_ESCAPED}/builds/${env.BUILD_NUMBER}/fileParameters/MIB File"
 
-                    // If mv didn't work (File Param returns name not path), try workspace root
-                    def mibOk = sh(script: "test -f '${mibFilePath}' && echo yes || echo no", returnStdout: true).trim()
-                    if (mibOk != 'yes') {
-                        // Jenkins File Parameter copies the file to workspace with original name
-                        sh """
-                            FILE=\$(ls -1 '${env.WORKSPACE}'/*.mib '${env.WORKSPACE}'/*.MIB 2>/dev/null | head -1)
-                            if [ -n "\$FILE" ]; then
-                                cp "\$FILE" '${mibFilePath}'
-                                echo "[OK] MIB found in workspace: \$FILE"
+                        echo "Looking in: \${MIB_DIR}"
+
+                        if [ -d "\${MIB_DIR}" ]; then
+                            MIB_FILE=\$(ls -1 "\${MIB_DIR}/" 2>/dev/null | head -1)
+                            if [ -n "\${MIB_FILE}" ]; then
+                                cp "\${MIB_DIR}/\${MIB_FILE}" '${mibFilePath}'
+                                echo "[OK] MIB copied: \${MIB_FILE}"
                             fi
-                        """
-                        mibOk = sh(script: "test -f '${mibFilePath}' && echo yes || echo no", returnStdout: true).trim()
-                    }
+                        else
+                            echo "Directory not found, trying alternate name..."
+                            MIB_DIR2="/var/lib/jenkins/jobs/\${JOB_ESCAPED}/builds/${env.BUILD_NUMBER}/fileParameters/MIB_File"
+                            if [ -d "\${MIB_DIR2}" ]; then
+                                MIB_FILE=\$(ls -1 "\${MIB_DIR2}/" 2>/dev/null | head -1)
+                                if [ -n "\${MIB_FILE}" ]; then
+                                    cp "\${MIB_DIR2}/\${MIB_FILE}" '${mibFilePath}'
+                                    echo "[OK] MIB copied from alt path: \${MIB_FILE}"
+                                fi
+                            fi
+                        fi
+                    """
 
+                    def mibOk = sh(script: "test -f '${mibFilePath}' && echo yes || echo no", returnStdout: true).trim()
                     if (mibOk == 'yes') {
                         echo "[OK] Using MIB file: ${mibFilePath}"
                     } else {
