@@ -63,35 +63,33 @@ pipeline {
                     def mibFileName    = (params.MIB_File        ?: '').toString().trim()
                     def scriptPath     = "testCases/test_SNMP_Validation.py"
 
-                    def mibFilePath = ""
-                    def mibDir = "/var/lib/jenkins/jobs/${env.JOB_NAME.replace('/', '/jobs/')}/builds/${env.BUILD_NUMBER}/fileParameters/MIB_File"
-
-                    def mibFound = sh(script: """
-                        if [ -d "${mibDir}" ]; then
-                            ls -1 "${mibDir}/" | head -1
-                        fi
+                    // Jenkins File Parameter places the uploaded file in fileParameters dir.
+                    // Spaces in job names break shell tests, so we use Python to find the file.
+                    def mibFilePath = sh(script: """
+                        python3 -c "
+import os, glob
+build_num = '${env.BUILD_NUMBER}'
+job_path  = '${env.JOB_NAME}'.replace('/', '/jobs/')
+base      = '/var/lib/jenkins/jobs/' + job_path + '/builds/' + build_num + '/fileParameters/MIB_File'
+# Search the fileParameters dir for this build
+matches = glob.glob(base + '/*')
+if matches:
+    print(matches[0])
+    raise SystemExit(0)
+# Fallback: search all builds for MIB_File param, pick most recent
+all_builds = glob.glob('/var/lib/jenkins/jobs/' + job_path + '/builds/*/fileParameters/MIB_File/*')
+all_builds.sort(reverse=True)
+if all_builds:
+    print(all_builds[0])
+    raise SystemExit(0)
+print('/dev/null')
+"
                     """, returnStdout: true).trim()
 
-                    if (mibFound) {
-                        mibFilePath = "${mibDir}/${mibFound}"
-                        echo "[OK] MIB file found: ${mibFilePath}"
-                    } else {
-                        // Fallback: search entire Jenkins builds for MIB_File param dir
-                        def broadSearch = sh(script: """
-                            find /var/lib/jenkins/jobs -path "*/fileParameters/MIB_File" -type d 2>/dev/null | sort -r | head -1
-                        """, returnStdout: true).trim()
-                        if (broadSearch) {
-                            def broadFile = sh(script: "ls -1 '${broadSearch}/' | head -1", returnStdout: true).trim()
-                            if (broadFile) {
-                                mibFilePath = "${broadSearch}/${broadFile}"
-                                echo "[OK] MIB file found (broad search): ${mibFilePath}"
-                            }
-                        }
-                    }
-
-                    if (!mibFilePath) {
+                    if (mibFilePath == '/dev/null') {
                         echo "[WARN] MIB file not found — OID names will be empty"
-                        mibFilePath = "/dev/null"
+                    } else {
+                        echo "[OK] MIB file: ${mibFilePath}"
                     }
 
                     echo "========================================"
