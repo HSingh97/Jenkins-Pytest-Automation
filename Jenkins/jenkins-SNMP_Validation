@@ -10,10 +10,10 @@ pipeline {
         stage('Preparation') {
             steps {
                 script {
-                    def deviceIP       = (params.Device_IP       ?: '').toString().trim()
-                    def readCommunity  = (params.Read_Community  ?: '').toString().trim()
-                    def writeCommunity = (params.Write_Community ?: '').toString().trim()
-                    def mibFilePath    = "${env.WORKSPACE}/MIB_File"
+                    def deviceIP       = (params['Local IP Address']      ?: '').toString().trim()
+                    def readCommunity  = (params['Read Community']  ?: '').toString().trim()
+                    def writeCommunity = (params['Write Community'] ?: '').toString().trim()
+                    def mibFilePath    = "${env.WORKSPACE}/params['MIB_File']"
 
                     echo "========================================"
                     echo " SNMP Validation — Preparation"
