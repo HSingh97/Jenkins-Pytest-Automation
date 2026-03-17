@@ -21,7 +21,7 @@ pipeline {
         stage('Install Python Dependencies') {
             steps {
                 script {
-                    echo "----------------------------------------"
+                    echo "-----------------------------------------"
                     echo "Installing Dependencies"
                     echo "----------------------------------------"
                     sh "sh utilities/requirements.txt"
