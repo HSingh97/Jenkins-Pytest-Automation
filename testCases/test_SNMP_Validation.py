@@ -7,35 +7,37 @@ import json
 from datetime import datetime
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--device-ip",        required=True)
-parser.add_argument("--read-community",   required=True)
-parser.add_argument("--write-community",  required=True)
-parser.add_argument("--mib-file",         required=True)
+parser.add_argument("--device-ip", required=True)
+parser.add_argument("--read-community", required=True)
+parser.add_argument("--write-community", required=True)
+parser.add_argument("--mib-file", required=True)
 args = parser.parse_args()
 
-DEVICE_IP        = args.device_ip
-READ_COMMUNITY   = args.read_community
-WRITE_COMMUNITY  = args.write_community
-OID              = ".1.3.6.1.4.1.52619.1"
-MIB_FILE         = args.mib_file
-RESULT_FILE      = "SNMP_Validation.json"
-LOG_FILE         = "snmp_validation.log"
+DEVICE_IP = args.device_ip
+READ_COMMUNITY = args.read_community
+WRITE_COMMUNITY = args.write_community
+OID = ".1.3.6.1.4.1.52619.1"
+MIB_FILE = args.mib_file
+RESULT_FILE = "SNMP_Validation.json"
+LOG_FILE = "snmp_validation.log"
 
 BUILD_PARAM_OIDS = {
     "Device Name": ".1.3.6.1.4.1.52619.1.2.2.1.0",
-    "Serial No":   ".1.3.6.1.4.1.52619.1.2.3.1.0",
-    "IP Address":  ".1.3.6.1.4.1.52619.1.1.2.2.0",
-    "FW Major":    ".1.3.6.1.4.1.52619.1.2.3.4.0",
-    "FW Minor":    ".1.3.6.1.4.1.52619.1.2.3.5.0",
-    "FW Release":  ".1.3.6.1.4.1.52619.1.2.3.3.0",
-    "FW Build":    ".1.3.6.1.4.1.52619.1.2.3.7.0",
+    "Serial No": ".1.3.6.1.4.1.52619.1.2.3.1.0",
+    "IP Address": ".1.3.6.1.4.1.52619.1.1.2.2.0",
+    "FW Major": ".1.3.6.1.4.1.52619.1.2.3.4.0",
+    "FW Minor": ".1.3.6.1.4.1.52619.1.2.3.5.0",
+    "FW Release": ".1.3.6.1.4.1.52619.1.2.3.3.0",
+    "FW Build": ".1.3.6.1.4.1.52619.1.2.3.7.0",
 }
+
 
 def log_print(*msg):
     line = " ".join(map(str, msg))
     print(line)
     with open(LOG_FILE, "a") as f:
         f.write(line + "\n")
+
 
 def snmp_get(device_ip, community, oid):
     try:
@@ -53,16 +55,18 @@ def snmp_get(device_ip, community, oid):
     except Exception:
         return "N/A"
 
+
 def fetch_build_params(device_ip, community):
     params = {}
     for label, oid in BUILD_PARAM_OIDS.items():
         params[label] = snmp_get(device_ip, community, oid)
-    maj  = params.pop("FW Major",   "0")
-    min_ = params.pop("FW Minor",   "0")
-    rel  = params.pop("FW Release", "0")
-    bld  = params.pop("FW Build",   "0")
+    maj = params.pop("FW Major", "0")
+    min_ = params.pop("FW Minor", "0")
+    rel = params.pop("FW Release", "0")
+    bld = params.pop("FW Build", "0")
     params["FW Version"] = f"{maj}.{min_}.{rel}.{bld}"
     return params
+
 
 def load_mib(mib_path):
     if not mib_path or not os.path.isfile(mib_path):
@@ -82,6 +86,7 @@ def load_mib(mib_path):
         'mgmt': '1.3.6.1.2', 'private': '1.3.6.1.4',
     }
     cache = {}
+
     def resolve(name):
         if name in cache: return cache[name]
         if name in roots: return roots[name]
@@ -89,7 +94,10 @@ def load_mib(mib_path):
         parent, idx = defs[name]
         p = resolve(parent)
         if p is None: return None
-        r = f"{p}.{idx}"; cache[name] = r; return r
+        r = f"{p}.{idx}";
+        cache[name] = r;
+        return r
+
     oid_to_name = {}
     for name in defs:
         oid = resolve(name)
@@ -98,14 +106,21 @@ def load_mib(mib_path):
     log_print(f"MIB: {len(oid_to_name)} OID names loaded from {mib_path}")
     return oid_to_name
 
+
 def lookup_name(oid_str, oid_map):
     if not oid_map: return ""
     if oid_str in oid_map: return oid_map[oid_str]
+
     parts = oid_str.split('.')
-    for trim in range(1, min(4, len(parts))):
+    # Work backwards to find the base table name and append the index suffix
+    for trim in range(1, len(parts)):
         candidate = '.'.join(parts[:-trim])
-        if candidate in oid_map: return oid_map[candidate]
+        if candidate in oid_map:
+            suffix = '.'.join(parts[-trim:])
+            return f"{oid_map[candidate]}.{suffix}"
+
     return ""
+
 
 def snmp_v2c_walk(device_ip, community, oid):
     try:
@@ -119,16 +134,21 @@ def snmp_v2c_walk(device_ip, community, oid):
     except Exception as e:
         return f"Unexpected error: {str(e)}"
 
+
 def iso_to_numeric(oid_str):
     if oid_str.startswith("iso."): return "1." + oid_str[4:]
     if oid_str == "iso": return "1"
     return oid_str
 
+
 def _cast_value(type_str, raw):
     if type_str in ("INTEGER", "Counter32", "Counter64", "Gauge32"):
-        try: return int(raw)
-        except ValueError: return raw
+        try:
+            return int(raw)
+        except ValueError:
+            return raw
     return raw
+
 
 def parse_snmp_output(raw_output, oid_map):
     records = []
@@ -149,7 +169,7 @@ def parse_snmp_output(raw_output, oid_map):
         if type_str == "OID": data = iso_to_numeric(str(data))
         records.append({
             "name": lookup_name(oid_str, oid_map),
-            "oid":  oid_str,
+            "oid": oid_str,
             "type": type_str if type_str else "STRING",
             "data": data,
         })
@@ -228,20 +248,22 @@ for w in write_records:
             "write_ok": True
         }
 
+
 # Sort numerically by OID string
 def sort_key(rec):
     return [int(x) for x in rec['oid'].strip('.').split('.') if x.isdigit()]
+
 
 unified_list = sorted(unified_dict.values(), key=sort_key)
 
 log_print(f"\n[6] Saving result to {RESULT_FILE} ...")
 result = {
-    "timestamp":       datetime.now().isoformat(),
-    "device_ip":       DEVICE_IP,
-    "root_oid":        OID,
-    "overall_status":  overall_status,
-    "build_params":    build_params,
-    "unified_data":    unified_list
+    "timestamp": datetime.now().isoformat(),
+    "device_ip": DEVICE_IP,
+    "root_oid": OID,
+    "overall_status": overall_status,
+    "build_params": build_params,
+    "unified_data": unified_list
 }
 
 with open(RESULT_FILE, "w") as f:
