@@ -29,6 +29,11 @@ pipeline {
                         error("Validation Failed: Local IP Address, Read Community, and Write Community parameters MUST be provided.")
                     }
 
+                    // Strict File Check: Ensure the MIB file was actually uploaded in the UI
+                    if (!fileExists(mibFilePath)) {
+                        error("❌ CRITICAL ERROR: MIB FILE NOT FOUND! You must click 'Choose File' to upload the MIB file in the Jenkins 'Build with Parameters' screen. The script cannot map Node Names without it.")
+                    }
+
                     // Clean workspace of old reports
                     sh "rm -f *.json *.html *.log || true"
                     echo "Workspace cleaned."
@@ -91,7 +96,7 @@ pipeline {
                     def deviceIP        = (params['Local IP Address'] ?: '').toString().trim()
                     def jsonReport      = readJSON file: 'SNMP_Validation.json'
 
-                    // Generate dynamic file name: SNMPValidation_report_{jenkinsBuildNo}_{date}.html
+                    // Generate dynamic file name exactly as requested
                     def istZone         = TimeZone.getTimeZone("Asia/Kolkata")
                     def currentDateObj  = new Date()
                     def currentDateTime = currentDateObj.format("dd MMM yyyy, HH:mm:ss", istZone)
@@ -202,23 +207,23 @@ pipeline {
     }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: var(--bg-page); color: var(--text-main); line-height: 1.6; display: flex; height: 100vh; overflow: hidden; font-size: 15px; }
 
-    /* Adjusted Left Sidebar */
-    .sidebar { width: 280px; min-width: 280px; background: var(--bg-sidebar); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; height: 100vh; overflow-y: auto; box-shadow: 4px 0 15px rgba(0,0,0,0.02); z-index: 10; }
+    /* Reduced Width Sidebar */
+    .sidebar { width: 260px; min-width: 260px; background: var(--bg-sidebar); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; height: 100vh; overflow-y: auto; box-shadow: 4px 0 15px rgba(0,0,0,0.02); z-index: 10; }
 
-    .sidebar-header { padding: 28px 24px 20px 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; background: var(--bg-sidebar); border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 20; }
+    /* Logo stacked above Title */
+    .sidebar-header { padding: 24px 20px 20px 20px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; background: var(--bg-sidebar); border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 20; }
     .sidebar-header img { height: 38px; object-fit: contain; }
-    .sidebar-header h1 { font-size: 20px; margin: 0; color: var(--text-main); font-weight: 800; line-height: 1.2; letter-spacing: -0.3px; }
+    .sidebar-header h1 { font-size: 18px; margin: 0; color: var(--text-main); font-weight: 800; line-height: 1.3; }
 
-    .sidebar-section { padding: 24px; border-bottom: 1px solid var(--border-color); }
-    .sidebar-section h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin: 0 0 16px 0; font-weight: 800; }
+    .sidebar-section { padding: 20px; border-bottom: 1px solid var(--border-color); }
+    .sidebar-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin: 0 0 14px 0; font-weight: 800; }
 
-    .info-card { background: #f8fafc; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; transition: transform 0.2s, box-shadow 0.2s; }
+    .info-card { background: #f8fafc; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; transition: transform 0.2s, box-shadow 0.2s; }
     .info-card:hover { border-color: #cbd5e1; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
     .info-card:last-child { margin-bottom: 0; }
     .info-card span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); font-weight: 700; margin-bottom: 4px; }
-    .info-card strong { display: block; font-size: 15px; color: var(--text-main); word-wrap: break-word; font-weight: 600; }
+    .info-card strong { display: block; font-size: 14px; color: var(--text-main); word-wrap: break-word; font-weight: 600; }
 
-    /* Main Content Area */
     .main-content { flex: 1; overflow-y: auto; padding: 32px 40px; background: var(--bg-page); }
 
     .toolbar { display: flex; gap: 16px; align-items: center; margin-bottom: 24px; flex-wrap: wrap; background: #ffffff; padding: 16px 24px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
