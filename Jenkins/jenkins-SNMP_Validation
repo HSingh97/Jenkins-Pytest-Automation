@@ -10,13 +10,10 @@ pipeline {
         stage('Preparation') {
             steps {
                 script {
-                    // Using the updated parameter names from your UI
                     def deviceIP       = (params['Local IP Address'] ?: '').toString().trim()
                     def readCommunity  = (params['Read Community']   ?: '').toString().trim()
                     def writeCommunity = (params['Write Community']  ?: '').toString().trim()
 
-                    // Jenkins File Parameters upload directly into the workspace
-                    // using the exact parameter name. No need to call params['MIB_File'] here.
                     def mibFilePath    = "${env.WORKSPACE}/MIB_File"
 
                     echo "========================================"
@@ -29,7 +26,6 @@ pipeline {
                     echo " TARGET STAND    : ${params.TARGET_STAND}"
                     echo "========================================"
 
-                    // FAIL-FAST VALIDATION: Ensure required parameters are not blank
                     if (!deviceIP || !readCommunity || !writeCommunity) {
                         error("Validation Failed: Local IP Address, Read Community, and Write Community parameters MUST be provided.")
                     }
@@ -62,7 +58,6 @@ pipeline {
         stage('Run SNMP Validation') {
             steps {
                 script {
-                    // Ensure we use the exact same parameter names here
                     def deviceIP       = (params['Local IP Address'] ?: '').toString().trim()
                     def readCommunity  = (params['Read Community']   ?: '').toString().trim()
                     def writeCommunity = (params['Write Community']  ?: '').toString().trim()
