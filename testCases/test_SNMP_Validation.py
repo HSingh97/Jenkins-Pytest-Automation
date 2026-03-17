@@ -87,7 +87,6 @@ def load_mib_fast_parser(mib_path):
     try:
         with open(mib_path, 'r', encoding='utf-8', errors='ignore') as f:
             for line in f:
-                # 1. Strip inline comments
                 if '--' in line:
                     line = line.split('--')[0]
 
@@ -96,7 +95,6 @@ def load_mib_fast_parser(mib_path):
 
                 words = line.split()
 
-                # 2. Look for the start of an Object Definition
                 if len(words) >= 2 and words[1] in [
                     "OBJECT-TYPE", "MODULE-IDENTITY", "OBJECT-IDENTITY",
                     "NOTIFICATION-TYPE", "TRAP-TYPE", "OBJECT-GROUP", "NOTIFICATION-GROUP"
@@ -105,13 +103,11 @@ def load_mib_fast_parser(mib_path):
                 elif len(words) >= 3 and words[1] == "OBJECT" and words[2] == "IDENTIFIER":
                     current_name = words[0]
 
-                # 3. Look for the OID Assignment e.g., ::= { parent 1 }
                 match_end = re.search(r'::=\s*\{\s*([a-zA-Z0-9_-]+)\s+(\d+)\s*\}', line)
                 if match_end:
                     parent = match_end.group(1)
                     idx = int(match_end.group(2))
 
-                    # Fallback for 1-liners
                     if not current_name:
                         match_inline = re.match(r'^([a-zA-Z0-9_-]+)\s+', line)
                         if match_inline:
@@ -120,17 +116,14 @@ def load_mib_fast_parser(mib_path):
                     if current_name:
                         defs[current_name] = (parent, idx)
 
-                    # Reset name after assignment
                     current_name = None
 
-                    # 4. Standardize Top-Level Roots
         roots = {
             'enterprises': '1.3.6.1.4.1', 'mib-2': '1.3.6.1.2.1', 'iso': '1',
             'org': '1.3', 'dod': '1.3.6', 'internet': '1.3.6.1',
             'mgmt': '1.3.6.1.2', 'private': '1.3.6.1.4',
         }
 
-        # Inject missing Senao roots just in case
         if 'engenius' not in defs and 'ENGENIUS' not in defs:
             defs['engenius'] = ('enterprises', 52619)
         if 'senao' not in defs and 'SENAO' not in defs:
@@ -151,7 +144,6 @@ def load_mib_fast_parser(mib_path):
             cache[name] = r
             return r
 
-        # Build the exact mapping dictionary
         for name in defs:
             oid = resolve(name)
             if oid:
@@ -178,36 +170,30 @@ def lookup_name(oid_str, oid_map):
             base_name = oid_map[candidate]
             suffixes = parts[-trim:]
 
-            # SMART HEURISTIC: Only apply Radio nomenclature to specific wireless/radio tables
             radio_keywords = ['wireless', 'radio', 'assoc', 'dcs', 'sitesurvey', 'saresult', 'linkprofile']
             is_radio_metric = any(kw in base_name.lower() for kw in radio_keywords)
 
+            first_idx = suffixes[0]
+
             if is_radio_metric:
-                first_idx = suffixes[0]
-
-                radio_str = ""
+                prefix = ""
                 if first_idx == '1':
-                    radio_str = "2.4GHz Radio"
+                    prefix = "2.4GHz Radio : "
                 elif first_idx == '2':
-                    radio_str = "Radio1"
+                    prefix = "Radio1 : "
                 elif first_idx == '3':
-                    radio_str = "Radio2"
+                    prefix = "Radio2 : "
                 else:
-                    radio_str = f"Radio {first_idx}"
+                    prefix = f"Radio {first_idx} : "
 
-                # Apply appropriate indexing dynamically
                 if len(suffixes) == 1:
-                    return f"{radio_str} : {base_name}"
-                elif len(suffixes) == 2:
-                    return f"{radio_str} (SU{suffixes[1]}) : {base_name}"
+                    return f"{prefix}{base_name}"
                 else:
                     remaining = ".".join(suffixes[1:])
-                    return f"{radio_str} (Index {remaining}) : {base_name}"
+                    return f"{prefix}{base_name}.{remaining}"
             else:
-                # For non-radio metrics, cleanly drop the '.0' for scalar values
                 if suffixes == ['0']:
                     return base_name
-                # For standard table indices (like ethernet.1), just append normally
                 return f"{base_name}.{'.'.join(suffixes)}"
 
     return ""
@@ -215,7 +201,6 @@ def lookup_name(oid_str, oid_map):
 
 def snmp_v2c_walk(device_ip, community, oid):
     try:
-        # We fetch raw numbers (-O n) and map them dynamically in Python.
         result = subprocess.run(
             f"snmpwalk -v2c -c '{community}' -O n {device_ip} {oid}",
             shell=True, capture_output=True, text=True, check=True
@@ -347,9 +332,7 @@ def sort_key(rec):
 
 unified_list = sorted(unified_dict.values(), key=sort_key)
 
-# ── FILTER RADIO2 IF APPLICABLE
 device_name = build_params.get("Device Name", "")
-# Tri-band models keep Radio2. Dual-band models drop Radio2.
 is_triband = "EOC655" in device_name or "UBR655" in device_name
 
 final_unified_list = []

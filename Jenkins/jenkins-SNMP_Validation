@@ -128,6 +128,8 @@ pipeline {
                     def readCom     = params['Read Community']
                     def writeCom    = params['Write Community']
 
+                    def totalAlerts = 0
+
                     def buildSnmpRows = { dataList ->
                         def rows = ""
                         dataList.each { rec ->
@@ -138,7 +140,6 @@ pipeline {
                             def rPrefix = "other"
 
                             if (rName) {
-                                // Extract the base name for filtering (ignoring prefixes like "Radio1 (SU1) : ")
                                 def cleanName = rName.replaceAll(/^.*?:\s*/, "")
                                 def m = (cleanName =~ /^([a-z]+)/)
                                 if (m) rPrefix = m[0][1]
@@ -161,13 +162,18 @@ pipeline {
 
                             def rawValStr = rData.trim().toLowerCase()
                             def isAlert = (rawValStr == "-1" || rawValStr.contains("error") || rawValStr == "n/a")
+
+                            if (isAlert) { totalAlerts++ }
+
                             def valDisplay = isAlert ? "<span class='val-alert'>${safeData}</span>" : safeData
+                            def rowStatus = isAlert ? "alert" : "pass"
 
                             def readIcon = rec.read_ok ? "<span class='status-icon pass'>✔</span>" : "<span class='status-icon fail'>✘</span>"
                             def writeIcon = rec.write_ok ? "<span class='status-icon pass'>✔</span>" : "<span class='status-icon fail'>✘</span>"
 
+                            // Added data-status for JS filtering
                             rows += """
-<tr class="main-row" data-prefix="${rPrefix}" data-type="${rType}">
+<tr class="main-row" data-prefix="${rPrefix}" data-type="${rType}" data-status="${rowStatus}">
   <td class="col-name">${nameDisplay}</td>
   <td class="col-oid">${rOid}</td>
   <td class="col-type"><span class="badge ${badgeClass}">${rType}</span></td>
@@ -218,11 +224,8 @@ pipeline {
     }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: var(--bg-page); color: var(--text-main); line-height: 1.6; display: flex; flex-direction: column; height: 100vh; overflow: hidden; font-size: 15px; }
 
-    /* Top Header Bar */
-    .top-navbar { display: flex; justify-content: space-between; align-items: center; padding: 18px 32px; background: var(--bg-surface); border-bottom: 1px solid var(--border-color); box-shadow: 0 2px 10px rgba(0,0,0,0.02); z-index: 30; }
+    .top-navbar { display: flex; justify-content: space-between; align-items: center; padding: 16px 32px; background: var(--bg-surface); border-bottom: 1px solid var(--border-color); box-shadow: 0 2px 10px rgba(0,0,0,0.02); z-index: 30; }
     .nav-brand { display: flex; align-items: center; gap: 16px; }
-
-    /* Logo size increased here */
     .nav-brand img { height: 48px; object-fit: contain; margin-right: 8px; }
     .nav-brand h1 { font-size: 22px; margin: 0; color: var(--text-main); font-weight: 800; letter-spacing: -0.3px; border-left: 2px solid var(--border-color); padding-left: 20px; }
 
@@ -231,10 +234,8 @@ pipeline {
     .nav-exec-item span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); font-weight: 700; margin-bottom: 2px; }
     .nav-exec-item strong { font-size: 14px; color: var(--text-main); font-weight: 600; }
 
-    /* Layout structure */
     .layout-body { display: flex; flex: 1; overflow: hidden; }
 
-    /* Left Sidebar */
     .sidebar { width: 280px; min-width: 280px; background: var(--bg-surface); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; overflow-y: auto; z-index: 10; }
 
     .sidebar-section { padding: 24px 20px; border-bottom: 1px solid var(--border-color); }
@@ -246,16 +247,23 @@ pipeline {
     .info-card span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); font-weight: 700; margin-bottom: 4px; }
     .info-card strong { display: block; font-size: 14px; color: var(--text-main); word-wrap: break-word; font-weight: 600; }
 
-    /* Main Content Area */
     .main-content { flex: 1; overflow-y: auto; padding: 32px 40px; background: var(--bg-page); }
 
     .toolbar { display: flex; gap: 16px; align-items: center; margin-bottom: 24px; flex-wrap: wrap; background: #ffffff; padding: 16px 24px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
-    .search-wrap { flex: 1; min-width: 280px; position: relative; }
+    .search-wrap { flex: 1; min-width: 240px; position: relative; }
     .search-wrap input { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px 12px 44px; font-size: 15px; background: #ffffff; transition: all 0.2s; box-sizing: border-box; }
     .search-wrap input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59,130,246,0.15); outline: none; }
     .search-wrap svg { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--text-muted); width: 20px; height: 20px; }
-    .type-select { min-width: 160px; padding: 12px 16px; font-size: 15px; border: 1px solid #cbd5e1; border-radius: 8px; background: #ffffff; cursor: pointer; }
-    .count-pill { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 999px; padding: 10px 20px; font-size: 14px; font-weight: 700; color: #1d4ed8; white-space: nowrap; }
+
+    .type-select { min-width: 140px; padding: 12px 16px; font-size: 15px; border: 1px solid #cbd5e1; border-radius: 8px; background: #ffffff; cursor: pointer; }
+    .count-pill { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 20px; font-size: 14px; font-weight: 700; color: #1d4ed8; white-space: nowrap; }
+
+    /* Alert Toggle Button CSS */
+    .alert-toggle-btn { padding: 12px 20px; font-size: 14px; font-weight: 700; border-radius: 8px; border: 1px solid transparent; transition: all 0.2s; white-space: nowrap; outline: none; }
+    .alert-toggle-btn.all-pass { background: #dcfce7; color: #166534; border-color: #bbf7d0; cursor: default; }
+    .alert-toggle-btn.has-alerts { background: #fef2f2; color: #b91c1c; border-color: #fca5a5; cursor: pointer; }
+    .alert-toggle-btn.has-alerts:hover { background: #fee2e2; border-color: #f87171; box-shadow: 0 2px 6px rgba(220, 38, 38, 0.15); }
+    .alert-toggle-btn.has-alerts.active { background: #b91c1c; color: #ffffff; border-color: #991b1b; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2); }
 
     .chip-section { padding: 0 0 24px 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .chip-label { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); margin-right: 8px; }
@@ -271,7 +279,7 @@ pipeline {
     .center-col { text-align: center; }
     .main-row:hover td { background: #f8fafc; }
 
-    .col-name { font-size: 15px; font-weight: 600; color: var(--text-main); min-width: 240px; }
+    .col-name { font-size: 15px; font-weight: 600; color: var(--text-main); min-width: 200px; }
     .col-oid { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; color: var(--text-muted); }
     .col-type { text-align: center; min-width: 100px; }
     .col-val { font-size: 15px; color: #334155; max-width: 500px; word-wrap: break-word; white-space: pre-wrap; line-height: 1.6; }
@@ -342,6 +350,11 @@ pipeline {
           <option>Counter32</option><option>Counter64</option><option>Timeticks</option>
           <option>IpAddress</option><option>OID</option><option>Hex-STRING</option>
         </select>
+
+        <button id="alertToggleBtn" class="alert-toggle-btn ${totalAlerts > 0 ? 'has-alerts' : 'all-pass'}" ${totalAlerts > 0 ? 'onclick="toggleAlertFilter()"' : ''}>
+          ${totalAlerts > 0 ? '⚠️ ' + totalAlerts + ' Alerts Found' : '✅ System Pass'}
+        </button>
+
         <div class="count-pill" id="countDisplay">${totalEntries} entries</div>
       </div>
 
@@ -373,6 +386,7 @@ pipeline {
 
 <script>
 var activePrefix = 'all';
+var showOnlyAlerts = false;
 
 document.getElementById('chipContainer').querySelectorAll('.chip').forEach(function(chip) {
   chip.addEventListener('click', function() {
@@ -383,6 +397,19 @@ document.getElementById('chipContainer').querySelectorAll('.chip').forEach(funct
   });
 });
 
+function toggleAlertFilter() {
+  showOnlyAlerts = !showOnlyAlerts;
+  var btn = document.getElementById('alertToggleBtn');
+  if (showOnlyAlerts) {
+    btn.classList.add('active');
+    btn.innerHTML = "❌ Showing Alerts Only";
+  } else {
+    btn.classList.remove('active');
+    btn.innerHTML = "⚠️ ${totalAlerts} Alerts Found";
+  }
+  applyFilters();
+}
+
 function applyFilters() {
   var search  = document.getElementById('searchInput').value.toLowerCase();
   var typeVal = document.getElementById('typeSelect').value;
@@ -392,11 +419,13 @@ function applyFilters() {
   rows.forEach(function(row) {
     var rp = row.dataset.prefix || 'other';
     var rt = row.dataset.type   || '';
+    var rStatus = row.dataset.status || 'pass';
     var tx = row.textContent.toLowerCase();
 
     var ok = (activePrefix === 'all' || rp === activePrefix)
           && (!typeVal || rt === typeVal)
-          && (!search  || tx.includes(search));
+          && (!search  || tx.includes(search))
+          && (!showOnlyAlerts || rStatus === 'alert');
 
     if (ok) {
       row.style.display = '';
