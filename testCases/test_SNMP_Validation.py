@@ -79,14 +79,12 @@ def load_mib_with_snmptranslate(mib_path):
         log_print("==========================================================")
         log_print(" ❌ CRITICAL WARNING: MIB FILE WAS NOT FOUND")
         log_print(f" PATH LOOKED AT: {mib_path}")
-        log_print(" If you did not click 'Choose File' and upload the MIB")
-        log_print(" in Jenkins, node names CANNOT map and will show as '—'.")
         log_print("==========================================================")
         return oid_to_name
 
     try:
-        # Crucial fix: Prefixing the file path with '+' tells net-snmp to
-        # bypass standard directory checks and forcefully load this specific file.
+        # Prefixing the file path with '+' tells net-snmp to bypass
+        # standard directory checks and forcefully load this specific file.
         cmd = f"snmptranslate -Tz -m '+{mib_path}'"
         log_print(f"Executing: {cmd}")
 
@@ -135,7 +133,6 @@ def lookup_name(oid_str, oid_map):
 
 def snmp_v2c_walk(device_ip, community, oid, mib_path):
     try:
-        # Add '+' to strictly load the file path
         result = subprocess.run(
             f"snmpwalk -m '+{mib_path}' -v2c -c '{community}' -O n {device_ip} {oid}",
             shell=True, capture_output=True, text=True, check=True
