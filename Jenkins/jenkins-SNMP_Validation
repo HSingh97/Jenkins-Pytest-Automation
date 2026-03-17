@@ -29,7 +29,8 @@ pipeline {
                         error("Validation Failed: Local IP Address, Read Community, and Write Community parameters MUST be provided.")
                     }
 
-                    sh "rm -f SNMP_Validation.json SNMP_Validation.html snmp_validation.log || true"
+                    // Clean workspace of old reports
+                    sh "rm -f *.json *.html *.log || true"
                     echo "Workspace cleaned."
                 }
             }
@@ -89,8 +90,15 @@ pipeline {
                 script {
                     def deviceIP        = (params['Local IP Address'] ?: '').toString().trim()
                     def jsonReport      = readJSON file: 'SNMP_Validation.json'
+
+                    // Generate dynamic file name: SNMPValidation_report_{jenkinsBuildNo}_{date}.html
                     def istZone         = TimeZone.getTimeZone("Asia/Kolkata")
-                    def currentDateTime = new Date().format("dd MMM yyyy, HH:mm:ss", istZone)
+                    def currentDateObj  = new Date()
+                    def currentDateTime = currentDateObj.format("dd MMM yyyy, HH:mm:ss", istZone)
+                    def dateStr         = currentDateObj.format("ddMMMyyyy", istZone)
+                    def buildNo         = env.BUILD_NUMBER
+                    def reportFileName  = "SNMPValidation_report_${buildNo}_${dateStr}.html"
+
                     def pipelineName    = env.JOB_NAME
                     def companyLogoUrl  = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
@@ -135,7 +143,6 @@ pipeline {
                             def nameDisplay = rName ?: "<em class='no-name'>—</em>"
                             def safeData = rData.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-                            // Alert Logic for Errors or -1
                             def rawValStr = rData.trim().toLowerCase()
                             def isAlert = (rawValStr == "-1" || rawValStr.contains("error") || rawValStr == "n/a")
                             def valDisplay = isAlert ? "<span class='val-alert'>${safeData}</span>" : safeData
@@ -195,7 +202,6 @@ pipeline {
     }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: var(--bg-page); color: var(--text-main); line-height: 1.6; display: flex; height: 100vh; overflow: hidden; font-size: 16px; }
 
-    /* Modernized & Wider Left Sidebar */
     .sidebar { width: 380px; min-width: 380px; background: var(--bg-sidebar); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; height: 100vh; overflow-y: auto; box-shadow: 4px 0 20px rgba(0,0,0,0.03); z-index: 10; }
     .sidebar-header { padding: 36px 32px 28px 32px; display: flex; align-items: center; gap: 16px; background: var(--bg-sidebar); border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 20; }
     .sidebar-header img { height: 44px; object-fit: contain; }
@@ -210,7 +216,6 @@ pipeline {
     .info-card span { display: block; font-size: 13px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); font-weight: 700; margin-bottom: 6px; }
     .info-card strong { display: block; font-size: 17px; color: var(--text-main); word-wrap: break-word; font-weight: 600; }
 
-    /* Main Content Area */
     .main-content { flex: 1; overflow-y: auto; padding: 40px 48px; background: var(--bg-page); }
 
     .toolbar { display: flex; gap: 20px; align-items: center; margin-bottom: 24px; flex-wrap: wrap; background: #ffffff; padding: 20px 28px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
@@ -238,11 +243,8 @@ pipeline {
     .col-name { font-size: 16px; font-weight: 600; color: var(--text-main); min-width: 200px; }
     .col-oid { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 14px; color: var(--text-muted); }
     .col-type { text-align: center; min-width: 120px; }
-
-    /* Text wrapping forcefully applied here */
     .col-val { font-size: 16px; color: #334155; max-width: 600px; word-wrap: break-word; white-space: pre-wrap; line-height: 1.6; }
 
-    /* Enhanced Alert Box */
     .val-alert { background: #fef2f2; color: #b91c1c; border: 1px solid #fca5a5; padding: 6px 12px; border-radius: 6px; font-weight: 700; display: inline-block; letter-spacing: 0.3px; }
 
     .status-icon { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; font-size: 13px; font-weight: bold; }
@@ -373,8 +375,12 @@ function applyFilters() {
 </body>
 </html>"""
 
-                    writeFile file: 'SNMP_Validation.html', text: htmlContent
-                    echo "Report generated: SNMP_Validation.html"
+                    // Write to the dynamically named HTML file
+                    writeFile file: reportFileName, text: htmlContent
+                    echo "Report generated: ${reportFileName}"
+
+                    // Pass dynamic filename to an environment variable so post{} block can read it easily
+                    env.REPORT_FILE_NAME = reportFileName
                 }
             }
         }
@@ -383,7 +389,8 @@ function applyFilters() {
     post {
         always {
             script {
-                archiveArtifacts artifacts: 'SNMP_Validation.json, SNMP_Validation.html, snmp_validation.log',
+                // Archive all json/log/html files since name is dynamic
+                archiveArtifacts artifacts: '*.json, *.html, snmp_validation.log',
                                  fingerprint: true,
                                  allowEmptyArchive: true
 
@@ -392,7 +399,7 @@ function applyFilters() {
                     alwaysLinkToLastBuild: true,
                     keepAll              : true,
                     reportDir            : '.',
-                    reportFiles          : 'SNMP_Validation.html',
+                    reportFiles          : env.REPORT_FILE_NAME ?: '*.html',
                     reportName           : 'SNMP Validation Report'
                 ])
 
@@ -462,7 +469,7 @@ function applyFilters() {
                         body               : emailBody,
                         to                 : userEmail,
                         mimeType           : 'text/html',
-                        attachmentsPattern : "SNMP_Validation.html, SNMP_Validation.json"
+                        attachmentsPattern : "*.html, *.json"
                     )
                 } else {
                     echo "SNMP_Validation.json not found — skipping report parsing and email."

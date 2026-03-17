@@ -68,87 +68,65 @@ def fetch_build_params(device_ip, community):
     return params
 
 
-def load_mib(mib_path):
-    if not mib_path or not os.path.isfile(mib_path):
-        log_print(f"[WARN] MIB file not found: {mib_path}")
-        return {}
-
-    with open(mib_path) as f:
-        content = f.read()
-
-    # Remove MIB comments before processing
-    content = re.sub(r'--.*', '', content)
-
-    # Generic regex to capture ALL parent-child OID tree assignments
-    pattern = re.compile(
-        r'([a-zA-Z0-9_-]+)\s+(?:OBJECT-TYPE|OBJECT IDENTIFIER|MODULE-IDENTITY|NOTIFICATION-TYPE|TRAP-TYPE)[\s\S]*?::=\s*\{\s*([a-zA-Z0-9_-]+)\s+(\d+)\s*\}')
-
-    defs = {}
-    for name, parent, idx in pattern.findall(content):
-        defs[name] = (parent, int(idx))
-
-    # Second pass for simpler root assignments (e.g. senaoNetworks ... ::= { enterprises 52619 })
-    pattern2 = re.compile(r'([a-zA-Z0-9_-]+)\s+[^:]*?::=\s*\{\s*([a-zA-Z0-9_-]+)\s+(\d+)\s*\}')
-    for name, parent, idx in pattern2.findall(content):
-        if name not in defs:
-            defs[name] = (parent, int(idx))
-
-    roots = {
-        'enterprises': '1.3.6.1.4.1', 'mib-2': '1.3.6.1.2.1', 'iso': '1',
-        'org': '1.3', 'dod': '1.3.6', 'internet': '1.3.6.1',
-        'mgmt': '1.3.6.1.2', 'private': '1.3.6.1.4',
-    }
-
-    # Check for custom root aliases like ENGENIUS, engenius, senao
-    for alias in ['ENGENIUS', 'engenius', 'senao', 'SENAO']:
-        if alias in defs: pass  # Ensure it is logged in the tree
-
-    cache = {}
-
-    def resolve(name):
-        if name in cache: return cache[name]
-        if name in roots: return roots[name]
-        if name not in defs: return None
-
-        parent, idx = defs[name]
-        p = resolve(parent)
-        if p is None: return None
-
-        r = f"{p}.{idx}"
-        cache[name] = r
-        return r
-
+def load_mib_with_snmptranslate(mib_path):
+    """
+    Uses the system's snmptranslate tool to robustly parse the MIB file
+    and dump a complete dictionary mapping numeric OIDs to node names.
+    """
     oid_to_name = {}
-    for name in defs:
-        oid = resolve(name)
-        if oid:
-            oid_to_name['.' + oid] = name
+    if not os.path.isfile(mib_path):
+        log_print(f"[WARN] MIB file not found at: {mib_path}")
+        return oid_to_name
 
-    log_print(f"MIB: {len(oid_to_name)} OID names successfully mapped from {mib_path}")
+    try:
+        # -Tz prints the loaded tree as: "nodeName" "numeric.oid"
+        result = subprocess.run(
+            f"snmptranslate -Tz -m {mib_path}",
+            shell=True, capture_output=True, text=True
+        )
+
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 2:
+                name = parts[0].strip('"')
+                oid = parts[1].strip('"')
+                if not oid.startswith('.'):
+                    oid = "." + oid
+                oid_to_name[oid] = name
+
+        log_print(f"MIB: {len(oid_to_name)} OID names securely mapped using snmptranslate.")
+    except Exception as e:
+        log_print(f"Error mapping MIB via snmptranslate: {e}")
+
     return oid_to_name
 
 
 def lookup_name(oid_str, oid_map):
     if not oid_map: return ""
+
+    # Direct match first
     if oid_str in oid_map: return oid_map[oid_str]
 
-    parts = oid_str.split('.')
+    # Strip leading dot for splitting
+    clean_oid = oid_str.strip('.')
+    parts = clean_oid.split('.')
+
     # Walk backwards to find the base table name and append the index suffix
     for trim in range(1, len(parts)):
-        candidate = '.'.join(parts[:-trim])
+        candidate = "." + ".".join(parts[:-trim])
         if candidate in oid_map:
-            suffix = '.'.join(parts[-trim:])
+            suffix = ".".join(parts[-trim:])
             return f"{oid_map[candidate]}.{suffix}"
 
     return ""
 
 
-def snmp_v2c_walk(device_ip, community, oid):
+def snmp_v2c_walk(device_ip, community, oid, mib_path):
     try:
-        # NOTE: -O n forces snmpwalk to output purely numeric OIDs (.1.3.6.1...)
-        # This guarantees it matches our parsed MIB map.
+        # Pass the MIB explicitly to ensure snmpwalk has full context,
+        # but force numeric output (-O n) so regex matching is uniform.
         result = subprocess.run(
-            f"snmpwalk -v2c -c {community} -O n {device_ip} {oid}",
+            f"snmpwalk -m {mib_path} -v2c -c {community} -O n {device_ip} {oid}",
             shell=True, capture_output=True, text=True, check=True
         )
         return result.stdout.strip()
@@ -175,7 +153,6 @@ def parse_snmp_output(raw_output, oid_map):
 
         oid_part, value_part = line.split(" = ", 1)
 
-        # OID part is strictly numeric now due to `-O n`
         oid_str = oid_part.strip()
         if not oid_str.startswith('.'):
             oid_str = "." + oid_str
@@ -213,8 +190,8 @@ log_print("=" * 100)
 
 overall_status = "PASS"
 
-log_print(f"\n[1] Loading MIB: {MIB_FILE}")
-oid_map = load_mib(MIB_FILE)
+log_print(f"\n[1] Loading MIB with snmptranslate: {MIB_FILE}")
+oid_map = load_mib_with_snmptranslate(MIB_FILE)
 
 log_print(f"\n[2] Fetching build parameters from {DEVICE_IP} (using read community) ...")
 build_params = fetch_build_params(DEVICE_IP, READ_COMMUNITY)
@@ -223,7 +200,7 @@ for k, v in build_params.items():
 
 # ── READ COMMUNITY
 log_print(f"\n[3] Walking {DEVICE_IP} with READ community ({READ_COMMUNITY}) oid={OID} ...")
-raw_read = snmp_v2c_walk(DEVICE_IP, READ_COMMUNITY, OID)
+raw_read = snmp_v2c_walk(DEVICE_IP, READ_COMMUNITY, OID, MIB_FILE)
 
 read_records = []
 if raw_read.startswith("Error"):
@@ -235,7 +212,7 @@ else:
 
 # ── WRITE COMMUNITY
 log_print(f"\n[4] Walking {DEVICE_IP} with WRITE community ({WRITE_COMMUNITY}) oid={OID} ...")
-raw_write = snmp_v2c_walk(DEVICE_IP, WRITE_COMMUNITY, OID)
+raw_write = snmp_v2c_walk(DEVICE_IP, WRITE_COMMUNITY, OID, MIB_FILE)
 
 write_records = []
 if raw_write.startswith("Error"):
