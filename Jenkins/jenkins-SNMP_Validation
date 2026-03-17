@@ -63,20 +63,48 @@ pipeline {
                     def mibFileName    = (params.MIB_File        ?: '').toString().trim()
                     def scriptPath     = "testCases/test_SNMP_Validation.py"
 
-                    // Resolve MIB file path — File Parameter places file in workspace root
-                    // If not found there, search for any .mib file in workspace
-                    def mibFilePath = "${env.WORKSPACE}/${mibFileName}"
-                    def mibExists   = sh(script: "test -f '${mibFilePath}' && echo yes || echo no", returnStdout: true).trim()
-                    if (mibExists != 'yes') {
-                        def found = sh(script: "find '${env.WORKSPACE}' -maxdepth 3 -name '*.mib' 2>/dev/null | head -1", returnStdout: true).trim()
-                        if (found) {
-                            mibFilePath = found
-                            echo "[INFO] MIB auto-discovered at: ${mibFilePath}"
-                        } else {
-                            echo "[WARN] MIB file not found — OID names will be empty"
+                    // Jenkins File Parameter places the uploaded file at:
+                    //   /var/lib/jenkins/jobs/<folder>/jobs/<job>/builds/<num>/fileParameters/<paramName>/<filename>
+                    // We build that path from env variables and fall back to a broad search.
+                    def mibFilePath = ""
+
+                    // Primary: exact Jenkins File Parameter path
+                    def jenkinsBuildDir = sh(script: "echo ${env.BUILD_URL} | sed 's|http.*:.*//[^/]*/||'", returnStdout: true).trim()
+                    def primaryPath = "/var/lib/jenkins/jobs/${env.JOB_NAME.replace('/', '/jobs/')}/builds/${env.BUILD_NUMBER}/fileParameters/MIB_File/${mibFileName}"
+                    echo "Checking primary path: ${primaryPath}"
+                    def p1ok = sh(script: "test -f '${primaryPath}' && echo yes || echo no", returnStdout: true).trim()
+                    if (p1ok == 'yes') {
+                        mibFilePath = primaryPath
+                    }
+
+                    // Fallback: copy from Jenkins fileParameters to workspace and use that
+                    if (!mibFilePath) {
+                        def copyResult = sh(script: """
+                            FOUND=\$(find /var/lib/jenkins -path "*/fileParameters/MIB_File/*" -name "*.mib" 2>/dev/null | head -1)
+                            if [ -n "\$FOUND" ]; then
+                                cp "\$FOUND" '${env.WORKSPACE}/SENAO-MIB.mib'
+                                echo "COPIED"
+                            else
+                                echo "NOT_FOUND"
+                            fi
+                        """, returnStdout: true).trim()
+                        if (copyResult == 'COPIED') {
+                            mibFilePath = "${env.WORKSPACE}/SENAO-MIB.mib"
+                            echo "[OK] MIB copied to workspace: ${mibFilePath}"
                         }
+                    }
+
+                    // Fallback 2: already in workspace (previous copy or direct upload)
+                    if (!mibFilePath) {
+                        def found = sh(script: "find '${env.WORKSPACE}' -name '*.mib' 2>/dev/null | head -1", returnStdout: true).trim()
+                        if (found) mibFilePath = found
+                    }
+
+                    if (mibFilePath) {
+                        echo "[OK] Using MIB file: ${mibFilePath}"
                     } else {
-                        echo "[OK] MIB file found: ${mibFilePath}"
+                        echo "[WARN] MIB file not found — OID names will be empty"
+                        mibFilePath = "/dev/null"
                     }
 
                     echo "========================================"
@@ -469,7 +497,7 @@ pipeline {
                     keepAll              : true,
                     reportDir            : '.',
                     reportFiles          : reportFileName,
-                    reportName           : 'SNMP Validation Test Report'
+                    reportName           : 'Automated Test Report'
                 ])
 
                 echo "Cleaning up log files..."
