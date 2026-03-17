@@ -41,7 +41,6 @@ def log_print(*msg):
 
 def snmp_get(device_ip, community, oid):
     try:
-        # Wrapped {community} in single quotes to handle spaces/special chars
         result = subprocess.run(
             f"snmpget -v2c -c '{community}' {device_ip} {oid}",
             shell=True, capture_output=True, text=True, check=True
@@ -75,16 +74,29 @@ def load_mib_with_snmptranslate(mib_path):
     and dump a complete dictionary mapping numeric OIDs to node names.
     """
     oid_to_name = {}
+
     if not os.path.isfile(mib_path):
-        log_print(f"[WARN] MIB file not found at: {mib_path}")
+        log_print("==========================================================")
+        log_print(" ❌ CRITICAL WARNING: MIB FILE WAS NOT FOUND")
+        log_print(f" PATH LOOKED AT: {mib_path}")
+        log_print(" If you did not click 'Choose File' and upload the MIB")
+        log_print(" in Jenkins, node names CANNOT map and will show as '—'.")
+        log_print("==========================================================")
         return oid_to_name
 
     try:
-        # Wrapped {mib_path} in single quotes to handle directory spaces
+        # Crucial fix: Prefixing the file path with '+' tells net-snmp to
+        # bypass standard directory checks and forcefully load this specific file.
+        cmd = f"snmptranslate -Tz -m '+{mib_path}'"
+        log_print(f"Executing: {cmd}")
+
         result = subprocess.run(
-            f"snmptranslate -Tz -m '{mib_path}'",
+            cmd,
             shell=True, capture_output=True, text=True
         )
+
+        if result.stderr:
+            log_print(f"snmptranslate warnings: {result.stderr.strip()}")
 
         for line in result.stdout.splitlines():
             parts = line.split()
@@ -95,7 +107,7 @@ def load_mib_with_snmptranslate(mib_path):
                     oid = "." + oid
                 oid_to_name[oid] = name
 
-        log_print(f"MIB: {len(oid_to_name)} OID names securely mapped using snmptranslate.")
+        log_print(f"MIB mapping success: {len(oid_to_name)} node names extracted.")
     except Exception as e:
         log_print(f"Error mapping MIB via snmptranslate: {e}")
 
@@ -108,11 +120,10 @@ def lookup_name(oid_str, oid_map):
     # Direct match first
     if oid_str in oid_map: return oid_map[oid_str]
 
-    # Strip leading dot for splitting
+    # Clean the OID and work backwards to find the base table and attach suffixes
     clean_oid = oid_str.strip('.')
     parts = clean_oid.split('.')
 
-    # Walk backwards to find the base table name and append the index suffix
     for trim in range(1, len(parts)):
         candidate = "." + ".".join(parts[:-trim])
         if candidate in oid_map:
@@ -124,9 +135,9 @@ def lookup_name(oid_str, oid_map):
 
 def snmp_v2c_walk(device_ip, community, oid, mib_path):
     try:
-        # Wrapped {mib_path} and {community} in single quotes
+        # Add '+' to strictly load the file path
         result = subprocess.run(
-            f"snmpwalk -m '{mib_path}' -v2c -c '{community}' -O n {device_ip} {oid}",
+            f"snmpwalk -m '+{mib_path}' -v2c -c '{community}' -O n {device_ip} {oid}",
             shell=True, capture_output=True, text=True, check=True
         )
         return result.stdout.strip()
