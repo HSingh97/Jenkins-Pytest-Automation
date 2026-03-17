@@ -13,6 +13,7 @@ pipeline {
                     def deviceIP       = (params['Local IP Address'] ?: '').toString().trim()
                     def readCommunity  = (params['Read Community']   ?: '').toString().trim()
                     def writeCommunity = (params['Write Community']  ?: '').toString().trim()
+                    def mibSource      = (params['MIB_Source']       ?: '').toString().trim()
 
                     echo "========================================"
                     echo " SNMP Validation — Preparation"
@@ -20,38 +21,33 @@ pipeline {
                     echo " DEVICE IP       : ${deviceIP}"
                     echo " READ COMMUNITY  : ${readCommunity}"
                     echo " WRITE COMMUNITY : ${writeCommunity}"
+                    echo " MIB SOURCE      : ${mibSource}"
                     echo " TARGET STAND    : ${params.TARGET_STAND}"
                     echo "========================================"
 
-                    if (!deviceIP || !readCommunity || !writeCommunity) {
-                        error("Validation Failed: Local IP Address, Read Community, and Write Community parameters MUST be provided.")
+                    if (!deviceIP || !readCommunity || !writeCommunity || !mibSource) {
+                        error("Validation Failed: IP, Communities, and MIB Source parameters MUST be provided.")
                     }
 
-                    // Smart-Find the uploaded MIB file from the standard File Parameter
-                    // It checks for 'MIB_File' first, then any .mib or .txt files uploaded
-                    def findMibCmd = '''
-                        if [ -f "MIB_File" ]; then
-                            echo "MIB_File"
-                        elif ls -1 *.mib 1> /dev/null 2>&1; then
-                            ls -1 *.mib | head -n 1
-                        elif ls -1 *.txt 1> /dev/null 2>&1; then
-                            ls -1 *.txt | head -n 1
-                        else
-                            echo ""
-                        fi
-                    '''
-                    def foundFileName = sh(script: findMibCmd, returnStdout: true).trim()
-
-                    if (!foundFileName) {
-                        error("❌ CRITICAL ERROR: No MIB file found in workspace! Please ensure you click 'Choose File' and upload the MIB file before clicking Build.")
+                    // Smart File Handling: Download from URL OR read from Git workspace
+                    if (mibSource.startsWith("http://") || mibSource.startsWith("https://")) {
+                        echo "🌐 Detected URL. Downloading MIB file..."
+                        sh "wget -q -O downloaded_senao.mib '${mibSource}' || curl -s -o downloaded_senao.mib '${mibSource}'"
+                        env.MIB_FILE_PATH = "${env.WORKSPACE}/downloaded_senao.mib"
+                    } else {
+                        echo "📂 Detected local filename. Using file from Git repository..."
+                        env.MIB_FILE_PATH = "${env.WORKSPACE}/${mibSource}"
                     }
 
-                    env.MIB_FILE_PATH = "${env.WORKSPACE}/${foundFileName}"
+                    // Strict validation to ensure the file actually exists now
+                    if (!fileExists(env.MIB_FILE_PATH)) {
+                        error("❌ CRITICAL ERROR: MIB file not found at ${env.MIB_FILE_PATH}!\n\nIf using a local file, ensure it is committed and pushed to your Git repository. If using a URL, ensure it is a direct, accessible download link.")
+                    }
+
                     echo "✅ MIB File securely located at: ${env.MIB_FILE_PATH}"
 
                     // Clean workspace of old reports
                     sh "rm -f *.json *.html *.log || true"
-                    echo "Workspace cleaned."
                 }
             }
         }
