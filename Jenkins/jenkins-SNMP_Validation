@@ -13,6 +13,7 @@ pipeline {
                     def deviceIP       = (params['Local IP Address'] ?: '').toString().trim()
                     def readCommunity  = (params['Read Community']   ?: '').toString().trim()
                     def writeCommunity = (params['Write Community']  ?: '').toString().trim()
+                    def mibPath        = (params['MIB_File']         ?: '').toString().trim()
 
                     echo "========================================"
                     echo " SNMP Validation - Preparation"
@@ -20,12 +21,23 @@ pipeline {
                     echo " LOCAL IP        : ${deviceIP}"
                     echo " READ COMMUNITY  : ${readCommunity}"
                     echo " WRITE COMMUNITY : ${writeCommunity}"
+                    echo " MIB FILE        : ${mibPath}"
                     echo " TARGET STAND    : ${params.TARGET_STAND}"
                     echo "========================================"
 
                     if (!deviceIP) { error "Missing required parameter: Local IP Address" }
 
                     sh "rm -f SNMP_Validation.json SNMP_Validation.html snmp_validation.log || true"
+
+                    // DEBUG: show everything Jenkins has access to for this build
+                    sh """
+                        echo "=== WORKSPACE ==="
+                        ls -la '${env.WORKSPACE}/'
+                        echo "=== BUILD DIR ==="
+                        ls -la '${env.WORKSPACE}/../builds/${env.BUILD_NUMBER}/' 2>/dev/null || echo "not found"
+                        echo "=== MIB_File param value ==="
+                        echo 'MIB_File=[${params.MIB_File}]'
+                    """
                     echo "Workspace cleaned."
                 }
             }
@@ -55,30 +67,34 @@ pipeline {
                     def deviceIP       = (params['Local IP Address'] ?: '').toString().trim()
                     def readCommunity  = (params['Read Community']   ?: '').toString().trim()
                     def writeCommunity = (params['Write Community']  ?: '').toString().trim()
+                    def mibPath        = (params['MIB_File']         ?: '').toString().trim()
                     def scriptPath     = "testCases/test_SNMP_Validation.py"
-                    def mibDest        = "${env.WORKSPACE}/SENAO-MIB.mib"
 
-                    // Copy MIB from Jenkins fileParameters directory to workspace
-                    // Jenkins stores File Parameter uploads at:
-                    // /var/lib/jenkins/jobs/<job>/builds/<N>/fileParameters/<paramName>/<filename>
-                    sh """
-                        JOB_ESC=\$(echo '${env.JOB_NAME}' | sed 's|/|/jobs/|g')
-                        BASE="/var/lib/jenkins/jobs/\${JOB_ESC}/builds/${env.BUILD_NUMBER}/fileParameters"
-                        echo "=== fileParameters listing ==="
-                        ls -laR "\${BASE}/" 2>/dev/null || echo "Not found: \${BASE}"
-                        echo "=============================="
-                        MIB=\$(ls "\${BASE}"/*/SENAO-MIB.mib "\${BASE}"/*/*.mib "\${BASE}"/*/*.MIB 2>/dev/null | head -1)
-                        if [ -n "\${MIB}" ]; then
-                            cp "\${MIB}" '${mibDest}'
-                            echo "[OK] MIB copied from: \${MIB}"
-                        else
-                            echo "[WARN] No MIB file found"
-                        fi
-                    """
+                    def wsFile = "${env.WORKSPACE}/${mibPath}"
+                    def mibArg = '/dev/null'
 
-                    def mibOk = sh(script: "test -f '${mibDest}' && echo yes || echo no", returnStdout: true).trim()
-                    def mibArg = (mibOk == 'yes') ? mibDest : '/dev/null'
-                    echo (mibOk == 'yes') ? "[OK] Using MIB: ${mibArg}" : "[WARN] MIB not found - OID names will be empty"
+                    if (mibPath) {
+                        // Try workspace path first (File Parameter behaviour)
+                        def wsExists = sh(script: "test -f '${wsFile}' && echo yes || echo no", returnStdout: true).trim()
+                        if (wsExists == 'yes') {
+                            mibArg = wsFile
+                            echo "[OK] MIB found in workspace: ${mibArg}"
+                        } else {
+                            // Try as absolute path (String Parameter fallback)
+                            def absExists = sh(script: "test -f '${mibPath}' && echo yes || echo no", returnStdout: true).trim()
+                            if (absExists == 'yes') {
+                                mibArg = mibPath
+                                echo "[OK] MIB found at path: ${mibArg}"
+                            } else {
+                                echo "[WARN] MIB not found — workspace listing:"
+                                sh "ls -la '${env.WORKSPACE}/' || true"
+                                echo "[WARN] OID names will be empty"
+                            }
+                        }
+                    } else {
+                        echo "[WARN] No MIB provided — OID names will be empty"
+                    }
+                    mibPath = mibArg
 
                     echo "========================================"
                     echo " Running SNMP Validation on ${deviceIP}"
@@ -91,7 +107,7 @@ pipeline {
                                 --device-ip       '${deviceIP}'        \
                                 --read-community  '${readCommunity}'   \
                                 --write-community '${writeCommunity}'  \
-                                --mib-file        '${mibArg}'          \
+                                --mib-file        '${mibArg}'         \
                                 | tee snmp_validation.log
                         """
                     } catch (err) {
@@ -128,9 +144,11 @@ pipeline {
                             def rData  = (rec.data  ?: "").toString().replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
                             def rPrefix = "other"
                             if (rName) { def m = (rName =~ /^([a-z]+)/); if (m) rPrefix = m[0][1] }
-                            def badgeClass = ["STRING":"badge-string","INTEGER":"badge-integer","Gauge32":"badge-gauge",
+                            def badgeClass = [
+                                "STRING":"badge-string","INTEGER":"badge-integer","Gauge32":"badge-gauge",
                                 "Counter32":"badge-counter","Counter64":"badge-counter","Timeticks":"badge-timeticks",
-                                "IpAddress":"badge-ip","OID":"badge-oid","Hex-STRING":"badge-hex"].get(rType,"badge-oid")
+                                "IpAddress":"badge-ip","OID":"badge-oid","Hex-STRING":"badge-hex"
+                            ].get(rType,"badge-oid")
                             def nameDisplay = rName ?: "<em class='no-name'>&#8212;</em>"
                             rows.append("<tr data-prefix=\"${rPrefix}\" data-type=\"${rType}\">")
                             rows.append("<td class=\"col-name\">${nameDisplay}</td>")
@@ -386,8 +404,6 @@ pipeline {
     post {
         always {
             script {
-                def reportFileName = "SNMP_Validation.html"
-
                 archiveArtifacts artifacts: 'SNMP_Validation.json, SNMP_Validation.html, snmp_validation.log',
                                  fingerprint: true,
                                  allowEmptyArchive: true
@@ -397,7 +413,7 @@ pipeline {
                     alwaysLinkToLastBuild: true,
                     keepAll              : true,
                     reportDir            : '.',
-                    reportFiles          : reportFileName,
+                    reportFiles          : 'SNMP_Validation.html',
                     reportName           : 'Automated Test Report'
                 ])
 
@@ -430,22 +446,15 @@ pipeline {
                 emailext(
                     subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
                     body: """
-                        <html>
-                        <body>
+                        <html><body>
                             <h2 style="color:blue;">Jenkins Build Notification</h2>
                             <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
-                            <p><strong>Status:</strong>
-                                <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
-                                    ${currentBuild.currentResult}
-                                </span>
-                            </p>
+                            <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">${currentBuild.currentResult}</span></p>
                             <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
                             <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
                             <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
-                            <br/>
-                            <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
-                        </body>
-                        </html>
+                            <br/><p style="color:gray;">-- Jenkins Automated Notification</p>
+                        </body></html>
                     """,
                     to               : userEmail,
                     mimeType         : 'text/html',
