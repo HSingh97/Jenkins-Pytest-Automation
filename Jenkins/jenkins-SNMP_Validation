@@ -25,7 +25,6 @@ pipeline {
                     echo " TARGET STAND    : ${params.TARGET_STAND}"
                     echo "========================================"
 
-                    // FAIL-FAST VALIDATION
                     if (!deviceIP || !readCommunity || !writeCommunity) {
                         error("Validation Failed: Local IP Address, Read Community, and Write Community parameters MUST be provided.")
                     }
@@ -136,14 +135,14 @@ pipeline {
                             def nameDisplay = rName ?: "<em class='no-name'>—</em>"
                             def safeData = rData.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-                            // Alert logic for -1 or error
-                            def isAlert = (rData.trim() == "-1" || rData.toLowerCase().contains("error"))
+                            // Alert Logic for Errors or -1
+                            def rawValStr = rData.trim().toLowerCase()
+                            def isAlert = (rawValStr == "-1" || rawValStr.contains("error") || rawValStr == "n/a")
                             def valDisplay = isAlert ? "<span class='val-alert'>${safeData}</span>" : safeData
 
                             def readIcon = rec.read_ok ? "<span class='status-icon pass'>✔</span>" : "<span class='status-icon fail'>✘</span>"
                             def writeIcon = rec.write_ok ? "<span class='status-icon pass'>✔</span>" : "<span class='status-icon fail'>✘</span>"
 
-                            // Removed the col-toggle and accordion rows. The output is now fully wrapped.
                             rows += """
 <tr class="main-row" data-prefix="${rPrefix}" data-type="${rType}">
   <td class="col-name">${nameDisplay}</td>
@@ -184,66 +183,76 @@ pipeline {
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SNMP Protocol Validation Report</title>
+  <title>SNMP Validation Report</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: #f8fafc; color: #1e293b; line-height: 1.6; display: flex; height: 100vh; overflow: hidden; font-size: 15px; }
+    :root {
+      --bg-page: #f8fafc;
+      --bg-sidebar: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border-color: #e2e8f0;
+      --primary: #3b82f6;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: var(--bg-page); color: var(--text-main); line-height: 1.6; display: flex; height: 100vh; overflow: hidden; font-size: 16px; }
 
-    /* Modernized Left Sidebar - Locked */
-    .sidebar { width: 340px; min-width: 340px; background: #f1f5f9; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; height: 100vh; overflow-y: auto; box-shadow: inset -2px 0 10px rgba(0,0,0,0.01); z-index: 10; }
-    .sidebar-header { padding: 28px 24px 20px 24px; display: flex; align-items: center; gap: 14px; background: #ffffff; border-bottom: 1px solid #e2e8f0; }
-    .sidebar-header img { height: 40px; object-fit: contain; }
-    .sidebar-header h1 { font-size: 20px; margin: 0; color: #0f172a; font-weight: 800; line-height: 1.2; letter-spacing: -0.5px; }
+    /* Modernized & Wider Left Sidebar */
+    .sidebar { width: 380px; min-width: 380px; background: var(--bg-sidebar); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; height: 100vh; overflow-y: auto; box-shadow: 4px 0 20px rgba(0,0,0,0.03); z-index: 10; }
+    .sidebar-header { padding: 36px 32px 28px 32px; display: flex; align-items: center; gap: 16px; background: var(--bg-sidebar); border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 20; }
+    .sidebar-header img { height: 44px; object-fit: contain; }
+    .sidebar-header h1 { font-size: 22px; margin: 0; color: var(--text-main); font-weight: 800; line-height: 1.2; letter-spacing: -0.5px; }
 
-    .sidebar-section { padding: 24px; border-bottom: 1px solid #e2e8f0; }
-    .sidebar-section h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; margin: 0 0 16px 0; font-weight: 800; }
+    .sidebar-section { padding: 28px 32px; border-bottom: 1px solid var(--border-color); }
+    .sidebar-section h3 { font-size: 14px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-muted); margin: 0 0 20px 0; font-weight: 800; }
 
-    .info-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 18px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); transition: transform 0.2s; }
-    .info-card:hover { border-color: #cbd5e1; transform: translateY(-1px); }
+    .info-card { background: #f8fafc; border: 1px solid var(--border-color); border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; transition: transform 0.2s, box-shadow 0.2s; }
+    .info-card:hover { border-color: #cbd5e1; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
     .info-card:last-child { margin-bottom: 0; }
-    .info-card span { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 700; margin-bottom: 4px; }
-    .info-card strong { display: block; font-size: 16px; color: #0f172a; word-wrap: break-word; font-weight: 600; }
+    .info-card span { display: block; font-size: 13px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); font-weight: 700; margin-bottom: 6px; }
+    .info-card strong { display: block; font-size: 17px; color: var(--text-main); word-wrap: break-word; font-weight: 600; }
 
-    /* Main Content Area - Scrollable */
-    .main-content { flex: 1; overflow-y: auto; padding: 32px 40px; background: #ffffff; }
+    /* Main Content Area */
+    .main-content { flex: 1; overflow-y: auto; padding: 40px 48px; background: var(--bg-page); }
 
-    .toolbar { display: flex; gap: 16px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; background: #f8fafc; padding: 16px 24px; border-radius: 12px; border: 1px solid #e2e8f0; }
-    .search-wrap { flex: 1; min-width: 300px; position: relative; }
-    .search-wrap input { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px 12px 44px; font-size: 15px; background: #ffffff; transition: all 0.2s; box-sizing: border-box; }
-    .search-wrap input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); outline: none; }
-    .search-wrap svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 20px; height: 20px; }
-    .type-select { min-width: 160px; padding: 12px 16px; font-size: 15px; border: 1px solid #cbd5e1; border-radius: 8px; background: #ffffff; cursor: pointer; }
-    .count-pill { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 999px; padding: 10px 20px; font-size: 14px; font-weight: 700; color: #1d4ed8; white-space: nowrap; }
+    .toolbar { display: flex; gap: 20px; align-items: center; margin-bottom: 24px; flex-wrap: wrap; background: #ffffff; padding: 20px 28px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
+    .search-wrap { flex: 1; min-width: 320px; position: relative; }
+    .search-wrap input { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px 16px 14px 48px; font-size: 16px; background: #ffffff; transition: all 0.2s; box-sizing: border-box; }
+    .search-wrap input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59,130,246,0.15); outline: none; }
+    .search-wrap svg { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--text-muted); width: 22px; height: 22px; }
+    .type-select { min-width: 180px; padding: 14px 16px; font-size: 16px; border: 1px solid #cbd5e1; border-radius: 8px; background: #ffffff; cursor: pointer; }
+    .count-pill { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 999px; padding: 12px 24px; font-size: 15px; font-weight: 700; color: #1d4ed8; white-space: nowrap; }
 
-    .chip-section { padding: 0 0 20px 0; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-    .chip-label { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px; color: #64748b; margin-right: 4px; }
-    .chip { border: 1px solid #cbd5e1; background: #f8fafc; border-radius: 999px; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #475569; cursor: pointer; user-select: none; transition: all 0.2s; }
-    .chip:hover { border-color: #3b82f6; color: #1d4ed8; background: #eff6ff; }
-    .chip.active { background: #3b82f6; border-color: #3b82f6; color: white; }
+    .chip-section { padding: 0 0 24px 0; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .chip-label { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); margin-right: 8px; }
+    .chip { border: 1px solid #cbd5e1; background: #ffffff; border-radius: 999px; padding: 8px 18px; font-size: 14px; font-weight: 600; color: #475569; cursor: pointer; user-select: none; transition: all 0.2s; }
+    .chip:hover { border-color: var(--primary); color: #1d4ed8; background: #eff6ff; }
+    .chip.active { background: var(--primary); border-color: var(--primary); color: white; box-shadow: 0 2px 8px rgba(59,130,246,0.25); }
 
-    .table-card { background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
+    .table-card { background: white; border-radius: 12px; border: 1px solid var(--border-color); overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.04); }
     table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; text-align: left; vertical-align: top; }
-    th { background: #f8fafc; font-weight: 700; color: #334155; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; position: sticky; top: 0; z-index: 5; border-bottom: 2px solid #e2e8f0; }
+    th, td { padding: 18px 24px; border-bottom: 1px solid var(--border-color); text-align: left; vertical-align: top; }
+    th { background: #f8fafc; font-weight: 700; color: #334155; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; position: sticky; top: 0; z-index: 5; border-bottom: 2px solid var(--border-color); }
 
     .center-col { text-align: center; }
     .main-row:hover td { background: #f8fafc; }
 
-    .col-name { font-size: 15px; font-weight: 600; color: #0f172a; min-width: 180px; }
-    .col-oid { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; color: #475569; }
+    .col-name { font-size: 16px; font-weight: 600; color: var(--text-main); min-width: 200px; }
+    .col-oid { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 14px; color: var(--text-muted); }
     .col-type { text-align: center; min-width: 120px; }
-    .col-val { font-size: 15px; color: #334155; max-width: 500px; word-break: break-word; white-space: pre-wrap; line-height: 1.5; }
 
-    /* Alert styling for errors or -1 */
-    .val-alert { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; padding: 4px 10px; border-radius: 6px; font-weight: 600; display: inline-block; }
+    /* Text wrapping forcefully applied here */
+    .col-val { font-size: 16px; color: #334155; max-width: 600px; word-wrap: break-word; white-space: pre-wrap; line-height: 1.6; }
 
-    .status-icon { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; font-size: 12px; font-weight: bold; }
-    .status-icon.pass { background: #dcfce7; color: #166534; box-shadow: 0 0 0 2px #bbf7d0; }
-    .status-icon.fail { background: #fee2e2; color: #b91c1c; box-shadow: 0 0 0 2px #fecaca; }
+    /* Enhanced Alert Box */
+    .val-alert { background: #fef2f2; color: #b91c1c; border: 1px solid #fca5a5; padding: 6px 12px; border-radius: 6px; font-weight: 700; display: inline-block; letter-spacing: 0.3px; }
+
+    .status-icon { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; font-size: 13px; font-weight: bold; }
+    .status-icon.pass { background: #dcfce7; color: #166534; box-shadow: 0 0 0 3px #bbf7d0; }
+    .status-icon.fail { background: #fee2e2; color: #b91c1c; box-shadow: 0 0 0 3px #fecaca; }
 
     .no-name { color: #94a3b8; font-style: italic; font-weight: normal; }
-    .no-results { text-align: center; padding: 60px; color: #64748b; font-size: 16px; }
+    .no-results { text-align: center; padding: 60px; color: var(--text-muted); font-size: 17px; }
 
-    .badge { display: inline-block; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.3px; }
+    .badge { display: inline-block; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 700; letter-spacing: 0.3px; }
     .badge-string   { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
     .badge-integer  { background: #fef9c3; color: #a16207; border: 1px solid #fde047; }
     .badge-gauge    { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
@@ -259,7 +268,7 @@ pipeline {
   <aside class="sidebar">
     <div class="sidebar-header">
       <img src="${companyLogoUrl}" alt="Senao"/>
-      <h1>SNMP Protocol<br>Validation</h1>
+      <h1>SNMP Validation Report</h1>
     </div>
 
     <div class="sidebar-section">
@@ -285,7 +294,7 @@ pipeline {
     <div class="toolbar">
       <div class="search-wrap">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input type="text" id="searchInput" placeholder="Search OID, name, or value…" oninput="applyFilters()"/>
+        <input type="text" id="searchInput" placeholder="Search OID, node name, or value…" oninput="applyFilters()"/>
       </div>
       <select class="type-select" id="typeSelect" onchange="applyFilters()">
         <option value="">All Types</option>
