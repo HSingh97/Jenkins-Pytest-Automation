@@ -54,8 +54,8 @@ fi
                         echo "----------------------------------------"
                         sh """#!/bin/bash
 set -e
-${env.PYTHON_BIN} -m pip install --quiet --upgrade pip
-${env.PYTHON_BIN} -m pip install --quiet paramiko openpyxl
+${env.PYTHON_BIN} -m pip install --quiet --break-system-packages --upgrade pip
+${env.PYTHON_BIN} -m pip install --quiet --break-system-packages paramiko openpyxl
 echo "Dependencies installed successfully."
 """
                     }
@@ -84,6 +84,7 @@ echo "Dependencies installed successfully."
                         def chWait       = params['Chan Settle Wait'].trim()
                         def sshUser      = params['SSH Username'].trim()
                         def sshPass      = params['SSH Password']
+                        env.PTMP_SSH_PASS = sshPass  // stored as env var to avoid secret interpolation warning
                         def snmpComm     = params['SNMP Community'].trim()
                         def prefix       = env.OUTPUT_PREFIX
 
@@ -112,7 +113,7 @@ echo "Dependencies installed successfully."
                                     continue
                                 }
 
-                                def channelArg = channels ? "--channels '${channels}'" : ""
+                                def channelArg = channels ? "--channels ${channels}" : ""
                                 def runPrefix  = "${prefix}_${country.trim().replaceAll('\\s+', '_')}_${bandwidth.trim()}"
 
                                 def pyOut = sh(script: """
@@ -130,7 +131,7 @@ echo "Dependencies installed successfully."
                                         --bw-settle-wait   ${bwWait}     \\
                                         --chan-settle-wait  ${chWait}    \\
                                         --username        '${sshUser}'   \\
-                                        --password        '${sshPass}'   \\
+                                        --password        '${env.PTMP_SSH_PASS}' \\
                                         --snmp-community  '${snmpComm}'  \\
                                         --output-prefix   '${runPrefix}' \\
                                         2>&1
