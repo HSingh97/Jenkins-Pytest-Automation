@@ -1,4 +1,5 @@
 
+
 def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
 }
@@ -13,12 +14,12 @@ pipeline {
 
     options {
         timestamps()
-        ansiColor('xterm')
         buildDiscarder(logRotator(numToKeepStr: '30'))
     }
 
     stages {
 
+        // ── Stage 0: Prepare ─────────────────────────────────────
         stage('Prepare tests') {
             steps {
                 script {
@@ -43,6 +44,7 @@ fi
             }
         }
 
+        // ── Stage 1: Install Dependencies ────────────────────────
         stage('Install Dependencies') {
             steps {
                 catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
@@ -61,6 +63,7 @@ echo "Dependencies installed successfully."
             }
         }
 
+        // ── Stage 2: Channel Testing ──────────────────────────────
         stage('Channel Testing') {
             steps {
                 script {
@@ -146,6 +149,8 @@ echo "Dependencies installed successfully."
                 }
             }
         }
+
+        // ── Stage 3: Generate Report ──────────────────────────────
         stage('Generate Report') {
             steps {
                 script {
@@ -155,6 +160,7 @@ echo "Dependencies installed successfully."
                     def remoteIPList = remoteRaw.split(',').collect { it.trim() }.findAll { it }
                     def prefix       = env.OUTPUT_PREFIX
 
+                    // ── Firmware versions ─────────────────────────────
                     def local_fw_version
                     try {
                         local_fw_version = sh(script: """
@@ -185,6 +191,7 @@ echo "Dependencies installed successfully."
                         "${rip}: ${remoteFWMap[rip]}"
                     }.join('<br/>')
 
+                    // ── Load all per-run JSON result files ────────────
                     def resultFiles = findFiles(glob: "${prefix}_*.json").findAll { it.length > 10 }
                     def allResults  = []
                     resultFiles.each { file ->
@@ -199,13 +206,14 @@ echo "Dependencies installed successfully."
                         }
                     }
 
+                    // ── IST timestamp ─────────────────────────────────
                     def istZone         = TimeZone.getTimeZone("Asia/Kolkata")
                     def istDate         = Calendar.getInstance(istZone).getTime()
                     def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
                     def companyLogoUrl  = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName    = env.JOB_NAME
 
-
+                    // ── Build params table ────────────────────────────
                     def buildParams = [
                         "Local IP Address"      : localIP,
                         "Remote IP Address(es)" : remoteRaw,
@@ -220,13 +228,13 @@ echo "Dependencies installed successfully."
                         "FW Version (Remote)"   : remoteFWDisplay
                     ]
 
-
+                    // ── Counts ────────────────────────────────────────
                     def passCount    = allResults.count { it.status == "PASS" }
                     def failCount    = allResults.count { it.status == "FAIL" }
                     def totalCount   = allResults.size()
                     def overallBadge = env.OVERALL_STATUS ?: (passCount == totalCount && totalCount > 0 ? "PASS" : "FAIL")
 
-
+                    // ── Group by country_bandwidth ────────────────────
                     def groupedResults = [:] as LinkedHashMap
                     allResults.each { r ->
                         def key = "${r.country ?: 'Unknown'}_${r.bandwidth ?: 'Unknown'}"
@@ -234,7 +242,7 @@ echo "Dependencies installed successfully."
                         groupedResults[key] << r
                     }
 
-
+                    // ── Remote header rows ────────────────────────────
                     def remoteSpanHeaders = remoteIPList.collect { rip ->
                         "<th colspan='7' class='remote-header'>Remote: ${rip}</th>"
                     }.join('')
@@ -243,6 +251,7 @@ echo "Dependencies installed successfully."
                         "<th>Ping</th><th>L SNR<br/>A1/A2</th><th>R SNR<br/>A1/A2</th><th>TX<br/>Rate</th><th>RX<br/>Rate</th><th>Noise</th><th>Link<br/>Uptime</th>"
                     }.join('')
 
+                    // ── Results sections HTML ─────────────────────────
                     def sectionsHtml = ""
                     groupedResults.each { key, rows ->
                         def kp         = key.split('_')
@@ -347,6 +356,10 @@ echo "Dependencies installed successfully."
                     if (!sectionsHtml) {
                         sectionsHtml = "<p style='color:#888;margin-top:20px;padding:20px;'>No results found — check console output for errors.</p>"
                     }
+
+                    // ══════════════════════════════════════════════════
+                    //  HTML Report
+                    // ══════════════════════════════════════════════════
                     def htmlContent = """<html>
 <head>
     <title>PTMP Channel Connectivity Report</title>
@@ -410,6 +423,9 @@ echo "Dependencies installed successfully."
 
     } // stages
 
+    // ════════════════════════════════════════════════════════════════
+    //  Post
+    // ════════════════════════════════════════════════════════════════
     post {
         always {
             publishHTML(target: [
@@ -496,4 +512,4 @@ echo "Dependencies installed successfully."
         }
     }
 
-}
+} // pipeline
