@@ -1,0 +1,499 @@
+
+def archiveArtifacts(pattern) {
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+}
+
+def dateStamp      = new Date().format("yyyyMMdd", TimeZone.getTimeZone("Asia/Kolkata"))
+def reportFilename = "ptmp_channel_report_${env.BUILD_NUMBER}_${dateStamp}.html"
+def outputPrefix   = "ptmp_channel_test_${env.BUILD_NUMBER}"
+
+pipeline {
+
+    agent { node { label "${params.TARGET_STAND ?: 'master'}" } }
+
+    options {
+        timestamps()
+        ansiColor('xterm')
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+    }
+
+    stages {
+
+        stage('Prepare tests') {
+            steps {
+                script {
+                    echo "----------------------------------------"
+                    echo "---> TARGET STAND: ${params.TARGET_STAND}"
+                    echo "----------------------------------------"
+
+                    env.PYTHON_BIN = sh(
+                        script: '''#!/bin/bash
+if command -v python3.10 &>/dev/null; then
+    echo "python3.10"
+else
+    echo "python3"
+fi
+''',
+                        returnStdout: true
+                    ).trim()
+
+                    echo "Python binary detected: ${env.PYTHON_BIN}"
+                    env.OUTPUT_PREFIX = outputPrefix
+                }
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                    script {
+                        echo "----------------------------------------"
+                        echo "         Installing Dependencies"
+                        echo "----------------------------------------"
+                        sh """#!/bin/bash
+set -e
+${env.PYTHON_BIN} -m pip install --quiet --upgrade pip
+${env.PYTHON_BIN} -m pip install --quiet paramiko openpyxl
+echo "Dependencies installed successfully."
+"""
+                    }
+                }
+            }
+        }
+
+        stage('Channel Testing') {
+            steps {
+                script {
+                    catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+
+                        def localIP      = params['Local IP Address'].trim()
+                        def remoteRaw    = params['Remote IP Addresses'].trim()
+                        def remoteIPList = remoteRaw.split(',').collect { it.trim() }.findAll { it }
+                        def radio        = params['Radio'].trim()
+                        def bandwidths   = params['Bandwidth'].split(',').collect { it.trim() }.findAll { it }
+                        def countries    = params['Countries'].split(',').collect { it.trim() }.findAll { it }
+                        def channels     = params['Custom Channels'].trim()
+                        def snrDelay     = params['SNR Settle Delay'].trim()
+                        def monDur       = params['Monitor Duration'].trim()
+                        def monInt       = params['Monitor Interval'].trim()
+                        def connTO       = params['Connect Timeout'].trim()
+                        def bwWait       = params['BW Settle Wait'].trim()
+                        def chWait       = params['Chan Settle Wait'].trim()
+                        def sshUser      = params['SSH Username'].trim()
+                        def sshPass      = params['SSH Password']
+                        def snmpComm     = params['SNMP Community'].trim()
+                        def prefix       = env.OUTPUT_PREFIX
+
+                        echo "----------------------------------------"
+                        echo " PTMP Mode: 1 BSU / ${remoteIPList.size()} SU(s)"
+                        remoteIPList.eachWithIndex { ip, idx ->
+                            echo "   SU ${idx + 1}: ${ip}"
+                        }
+                        echo "----------------------------------------"
+
+                        sh "rm -f ${prefix}* || true"
+                        echo "Cleared old workspace"
+
+                        for (country in countries) {
+                            echo "--------------------------------------------------------------"
+                            echo " Configuring Country : ${country}"
+                            echo "--------------------------------------------------------------"
+
+                            for (bandwidth in bandwidths) {
+                                echo "----------------------------------------"
+                                echo " Testing: Country=${country}, Bandwidth=${bandwidth}"
+                                echo "----------------------------------------"
+
+                                if ((country == "Canada" || country == "US 5GHz Non-DFS") && bandwidth == "HT160") {
+                                    echo "Skipping HT160 — not supported in ${country}"
+                                    continue
+                                }
+
+                                def channelArg = channels ? "--channels '${channels}'" : ""
+                                def runPrefix  = "${prefix}_${country.trim().replaceAll('\\s+', '_')}_${bandwidth.trim()}"
+
+                                def pyOut = sh(script: """
+                                    ${env.PYTHON_BIN} -m pytest -v -s testCases/test_PTMPChannelTest.py::test_PTMPChannelConnectivity \\
+                                        --local-ip        '${localIP}'   \\
+                                        --remote-ips      '${remoteRaw}' \\
+                                        --radio           '${radio}'     \\
+                                        --bandwidth       '${bandwidth}' \\
+                                        --country         '${country}'   \\
+                                        ${channelArg}                    \\
+                                        --snr-settle-delay ${snrDelay}   \\
+                                        --monitor-duration ${monDur}     \\
+                                        --monitor-interval ${monInt}     \\
+                                        --connect-timeout  ${connTO}     \\
+                                        --bw-settle-wait   ${bwWait}     \\
+                                        --chan-settle-wait  ${chWait}    \\
+                                        --username        '${sshUser}'   \\
+                                        --password        '${sshPass}'   \\
+                                        --snmp-community  '${snmpComm}'  \\
+                                        --output-prefix   '${runPrefix}' \\
+                                        2>&1
+                                """, returnStdout: true).trim()
+
+                                echo "Pytest Output:\n${pyOut}"
+
+                                def statusLine = pyOut.readLines().find { it.startsWith("OVERALL_STATUS=") }
+                                if (statusLine) {
+                                    env.OVERALL_STATUS = statusLine.split("=")[1].trim()
+                                    echo "Run status: ${env.OVERALL_STATUS}"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        stage('Generate Report') {
+            steps {
+                script {
+
+                    def localIP      = params['Local IP Address'].trim()
+                    def remoteRaw    = params['Remote IP Addresses'].trim()
+                    def remoteIPList = remoteRaw.split(',').collect { it.trim() }.findAll { it }
+                    def prefix       = env.OUTPUT_PREFIX
+
+                    def local_fw_version
+                    try {
+                        local_fw_version = sh(script: """
+                            ssh-keygen -R ${localIP} >/dev/null 2>&1 || true
+                            ssh-keyscan -H ${localIP} >> ~/.ssh/known_hosts 2>/dev/null
+                            sshpass -p '${params['SSH Password']}' ssh -o StrictHostKeyChecking=no ${params['SSH Username']}@${localIP} 'cat /etc/version'
+                        """, returnStdout: true).trim()
+                    } catch (e) {
+                        echo "WARNING: Could not retrieve local firmware version from ${localIP}."
+                        local_fw_version = "N/A (device unreachable)"
+                    }
+
+                    def remoteFWMap = [:]
+                    remoteIPList.each { rip ->
+                        try {
+                            remoteFWMap[rip] = sh(script: """
+                                ssh-keygen -R ${rip} >/dev/null 2>&1 || true
+                                ssh-keyscan -H ${rip} >> ~/.ssh/known_hosts 2>/dev/null
+                                sshpass -p '${params['SSH Password']}' ssh -o StrictHostKeyChecking=no ${params['SSH Username']}@${rip} 'cat /etc/version'
+                            """, returnStdout: true).trim()
+                        } catch (e) {
+                            echo "WARNING: Could not retrieve firmware version from remote ${rip}."
+                            remoteFWMap[rip] = "N/A (device unreachable)"
+                        }
+                    }
+
+                    def remoteFWDisplay = remoteIPList.collect { rip ->
+                        "${rip}: ${remoteFWMap[rip]}"
+                    }.join('<br/>')
+
+                    def resultFiles = findFiles(glob: "${prefix}_*.json").findAll { it.length > 10 }
+                    def allResults  = []
+                    resultFiles.each { file ->
+                        try {
+                            def data = readJSON file: file.name
+                            if (data?.results) {
+                                data.results.each { r -> r.source_file = file.name }
+                                allResults.addAll(data.results)
+                            }
+                        } catch (e) {
+                            echo "WARNING: Could not parse ${file.name}: ${e}"
+                        }
+                    }
+
+                    def istZone         = TimeZone.getTimeZone("Asia/Kolkata")
+                    def istDate         = Calendar.getInstance(istZone).getTime()
+                    def currentDateTime = istDate.format("dd MMM yyyy, HH:mm:ss z", istZone)
+                    def companyLogoUrl  = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
+                    def pipelineName    = env.JOB_NAME
+
+
+                    def buildParams = [
+                        "Local IP Address"      : localIP,
+                        "Remote IP Address(es)" : remoteRaw,
+                        "Radio"                 : params['Radio'],
+                        "Countries"             : params['Countries'],
+                        "Bandwidths"            : params['Bandwidth'],
+                        "Channels"              : params['Custom Channels'] ?: "(auto-fetch via SSH)",
+                        "SNR Settle Delay"      : "${params['SNR Settle Delay']}s  (one-shot read per channel)",
+                        "Monitor Duration"      : "${params['Monitor Duration']}s  (uptime polled every ${params['Monitor Interval']}s)",
+                        "Connect Timeout"       : "${params['Connect Timeout']}s",
+                        "FW Version (Local)"    : local_fw_version,
+                        "FW Version (Remote)"   : remoteFWDisplay
+                    ]
+
+
+                    def passCount    = allResults.count { it.status == "PASS" }
+                    def failCount    = allResults.count { it.status == "FAIL" }
+                    def totalCount   = allResults.size()
+                    def overallBadge = env.OVERALL_STATUS ?: (passCount == totalCount && totalCount > 0 ? "PASS" : "FAIL")
+
+
+                    def groupedResults = [:] as LinkedHashMap
+                    allResults.each { r ->
+                        def key = "${r.country ?: 'Unknown'}_${r.bandwidth ?: 'Unknown'}"
+                        if (!groupedResults.containsKey(key)) groupedResults[key] = []
+                        groupedResults[key] << r
+                    }
+
+
+                    def remoteSpanHeaders = remoteIPList.collect { rip ->
+                        "<th colspan='7' class='remote-header'>Remote: ${rip}</th>"
+                    }.join('')
+
+                    def remoteSubHeaders = remoteIPList.collect { rip ->
+                        "<th>Ping</th><th>L SNR<br/>A1/A2</th><th>R SNR<br/>A1/A2</th><th>TX<br/>Rate</th><th>RX<br/>Rate</th><th>Noise</th><th>Link<br/>Uptime</th>"
+                    }.join('')
+
+                    def sectionsHtml = ""
+                    groupedResults.each { key, rows ->
+                        def kp         = key.split('_')
+                        def sCountry   = kp[0..-2].join(' ')
+                        def sBandwidth = kp[-1]
+                        def sStatuses  = rows.collect { it.status }
+                        def sOverall   = sStatuses.every { it == "PASS" } ? "PASS" :
+                                        (sStatuses.every { it == "FAIL" } ? "FAIL" : "PARTIAL")
+                        def sBadge     = sOverall == "PASS"    ? "badge-pass"    :
+                                        (sOverall == "FAIL"    ? "badge-fail"    : "badge-partial")
+
+                        sectionsHtml += """
+                        <h2>
+                            Country: <i><span style="background-color:#ffff99; padding:2px 6px; border-radius:4px;"><b>${sCountry}</b></span></i> &nbsp;|&nbsp;
+                            Bandwidth: <i><span style="background-color:#d0ebff; padding:2px 6px; border-radius:4px;"><b>${sBandwidth}</b></span></i> &nbsp;|&nbsp;
+                            Status: <span class="${sBadge}">${sOverall}</span>
+                        </h2>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th rowspan="2">Channel</th>
+                                    <th rowspan="2">Frequency</th>
+                                    <th rowspan="2">Overall<br/>Status</th>
+                                    <th rowspan="2">Op<br/>Channel</th>
+                                    <th rowspan="2">Op<br/>BW</th>
+                                    <th rowspan="2">SNR Read<br/>Timestamp</th>
+                                    <th rowspan="2">Notes</th>
+                                    ${remoteSpanHeaders}
+                                </tr>
+                                <tr>${remoteSubHeaders}</tr>
+                            </thead>
+                            <tbody>
+                        """
+
+                        rows.each { r ->
+                            def ch     = r.channel  ?: "-"
+                            def freq   = r.freq_mhz ? "${r.freq_mhz} MHz" : "-"
+                            def status = r.status   ?: "N/A"
+                            def notes  = r.notes    ?: "-"
+                            def snapTs = r.snap_ts  ?: "-"
+                            def opBw   = r.op_bw    ?: "-"
+                            def opCh   = r.op_ch    ?: "-"
+
+                            def statusHtml = status == "PASS"
+                                ? "<span class='pass'>&#10003; PASS</span>"
+                                : (status == "FAIL"
+                                   ? "<span class='fail'>&#10007; FAIL</span>"
+                                   : "<span style='color:orange;font-weight:bold;'>${status}</span>")
+
+                            sectionsHtml += """
+                                <tr>
+                                    <td>${ch}</td>
+                                    <td>${freq}</td>
+                                    <td>${statusHtml}</td>
+                                    <td>${opCh}</td>
+                                    <td>${opBw}</td>
+                                    <td style="color:#666;font-size:12px;">${snapTs}</td>
+                                    <td style="text-align:left;white-space:normal;max-width:200px;">${notes}</td>
+                            """
+
+                            def snap = r.snr_snapshot ?: [:]
+                            remoteIPList.each { rip ->
+                                def d   = snap[rip] ?: [:]
+                                def lA1 = d.l_snr_a1 ?: "-"
+                                def lA2 = d.l_snr_a2 ?: "-"
+                                def rA1 = d.r_snr_a1 ?: "-"
+                                def rA2 = d.r_snr_a2 ?: "-"
+                                def tx  = d.tx_rate  ?: "-"
+                                def rx  = d.rx_rate  ?: "-"
+                                def ns  = d.noise    ?: "-"
+                                def up  = d.uptime   ?: "-"
+
+                                def pingHtml = (d && status != "FAIL")
+                                    ? "<span style='color:green;font-weight:bold;'>OK</span>"
+                                    : "<span style='color:red;font-weight:bold;'>FAIL</span>"
+
+                                def lStyle = ""; def rStyle = ""
+                                try {
+                                    def li = lA1.toString().toInteger()
+                                    def ri = rA1.toString().toInteger()
+                                    if (li == 0)      lStyle = "color:red;font-weight:bold;"
+                                    else if (li < 15) lStyle = "color:orange;"
+                                    if (ri == 0)      rStyle = "color:red;font-weight:bold;"
+                                    else if (ri < 15) rStyle = "color:orange;"
+                                } catch(ignored) {}
+
+                                sectionsHtml += """
+                                    <td>${pingHtml}</td>
+                                    <td style="${lStyle}">${lA1}/${lA2}</td>
+                                    <td style="${rStyle}">${rA1}/${rA2}</td>
+                                    <td>${tx}</td>
+                                    <td>${rx}</td>
+                                    <td>${ns}</td>
+                                    <td>${up}</td>
+                                """
+                            }
+                            sectionsHtml += "</tr>"
+                        }
+                        sectionsHtml += "</tbody></table>"
+                    }
+
+                    if (!sectionsHtml) {
+                        sectionsHtml = "<p style='color:#888;margin-top:20px;padding:20px;'>No results found — check console output for errors.</p>"
+                    }
+                    def htmlContent = """<html>
+<head>
+    <title>PTMP Channel Connectivity Report</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 20px; background-color: #f9f9f9; color: #2c3e50; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 20px; border-bottom: 2px solid #e0e0e0; }
+        .header img { height: 60px; }
+        .header-info { text-align: right; }
+        .header-info h1 { margin: 0; font-size: 24px; }
+        .header-info p  { margin: 5px 0; font-size: 14px; color: #555; }
+        h2 { margin-top: 40px; font-size: 20px; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.05); table-layout: auto; }
+        th, td { padding: 10px 12px; border: 1px solid #ddd; text-align: center; vertical-align: middle; font-size: 13px; white-space: nowrap; }
+        th { background: #2c3e50; color: white; }
+        .remote-header { background: #1a252f !important; color: #aad4f5 !important; }
+        table.build-params td, table.build-params th { text-align: left !important; white-space: normal; }
+        tr:nth-child(even) { background-color: #f4f4f4; }
+        .pass    { color: green;  font-weight: bold; }
+        .fail    { color: red;    font-weight: bold; }
+        .badge-pass    { background: #d4edda; color: green;  padding: 2px 8px; border-radius: 5px; font-weight: bold; }
+        .badge-fail    { background: #f8d7da; color: red;    padding: 2px 8px; border-radius: 5px; font-weight: bold; }
+        .badge-partial { background: #fff3cd; color: orange; padding: 2px 8px; border-radius: 5px; font-weight: bold; }
+        .summary-bar { display: flex; gap: 14px; margin: 20px 0 10px 0; }
+        .stat-box { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 12px 22px; text-align: center; min-width: 110px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+        .stat-box .num { font-size: 26px; font-weight: 700; }
+        .stat-box .lbl { font-size: 11px; color: #888; margin-top: 2px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="${companyLogoUrl}" alt="Senao Networks" />
+        <div class="header-info">
+            <h1>Automated Channel Connectivity Report</h1>
+            <p><strong>Pipeline:</strong> ${pipelineName}</p>
+            <p><strong>Date:</strong> ${currentDateTime}</p>
+            <p><strong>Mode:</strong> PTMP &mdash; 1 BSU / ${remoteIPList.size()} SU(s)</p>
+        </div>
+    </div>
+
+    <div class="summary-bar">
+        <div class="stat-box"><div class="num" style="color:#2c3e50;">${totalCount}</div><div class="lbl">Total Channels</div></div>
+        <div class="stat-box"><div class="num" style="color:#27ae60;">${passCount}</div><div class="lbl">Passed</div></div>
+        <div class="stat-box"><div class="num" style="color:#e74c3c;">${failCount}</div><div class="lbl">Failed</div></div>
+        <div class="stat-box" style="border-color:${overallBadge == 'PASS' ? '#27ae60' : '#e74c3c'};"><div class="num" style="color:${overallBadge == 'PASS' ? '#27ae60' : '#e74c3c'};">${overallBadge}</div><div class="lbl">Overall</div></div>
+    </div>
+
+    <h2>Build Parameters</h2>
+    <table class="build-params">
+        ${buildParams.collect { k, v -> "<tr><td><b>${k}</b></td><td>${v}</td></tr>" }.join('\n')}
+    </table>
+
+    ${sectionsHtml}
+</body>
+</html>"""
+
+                    writeFile file: reportFilename, text: htmlContent
+                    echo "HTML report generated: ${reportFilename}"
+                }
+            }
+        }
+
+    } // stages
+
+    post {
+        always {
+            publishHTML(target: [
+                allowMissing          : true,
+                alwaysLinkToLastBuild : true,
+                keepAll               : true,
+                reportDir             : '.',
+                reportFiles           : "${reportFilename}",
+                reportName            : "Channel Test Report - Build ${env.BUILD_NUMBER}"
+            ])
+
+            archiveArtifacts("${reportFilename}, ${outputPrefix}*.csv, ${outputPrefix}*.txt, ${outputPrefix}*.xlsx, ${outputPrefix}*.json")
+
+            echo "-----------------------------------------"
+            echo 'Script Done!'
+            echo "-----------------------------------------"
+
+            script {
+                def buildCauses   = currentBuild.getBuildCauses()
+                def userCause     = buildCauses.find { it._class == 'hudson.model.Cause$UserIdCause' }
+                def buildUserName = userCause?.userName ?: "Unknown User"
+                def buildUserId   = userCause?.userId   ?: "unknown"
+
+                echo "Build started by: ${buildUserName} (${buildUserId})"
+
+                def userEmails = [
+                    "harman"  : "harmanjot.singh@senao.com",
+                    "mahesh"  : "mahesh.battala@senao.com",
+                    "sandeep" : "sandeep.manchikanti@senao.com",
+                    "sampath" : "sampath.marella@senao.com",
+                    "jayanth" : "jayanth.munnaluru@senao.com",
+                    "srilatha": "srilatha.tadiboina@senao.com",
+                    "phani"   : "phani.darla@senao.com",
+                    "dinesh"  : "dinesh.redddy@senao.com",
+                    "puneet"  : "puneet.sharma@senao.com"
+                ]
+
+                def userEmail   = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+                def remoteRaw   = params['Remote IP Addresses']
+                def statusColor = currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'
+
+                echo "Sending email to: ${userEmail}"
+
+                emailext(
+                    subject: "Jenkins Build: ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    body: """
+<html>
+<body>
+    <h2 style="color:blue;">Jenkins Build Notification</h2>
+    <p><strong>Build Name:</strong> ${currentBuild.fullDisplayName}</p>
+    <p><strong>Status:</strong> <span style="color:${statusColor};">${currentBuild.currentResult}</span></p>
+    <p><strong>Mode:</strong> PTMP</p>
+    <p><strong>Local IP:</strong> ${params['Local IP Address']}</p>
+    <p><strong>Remote IP(s):</strong> ${remoteRaw}</p>
+    <p><strong>Radio:</strong> ${params['Radio']}</p>
+    <p><strong>Bandwidth:</strong> ${params['Bandwidth']}</p>
+    <p><strong>Countries:</strong> ${params['Countries']}</p>
+    <p><strong>Started By:</strong> ${buildUserName} (${buildUserId})</p>
+    <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+    <p><strong>Console Output:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+    <p><strong>HTML Report:</strong> <a href="${env.BUILD_URL}artifact/${reportFilename}">Click here to view</a></p>
+    <br/>
+    <p style="color:gray;">--<br/>Jenkins Automated Notification</p>
+</body>
+</html>
+                    """,
+                    to                : userEmail,
+                    mimeType          : 'text/html',
+                    attachmentsPattern: "${reportFilename}"
+                )
+            }
+        }
+
+        success {
+            echo "-----------------------------------------"
+            echo 'Script Success'
+            echo "-----------------------------------------"
+        }
+
+        failure {
+            echo "-----------------------------------------"
+            echo 'Script Failure'
+            echo "-----------------------------------------"
+        }
+    }
+
+}

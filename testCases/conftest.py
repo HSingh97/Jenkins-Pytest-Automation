@@ -1,5 +1,6 @@
 import pytest
 
+
 def pytest_addoption(parser):
     parser.addoption("--radio", action="store", default="Radio1", help="Radio")
     parser.addoption("--local-ip", action="store", default="192.168.1.1", help="Local IP Address")
@@ -37,6 +38,29 @@ def pytest_addoption(parser):
                      help="Comma-separated list of channels to test")
     parser.addoption("--powers", action="store", default="26",
                      help="Comma-separated list of Tx power levels in dBm (e.g. 20,23,26)")
+
+    # ── PTMP Channel Connectivity Test args ──────────────────────────────────
+    parser.addoption("--remote-ips", action="store", default="192.168.1.110",
+                     help="PTMP: Comma-separated SU IP addresses (e.g. 192.168.1.110,192.168.1.111)")
+    parser.addoption("--snr-settle-delay", action="store", default="45",
+                     help="PTMP: Seconds to wait after link-up before reading SNR (one-shot per channel)")
+    parser.addoption("--monitor-duration", action="store", default="60",
+                     help="PTMP: Total stability monitoring window per channel (seconds)")
+    parser.addoption("--monitor-interval", action="store", default="10",
+                     help="PTMP: Uptime / link-reform poll cadence during monitoring (seconds)")
+    parser.addoption("--connect-timeout", action="store", default="180",
+                     help="PTMP: Max seconds to wait for all SUs to associate after channel change")
+    parser.addoption("--bw-settle-wait", action="store", default="60",
+                     help="PTMP: Seconds to wait after changing bandwidth")
+    parser.addoption("--chan-settle-wait", action="store", default="10",
+                     help="PTMP: Seconds to wait after changing channel before checking links")
+    parser.addoption("--snmp-community", action="store", default="ubr@rw123",
+                     help="PTMP: SNMP v2c read-write community string")
+    parser.addoption("--output-prefix", action="store", default="ptmp_channel_test",
+                     help="PTMP: Base name for output files (.txt / .csv / .xlsx / .json)")
+
+
+# ── Existing fixtures (unchanged) ────────────────────────────────────────────
 
 @pytest.fixture
 def channels(request):
@@ -173,3 +197,52 @@ def local_interface(request):
 @pytest.fixture
 def remote_interface(request):
     return request.config.getoption("--remote-interface")
+
+
+# ── PTMP Channel Connectivity Test fixtures ──────────────────────────────────
+
+@pytest.fixture
+def remote_ips(request):
+    """PTMP: comma-separated SU IPs → returned as a clean list."""
+    raw = request.config.getoption("--remote-ips")
+    return [ip.strip() for ip in raw.split(",") if ip.strip()]
+
+@pytest.fixture
+def snr_settle_delay(request):
+    """PTMP: seconds to wait after link-up before the one-shot SNR read."""
+    return int(request.config.getoption("--snr-settle-delay"))
+
+@pytest.fixture
+def monitor_duration(request):
+    """PTMP: total stability monitoring window per channel (seconds)."""
+    return int(request.config.getoption("--monitor-duration"))
+
+@pytest.fixture
+def monitor_interval(request):
+    """PTMP: uptime / link-reform poll cadence during monitoring (seconds)."""
+    return int(request.config.getoption("--monitor-interval"))
+
+@pytest.fixture
+def connect_timeout(request):
+    """PTMP: max seconds to wait for all SUs to associate."""
+    return int(request.config.getoption("--connect-timeout"))
+
+@pytest.fixture
+def bw_settle_wait(request):
+    """PTMP: seconds to wait after changing bandwidth."""
+    return int(request.config.getoption("--bw-settle-wait"))
+
+@pytest.fixture
+def chan_settle_wait(request):
+    """PTMP: seconds to wait after changing channel."""
+    return int(request.config.getoption("--chan-settle-wait"))
+
+@pytest.fixture
+def snmp_community(request):
+    """PTMP: SNMP v2c read-write community string."""
+    return request.config.getoption("--snmp-community")
+
+@pytest.fixture
+def output_prefix(request):
+    """PTMP: base name for all output files."""
+    return request.config.getoption("--output-prefix")
