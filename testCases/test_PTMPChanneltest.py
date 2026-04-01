@@ -1,700 +1,443 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.10
 """
-PTMP Channel Connectivity Test — pytest version
-=================================================
-All parameters come from conftest.py fixtures / CLI options.
-Run via Jenkins:
-    python3 -m pytest -v -s testCases/test_PTMPChannelTest.py::test_PTMPChannelConnectivity \
-        --local-ip        192.168.1.111               \
-        --remote-ips      "192.168.1.110,192.168.1.111" \
-        --radio           Radio1                       \
-        --bandwidth       HT80                         \
-        --country         "5GHz"                       \
-        --channels        "36,40,100,104,144,169,171"  \
-        --snr-settle-delay  45                         \
-        --monitor-duration  60                         \
-        --monitor-interval  10                         \
-        --connect-timeout   180                        \
-        --bw-settle-wait    60                         \
-        --chan-settle-wait  10                         \
-        --username          root                       \
-        --password          admin                      \
-        --snmp-community    ubr@rw123                  \
-        --output-prefix     ptmp_channel_test
+PTMP Channel Connectivity Test Script
+Tests channel connectivity for 1 BSU (Base Station) to Multiple SUs (Subscriber Units)
+Uses SNMP/SSH for configuration and validation
 """
-
-import re
 import time
-import platform
-import subprocess
-import csv
+import warnings
+import pytest
+import os
+import paramiko
 import json
+import sys
+import argparse
+import random
+import re
+import subprocess
 from datetime import datetime
+from preMadeFunctions.get_snmp_values import *
+from testCases.conftest import password
+from testCases.configsetup import setup
+from preMadeFunctions import pingFunction
+from preMadeFunctions import get_linkstats
+from preMadeFunctions import fetch_ssh_values
+from preMadeFunctions import snmp_operations
+from preMadeFunctions import get_snmp_values
+from preMadeFunctions import ssh_operations
+from preMadeFunctions import param_helpers
 
-try:
-    import paramiko
-    _paramiko_ok = True
-except ImportError:
-    print("WARNING: 'paramiko' not installed — SSH channel-list fetch disabled.")
-    _paramiko_ok = False
-
-try:
-    from openpyxl import Workbook
-    from openpyxl.styles import PatternFill, Font, Alignment
-    _excel_ok = True
-except ImportError:
-    print("WARNING: 'openpyxl' not installed — Excel report disabled.")
-    _excel_ok = False
-
-
-# ═══════════════════════════════════════════════════════════
-#  ANSI colour helpers
-# ═══════════════════════════════════════════════════════════
-class C:
-    HDR   = '\033[95m'
-    BLUE  = '\033[94m'
-    GREEN = '\033[92m'
-    WARN  = '\033[93m'
-    FAIL  = '\033[91m'
-    END   = '\033[0m'
-    BOLD  = '\033[1m'
+class Colors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
 
 
-# ═══════════════════════════════════════════════════════════
-#  Country code map
-# ═══════════════════════════════════════════════════════════
-COUNTRY_CODES = {
-    "US 5GHz All":     5012,
-    "US 5GHz Non-DFS": 5011,
-    "Europe":          276,
-    "Canada":          124,
-    "5GHz":            5019,
-    "India":           356,
-}
+def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, extra, snapshot_time=30):
+
+    print("\n\n" + "=" * 80, flush=True)
+    print(f"{Colors.BOLD}PTMP CHANNEL CONNECTIVITY TEST{Colors.ENDC}", flush=True)
+    print(f"Selected Radio : {radio}", flush=True)
+    print(f"BSU IP (Local) : {local_ip}", flush=True)
+    print(f"SU IPs (Remote): {remote_ip}", flush=True)
+    print(f"Selected Bandwidth : {bandwidth}", flush=True)
+    print(f"Selected Country : {country}", flush=True)
+    print(f"Snapshot Delay : {snapshot_time}s", flush=True)
+    print(f"Short Test (Random Channels) : {extra}", flush=True)
+    print("=" * 80 + "\n", flush=True)
+
+    # ================= COUNTRY CODE MAPPING =================
+    country_codes = {
+        "US 5GHz All": 5012,
+        "US 5GHz Non-DFS": 5011,
+        "Europe": 276,
+        "Canada": 124,
+        "5GHz": 5019,
+        "India": 356
+    }
+
+    if country not in country_codes:
+        print(f"{Colors.FAIL}ERROR: Invalid country '{country}'{Colors.ENDC}", flush=True)
+        assert False, f"Country '{country}' not supported"
+
+    country_code = country_codes[country]
+
+    # ================= RADIO CONFIGURATION =================
+    radio_config = {
+        "Radio1": {"index": 2, "intf": "ath1", "wifi_intf": "wifi1"},
+        "Radio2": {"index": 3, "intf": "ath2", "wifi_intf": "wifi2"}
+    }
+
+    if radio not in radio_config:
+        print(f"{Colors.FAIL}ERROR: Invalid radio '{radio}'{Colors.ENDC}", flush=True)
+        assert False, f"Radio '{radio}' not supported"
+
+    radio_ind = radio_config[radio]["index"]
+    intf = radio_config[radio]["intf"]
+    wifi_intf = radio_config[radio]["wifi_intf"]
+
+    # ================= BANDWIDTH NORMALIZATION =================
+    new_bandwidth = "HT40+" if bandwidth == "HT40" else bandwidth
+
+    # ================= FETCH AVAILABLE CHANNELS =================
+    channel_list = fetch_ssh_values.fetch_channel_list(local_ip, radio_ind, country_code, new_bandwidth)
+    time.sleep(2)
+
+    # ================= RANDOM CHANNEL SELECTION (if extra=1) =================
+    if int(extra) == 1:
+        channel_groups = {}
+        for channel in channel_list:
+            frequency = (int(channel) * 5) + 5000
+            group_key = frequency // 100
+            if group_key not in channel_groups:
+                channel_groups[group_key] = []
+            channel_groups[group_key].append(channel)
+        random_selection = [random.choice(group) for group in channel_groups.values()]
+        channel_list = random_selection
+        print(f"{Colors.OKBLUE}Randomized channel selection: {channel_list}{Colors.ENDC}", flush=True)
+
+    print(f"\n{Colors.BOLD}Channels to test: {channel_list}{Colors.ENDC}", flush=True)
+
+    # ================= INITIAL CONNECTIVITY CHECK =================
+    print(f"\n{Colors.HEADER}Checking device reachability...{Colors.ENDC}", flush=True)
+    bsu_ping = pingFunction.check_access(local_ip)
+    su_ping_status = {ip: pingFunction.check_access(ip) for ip in remote_ip}
+
+    if not bsu_ping:
+        print(f"{Colors.FAIL}CRITICAL: BSU {local_ip} not reachable!{Colors.ENDC}", flush=True)
+        _save_failed_result(radio, local_ip, remote_ip, bandwidth, country, "BSU_UNREACHABLE")
+        assert False, "BSU not reachable"
+
+    print(f"✓ BSU {local_ip} reachable", flush=True)
+    for su_ip, status in su_ping_status.items():
+        status_icon = "✓" if status else "✗"
+        print(f"{status_icon} SU {su_ip} {'reachable' if status else 'NOT reachable'}", flush=True)
+
+    # ================= CONFIGURE BSU BANDWIDTH =================
+    print(f"\n{Colors.HEADER}Configuring BSU bandwidth: {new_bandwidth}{Colors.ENDC}", flush=True)
+    snmp_operations.change_bandwidth(local_ip, radio_ind, new_bandwidth)
+    time.sleep(5)
+
+    # ================= MAIN CHANNEL TESTING LOOP =================
+    channel_results = []
+
+    for channel_idx, channel in enumerate(channel_list, 1):
+        print(f"\n{Colors.BOLD}{'=' * 60}{Colors.ENDC}", flush=True)
+        print(
+            f"{Colors.OKBLUE}>>> Testing Channel {channel_idx}/{len(channel_list)}: {channel} ({new_bandwidth}){Colors.ENDC}",
+            flush=True)
+        print(f"{Colors.BOLD}{'=' * 60}{Colors.ENDC}", flush=True)
+
+        # Configure channel on BSU
+        snmp_operations.change_channel(local_ip, radio_ind, channel)
+        frequency = (int(channel) * 5) + 5000
+        formatted_channel = f"{channel} ({frequency} MHz)"
+
+        # Wait for SUs to associate
+        print(f"\nWaiting {snapshot_time}s for SUs to associate on channel {channel}...", flush=True)
+        time.sleep(snapshot_time)
+
+        # Verify BSU operating parameters
+        bsu_verified = _verify_bsu_operation(local_ip, radio_ind, new_bandwidth, channel)
+
+        # Collect results for each SU
+        su_results = []
+        for su_ip in remote_ip:
+            su_result = _collect_su_metrics(local_ip, su_ip, radio_ind, intf, channel, frequency)
+            su_results.append(su_result)
+            print(f"  {su_ip}: Status={su_result['status']}, SNR={su_result['local_snr']}/{su_result['remote_snr']}",
+                  flush=True)
+
+        # Determine overall channel status
+        all_pass = all(su['status'] == 'PASS' for su in su_results)
+        all_fail = all(su['status'] == 'FAIL' for su in su_results)
+        channel_status = "PASS" if all_pass else ("FAIL" if all_fail else "PARTIAL")
+
+        result = {
+            "channel": formatted_channel,
+            "channel_number": int(channel),
+            "frequency_mhz": frequency,
+            "bsu_verified": bsu_verified,
+            "su_results": su_results,
+            "status": channel_status,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+        channel_results.append(result)
+        print(
+            f"\n{Colors.OKGREEN if channel_status == 'PASS' else Colors.FAIL}Channel {channel} Result: {channel_status}{Colors.ENDC}",
+            flush=True)
+
+    # ================= GENERATE FINAL REPORT =================
+    overall_status = _calculate_overall_status(channel_results)
+
+    test_result = {
+        "test": "test_ptmp_channelconnectivity",
+        "topology": "PTMP",
+        "status": overall_status,
+        "Radio": radio,
+        "BSU_IP": local_ip,
+        "SU_IPs": remote_ip,
+        "Bandwidth": new_bandwidth,
+        "Country": country,
+        "Snapshot_Time_Seconds": snapshot_time,
+        "Tested_Channels": channel_results,
+        "Ping_Results": {
+            "BSU": pingFunction.check_access(local_ip),
+            "SUs": {ip: pingFunction.check_access(ip) for ip in remote_ip}
+        },
+        "test_timestamp": datetime.now().isoformat()
+    }
+
+    print(f"\n{Colors.HEADER}Test Result Summary:{Colors.ENDC}", flush=True)
+    print(f"  Overall Status: {overall_status}", flush=True)
+    print(f"  Channels Tested: {len(channel_results)}", flush=True)
+    print(f"  SUs Tested: {len(remote_ip)}", flush=True)
+
+    _save_json_report(test_result)
+
+    if overall_status == "FAIL":
+        assert False, f"PTMP Channel Test Failed: {overall_status}"
+    elif overall_status == "PARTIAL":
+        pytest.skip(f"PTMP Channel Test Partial: Some channels/SUs failed")
 
 
-# ═══════════════════════════════════════════════════════════
-#  Low-level helpers
-# ═══════════════════════════════════════════════════════════
-def ping(host):
-    param = "-n" if platform.system().lower() == "windows" else "-c"
-    return subprocess.call(
-        ["ping", param, "1", "-W", "2", host],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-    ) == 0
-
-
-def _run(cmd):
+def _verify_bsu_operation(bsu_ip, radio_oid, expected_bw, expected_chan):
     try:
-        return subprocess.check_output(
-            cmd, shell=True, stderr=subprocess.DEVNULL
-        ).decode("utf-8", errors="replace").strip()
-    except Exception:
-        return None
+        op_bw_oid = f".1.3.6.1.4.1.52619.1.1.1.1.1.51.{radio_oid}"
+        op_ch_oid = f".1.3.6.1.4.1.52619.1.1.1.1.1.23.{radio_oid}"
 
+        op_bw = get_snmp_values.fetch_snmp_value_simple(bsu_ip, op_bw_oid)
+        op_ch = get_snmp_values.fetch_snmp_value_simple(bsu_ip, op_ch_oid)
 
-def snmp_get(ip, oid, community):
-    out = _run(f"snmpget -v 2c -c {community} {ip} {oid}")
-    if out is None:
-        return "Err"
-    m = re.search(r'(?:INTEGER|STRING|Gauge32|Counter32|IpAddress|Timeticks):\s*(.+)', out)
-    return m.group(1).replace('"', '').strip() if m else out.split(":")[-1].strip()
+        bw_match = expected_bw.replace('HT', '') in str(op_bw) or str(op_bw) in expected_bw
+        ch_match = str(op_ch).strip() == str(expected_chan).strip()
 
+        if not ch_match:
+            print(f"{Colors.WARNING}⚠ BSU Channel Mismatch: Expected {expected_chan}, Got {op_ch}{Colors.ENDC}",
+                  flush=True)
+            return False
+        if not bw_match:
+            print(f"{Colors.WARNING}⚠ BSU Bandwidth Mismatch: Expected {expected_bw}, Got {op_bw}{Colors.ENDC}",
+                  flush=True)
 
-def snmp_set(ip, oid, type_char, value, community):
-    try:
-        subprocess.check_output(
-            f"snmpset -v 2c -c {community} {ip} {oid} {type_char} {value}",
-            shell=True, stderr=subprocess.STDOUT
-        )
         return True
-    except subprocess.CalledProcessError as e:
-        print(f"{C.FAIL}snmpset failed ({oid}={value}): "
-              f"{e.output.decode(errors='replace').strip()}{C.END}", flush=True)
+    except Exception as e:
+        print(f"{Colors.FAIL}Error verifying BSU operation: {e}{Colors.ENDC}", flush=True)
         return False
 
 
-def apply_config(ip, community):
-    snmp_set(ip, ".1.3.6.1.4.1.52619.1.2.1.1.0", "i", "1", community)
+def _collect_su_metrics(bsu_ip, su_ip, radio_oid, intf, channel, frequency):
+    result = {
+        "su_ip": su_ip,
+        "status": "FAIL",
+        "local_snr": "-",
+        "remote_snr": "-",
+        "local_signal": "-",
+        "remote_signal": "-",
+        "local_noise": "-",
+        "remote_noise": "-",
+        "tx_rate": "-",
+        "rx_rate": "-",
+        "link_uptime": "-",
+        "retries_local": "-",
+        "retries_remote": "-",
+        "obss": "-",
+        "notes": ""
+    }
 
-
-def parse_uptime_seconds(s):
     try:
-        if not s or s in ("Err", "-"):
-            return -1
-        if "(" in s:
-            s = s.split("(")[-1].split(")")[0]
-        parts = [int(x) for x in s.split(":")]
-        parts.reverse()
-        mults = [1, 60, 3600, 86400]
-        return sum(v * mults[i] for i, v in enumerate(parts) if i < 4)
-    except Exception:
-        return -1
+        # Find SU index in BSU's association table
+        su_index = _find_su_index_in_table(bsu_ip, su_ip, radio_oid)
+        if not su_index:
+            result["notes"] = "SU not found in BSU association table"
+            return result
 
+        # Fetch SNMP metrics for this SU
+        metrics = _fetch_su_snmp_metrics(bsu_ip, radio_oid, su_index)
 
-def wait_for_ping(ip, timeout=200, interval=10):
-    elapsed = 0
-    while elapsed < timeout:
-        if ping(ip):
-            return True
-        time.sleep(interval)
-        elapsed += interval
-    return False
+        # Populate result
+        result.update({
+            "local_snr": f"{metrics.get('lsnr_a1', '-')}/{metrics.get('lsnr_a2', '-')}",
+            "remote_snr": f"{metrics.get('rsnr_a1', '-')}/{metrics.get('rsnr_a2', '-')}",
+            "local_signal": f"{metrics.get('lsig_a1', '-')}/{metrics.get('lsig_a2', '-')}",
+            "remote_signal": f"{metrics.get('rsig_a1', '-')}/{metrics.get('rsig_a2', '-')}",
+            "local_noise": metrics.get('local_noise', '-'),
+            "remote_noise": metrics.get('remote_noise', '-'),
+            "tx_rate": metrics.get('tx_rate', '-'),
+            "rx_rate": metrics.get('rx_rate', '-'),
+            "link_uptime": metrics.get('uptime', '-'),
+            "retries_local": metrics.get('local_rtx', '-'),
+            "retries_remote": metrics.get('remote_rtx', '-'),
+            "obss": metrics.get('obss', '-')
+        })
 
+        lsnr = metrics.get('lsnr_a1', '0')
+        rsnr = metrics.get('rsnr_a1', '0')
 
-def wait_for_all_links(ip_list, timeout):
-    elapsed = 0
-    while elapsed < timeout:
-        if all(ping(ip) for ip in ip_list):
-            return True
-        time.sleep(5)
-        elapsed += 5
-    return False
+        if lsnr == "-" or rsnr == "-":
+            result["notes"] = "Missing SNR data"
+        elif int(lsnr) <= 0 or int(rsnr) <= 0:
+            result["notes"] = "Zero or negative SNR"
+        elif pingFunction.check_access(su_ip):
+            result["status"] = "PASS"
+        else:
+            result["notes"] = "SU not pingable"
 
-
-# ═══════════════════════════════════════════════════════════
-#  Radio OID helpers
-# ═══════════════════════════════════════════════════════════
-def radio_oid(radio):   return "2" if radio == "Radio1" else "3"
-def radio_index(radio): return "1" if radio == "Radio1" else "2"
-
-
-# ═══════════════════════════════════════════════════════════
-#  BSU configuration helpers
-# ═══════════════════════════════════════════════════════════
-def set_bandwidth(ip, radio, bw, community, settle_wait):
-    oid = f".1.3.6.1.4.1.52619.1.1.1.1.1.7.{radio_oid(radio)}"
-    print(f"\n{C.HDR}[BW] Setting bandwidth -> {bw}{C.END}", flush=True)
-    for attempt in range(1, 4):
-        if snmp_set(ip, oid, "s", bw, community):
-            time.sleep(2)
-            apply_config(ip, community)
-            print(f"     Waiting {settle_wait}s for bandwidth to apply ...", flush=True)
-            time.sleep(settle_wait)
-            return True
-        print(f"     Attempt {attempt}/3 failed. Retrying ...", flush=True)
-        time.sleep(5)
-    print(f"{C.FAIL}CRITICAL: Failed to set bandwidth after 3 attempts!{C.END}", flush=True)
-    return False
-
-
-def set_channel(ip, radio, channel, community, settle_wait):
-    oid = f".1.3.6.1.4.1.52619.1.1.1.1.1.9.{radio_oid(radio)}"
-    print(f"  {C.BLUE}[CH] Setting channel -> {channel}{C.END}", flush=True)
-    for attempt in range(1, 4):
-        if snmp_set(ip, oid, "i", channel, community):
-            time.sleep(2)
-            apply_config(ip, community)
-            print(f"       Waiting {settle_wait}s for channel to apply ...", flush=True)
-            time.sleep(settle_wait)
-            return True
-        print(f"       Attempt {attempt}/3 failed. Retrying ...", flush=True)
-        time.sleep(5)
-    print(f"{C.FAIL}CRITICAL: Failed to set channel after 3 attempts!{C.END}", flush=True)
-    return False
-
-
-def verify_bsu_operation(ip, radio, expected_bw, expected_ch, community):
-    roid   = radio_oid(radio)
-    op_bw  = snmp_get(ip, f".1.3.6.1.4.1.52619.1.1.1.1.1.51.{roid}", community)
-    op_ch  = snmp_get(ip, f".1.3.6.1.4.1.52619.1.1.1.1.1.23.{roid}", community)
-    bw_ok  = expected_bw.replace("HT", "") in op_bw or op_bw in expected_bw
-    ch_ok  = str(op_ch).strip() == str(expected_ch).strip()
-    bw_tag = f"{C.GREEN}OK{C.END}"    if bw_ok else f"{C.WARN}MISMATCH{C.END}"
-    ch_tag = f"{C.GREEN}MATCH{C.END}" if ch_ok else f"{C.FAIL}MISMATCH{C.END}"
-    print(f"  BSU Op BW : {op_bw:<10} (target {expected_bw}) [{bw_tag}]", flush=True)
-    print(f"  BSU Op CH : {op_ch:<10} (target {expected_ch}) [{ch_tag}]", flush=True)
-    return ch_ok, bw_ok, op_bw, op_ch
-
-
-# ═══════════════════════════════════════════════════════════
-#  SSH channel-list fetch
-# ═══════════════════════════════════════════════════════════
-def fetch_channel_list_ssh(ip, radio, country_code, bw, ssh_user, ssh_pass):
-    if not _paramiko_ok:
-        return []
-    try:
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(ip, username=ssh_user, password=ssh_pass, timeout=15)
-        rind = radio_index(radio)
-        cmd  = f"/usr/sbin/kwn_get_supp_chan.sh {rind} {country_code} {bw}"
-        _, stdout, _ = ssh.exec_command(cmd)
-        nums = re.findall(r'\b\d+\b', stdout.read().decode("utf-8", errors="replace"))
-        ssh.close()
-        return nums[::2]
     except Exception as e:
-        print(f"{C.FAIL}SSH channel-list fetch failed: {e}{C.END}", flush=True)
-        return []
+        result["notes"] = f"Error collecting metrics: {str(e)}"
+        print(f"{Colors.FAIL}Error collecting metrics for {su_ip}: {e}{Colors.ENDC}", flush=True)
 
-
-# ═══════════════════════════════════════════════════════════
-#  ONE-SHOT SNR / link-stats fetch  (called once per channel)
-# ═══════════════════════════════════════════════════════════
-def fetch_all_link_stats_once(local_ip, radio, community):
-    roid  = radio_oid(radio)
-    found = {}
-
-    def _int_val(suffix, idx):
-        out = _run(f"snmpget -v 2c -c {community} {local_ip} "
-                   f".1.3.6.1.4.1.52619.1.3.3.1.{suffix}.{roid}.{idx}")
-        if not out:
-            return "-"
-        m = re.search(r'INTEGER:\s*(\d+)', out)
-        return m.group(1) if m else "-"
-
-    def _uptime_val(idx):
-        out = _run(f"snmpget -v 2c -c {community} {local_ip} "
-                   f".1.3.6.1.4.1.52619.1.3.3.1.52.{roid}.{idx}")
-        if not out:
-            return "Err"
-        raw = out.split("=")[-1].strip()
-        raw = re.sub(r'^(STRING|Timeticks|INTEGER):\s*', '', raw)
-        m   = re.search(r'\((.*?)\)', raw)
-        if m:
-            raw = m.group(1)
-        return raw.replace('"', '').replace('(', '').replace(')', '').strip()
-
-    for idx in range(1, 33):
-        out_ip = _run(f"snmpget -v 2c -c {community} {local_ip} "
-                      f".1.3.6.1.4.1.52619.1.3.3.1.4.{roid}.{idx}")
-        if not out_ip or "No Such Instance" in out_ip:
-            continue
-        m_ip = re.search(r'IpAddress:\s*([\d.]+)', out_ip)
-        ip   = m_ip.group(1) if m_ip else "-"
-        if ip in ("-", "0.0.0.0"):
-            continue
-
-        found[ip] = {
-            "l_snr_a1": _int_val("13", idx),
-            "l_snr_a2": _int_val("14", idx),
-            "r_snr_a1": _int_val("15", idx),
-            "r_snr_a2": _int_val("16", idx),
-            "tx_rate":  _int_val("10", idx),
-            "rx_rate":  _int_val("9",  idx),
-            "noise":    _int_val("17", idx),
-            "uptime":   _uptime_val(idx),
-        }
-        d = found[ip]
-        print(
-            f"  {C.GREEN}[STATS] {ip:<16} "
-            f"L_SNR:{d['l_snr_a1']}/{d['l_snr_a2']}  "
-            f"R_SNR:{d['r_snr_a1']}/{d['r_snr_a2']}  "
-            f"TX:{d['tx_rate']}  RX:{d['rx_rate']}  "
-            f"Noise:{d['noise']}  Up:{d['uptime']}{C.END}", flush=True
-        )
-    return found
-
-
-# ═══════════════════════════════════════════════════════════
-#  Fast uptime-only poll  (used during monitoring loop)
-# ═══════════════════════════════════════════════════════════
-def fetch_uptime_only(local_ip, radio, community, su_indices):
-    roid   = radio_oid(radio)
-    result = {}
-    for ip, idx in su_indices.items():
-        out = _run(f"snmpget -v 2c -c {community} {local_ip} "
-                   f".1.3.6.1.4.1.52619.1.3.3.1.52.{roid}.{idx}")
-        if not out:
-            result[ip] = "Err"
-            continue
-        raw = out.split("=")[-1].strip()
-        raw = re.sub(r'^(STRING|Timeticks|INTEGER):\s*', '', raw)
-        m   = re.search(r'\((.*?)\)', raw)
-        if m:
-            raw = m.group(1)
-        result[ip] = raw.replace('"', '').replace('(', '').replace(')', '').strip()
     return result
 
 
-def discover_su_indices(local_ip, radio, community, remote_ips_set):
-    roid    = radio_oid(radio)
-    indices = {}
-    for idx in range(1, 33):
-        out = _run(f"snmpget -v 2c -c {community} {local_ip} "
-                   f".1.3.6.1.4.1.52619.1.3.3.1.4.{roid}.{idx}")
-        if not out or "No Such Instance" in out:
-            continue
-        m  = re.search(r'IpAddress:\s*([\d.]+)', out)
-        ip = m.group(1) if m else "-"
-        if ip in remote_ips_set:
-            indices[ip] = idx
-    return indices
+def _find_su_index_in_table(bsu_ip, target_ip, radio_oid):
+    for idx in range(1, 33):  # Max 32 SUs typically
+        try:
+            oid = f".1.3.6.1.4.1.52619.1.3.3.1.4.{radio_oid}.{idx}"
+            cmd = f"snmpget -v 2c -c ubr@rw123 {bsu_ip} {oid}"
+            output = subprocess.check_output(cmd, shell=True, stderr=subprocess.DEVNULL).decode("utf-8")
 
-
-# ═══════════════════════════════════════════════════════════
-#  Stability monitoring loop  (uptime-reform check only)
-# ═══════════════════════════════════════════════════════════
-def monitor_stability(local_ip, remote_ips, radio, channel, bw,
-                      community, duration, interval,
-                      su_indices, txt_file, csv_writer,
-                      snr_snapshot, timestamp_of_snap):
-    issues         = []
-    prev_uptime    = {}
-    elapsed        = 0
-    zero_snr_abort = False
-
-    for ip in remote_ips:
-        d = snr_snapshot.get(ip)
-        if d and any(d.get(k, "1") == "0"
-                     for k in ("l_snr_a1", "l_snr_a2", "r_snr_a1", "r_snr_a2")):
-            issues.append(f"{ip}: Zero SNR (snapshot)")
-            zero_snr_abort = True
-
-    if zero_snr_abort:
-        print(f"{C.FAIL}  CRITICAL: Zero SNR in snapshot — aborting stability window.{C.END}", flush=True)
-        return issues
-
-    print(f"\n  {C.BOLD}Stability monitoring {duration}s (poll every {interval}s) ...{C.END}", flush=True)
-
-    while elapsed < duration:
-        loop_start  = time.time()
-        ts          = datetime.now().strftime("%H:%M:%S")
-        uptime_map  = fetch_uptime_only(local_ip, radio, community, su_indices)
-
-        for ip in remote_ips:
-            uptime_str = uptime_map.get(ip, "Err")
-            cur_sec    = parse_uptime_seconds(uptime_str)
-            prev_sec   = prev_uptime.get(ip, -1)
-            note       = ""
-            status     = "PASS"
-            color      = C.GREEN
-
-            if prev_sec != -1 and cur_sec != -1 and cur_sec < prev_sec:
-                status = "FAIL"; note = "LINK REFORMED"; color = C.FAIL
-                issues.append(f"{ip}: LINK REFORMED")
-
-            if cur_sec != -1:
-                prev_uptime[ip] = cur_sec
-
-            d = snr_snapshot.get(ip, {})
-            print(
-                f"  {color}[{ts}] {ip:<16} "
-                f"L:{d.get('l_snr_a1','-')}/{d.get('l_snr_a2','-')}  "
-                f"R:{d.get('r_snr_a1','-')}/{d.get('r_snr_a2','-')}  "
-                f"TX:{d.get('tx_rate','-')}  RX:{d.get('rx_rate','-')}  "
-                f"Up:{uptime_str}  {status} {note}{C.END}", flush=True
-            )
-            txt_file.write(
-                f"[{ts}] CH:{channel} BW:{bw} IP:{ip} "
-                f"L:{d.get('l_snr_a1','-')}/{d.get('l_snr_a2','-')} "
-                f"R:{d.get('r_snr_a1','-')}/{d.get('r_snr_a2','-')} "
-                f"Up:{uptime_str} {status} {note}\n"
-            )
-            csv_writer.writerow([
-                ts, channel, bw, ip,
-                f"{d.get('l_snr_a1','-')}/{d.get('l_snr_a2','-')}",
-                f"{d.get('r_snr_a1','-')}/{d.get('r_snr_a2','-')}",
-                f"{d.get('tx_rate','-')}/{d.get('rx_rate','-')}",
-                d.get("noise", "-"), uptime_str, status, note,
-                f"(SNR snapshot @ {timestamp_of_snap})"
-            ])
-
-        sleep = max(0, interval - (time.time() - loop_start))
-        time.sleep(sleep)
-        elapsed += interval
-        print(f"  Elapsed {elapsed}/{duration}s", flush=True)
-
-    return issues
-
-
-# ═══════════════════════════════════════════════════════════
-#  Excel + JSON report helpers
-# ═══════════════════════════════════════════════════════════
-def generate_excel(results, xlsx_path):
-    if not _excel_ok:
-        return
-    print(f"\n{C.HDR}Generating Excel: {xlsx_path}{C.END}", flush=True)
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Channel Summary"
-    headers = ["Channel", "Bandwidth", "Country", "Status",
-               "L SNR A1/A2", "R SNR A1/A2", "TX Rate", "RX Rate",
-               "Noise", "Uptime (snapshot)", "Notes"]
-    ws.append(headers)
-    bold   = Font(bold=True)
-    c_pass = PatternFill(start_color="00CC44", end_color="00CC44", fill_type="solid")
-    c_fail = PatternFill(start_color="FF3333", end_color="FF3333", fill_type="solid")
-    c_warn = PatternFill(start_color="FFAA00", end_color="FFAA00", fill_type="solid")
-    center = Alignment(horizontal="center")
-    for cell in ws[1]:
-        cell.font = bold; cell.alignment = center
-    for row_idx, r in enumerate(results, start=2):
-        snap = r.get("snr_snapshot", {})
-        def agg(key):
-            vals = [snap.get(ip, {}).get(key, "-") for ip in r.get("remote_ips", [])]
-            return " | ".join(vals) if vals else "-"
-        ws.cell(row=row_idx, column=1,  value=r["channel"])
-        ws.cell(row=row_idx, column=2,  value=r["bandwidth"])
-        ws.cell(row=row_idx, column=3,  value=r["country"])
-        cell_s = ws.cell(row=row_idx, column=4, value=r["status"])
-        ws.cell(row=row_idx, column=5,  value=f"{agg('l_snr_a1')}/{agg('l_snr_a2')}")
-        ws.cell(row=row_idx, column=6,  value=f"{agg('r_snr_a1')}/{agg('r_snr_a2')}")
-        ws.cell(row=row_idx, column=7,  value=agg("tx_rate"))
-        ws.cell(row=row_idx, column=8,  value=agg("rx_rate"))
-        ws.cell(row=row_idx, column=9,  value=agg("noise"))
-        ws.cell(row=row_idx, column=10, value=agg("uptime"))
-        ws.cell(row=row_idx, column=11, value=r["notes"])
-        cell_s.fill = c_pass if r["status"] == "PASS" else (c_fail if r["status"] == "FAIL" else c_warn)
-    for col in ws.columns:
-        ws.column_dimensions[col[0].column_letter].width = min(
-            max(len(str(cell.value or "")) for cell in col) + 4, 40
-        )
-    wb.save(xlsx_path)
-    print(f"{C.GREEN}Excel saved -> {xlsx_path}{C.END}", flush=True)
-
-
-def write_json(results, meta, json_path):
-    with open(json_path, "w") as f:
-        json.dump({"generated": datetime.now().isoformat(), "meta": meta, "results": results}, f, indent=2)
-    print(f"{C.GREEN}JSON saved -> {json_path}{C.END}", flush=True)
-
-
-# ═══════════════════════════════════════════════════════════
-#  pytest test function — all config via conftest fixtures
-# ═══════════════════════════════════════════════════════════
-def test_PTMPChannelConnectivity(
-    local_ip,           # --local-ip
-    remote_ips,         # --remote-ips  -> list of IPs
-    radio,              # --radio
-    bandwidth,          # --bandwidth   (comma-sep string, e.g. "HT80" or "HT20,HT80")
-    country,            # --country     (comma-sep string)
-    channels,           # --channels    -> list of channel strings
-    snr_settle_delay,   # --snr-settle-delay  -> int
-    monitor_duration,   # --monitor-duration  -> int
-    monitor_interval,   # --monitor-interval  -> int
-    connect_timeout,    # --connect-timeout   -> int
-    bw_settle_wait,     # --bw-settle-wait    -> int
-    chan_settle_wait,   # --chan-settle-wait   -> int
-    username,           # --username  (SSH user)
-    password,           # --password  (SSH pass)
-    snmp_community,     # --snmp-community
-    output_prefix,      # --output-prefix
-):
-    # ── Unpack / normalise ────────────────────────────────
-    local_ip        = local_ip.strip()
-    bandwidths      = [b.strip() for b in bandwidth.split(",")  if b.strip()]
-    countries       = [c.strip() for c in country.split(",")    if c.strip()]
-    custom_channels = channels      # list already parsed by conftest fixture
-    ssh_user        = username
-    ssh_pass        = password
-    community       = snmp_community
-    snr_delay       = snr_settle_delay
-    mon_dur         = monitor_duration
-    mon_int         = monitor_interval
-    conn_to         = connect_timeout
-    bw_wait         = bw_settle_wait
-    ch_wait         = chan_settle_wait
-    prefix          = output_prefix
-
-    txt_path  = f"{prefix}.txt"
-    csv_path  = f"{prefix}.csv"
-    xlsx_path = f"{prefix}_summary.xlsx"
-    json_path = f"{prefix}_results.json"
-
-    all_channel_results = []
-
-    # ── Banner ────────────────────────────────────────────
-    print(f"\n{'='*65}", flush=True)
-    print(f"  PTMP Channel Connectivity Test  —  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", flush=True)
-    print(f"  Local IP       : {local_ip}", flush=True)
-    print(f"  Remote SUs     : {remote_ips}", flush=True)
-    print(f"  Radio          : {radio}", flush=True)
-    print(f"  Bandwidths     : {bandwidths}", flush=True)
-    print(f"  Countries      : {countries}", flush=True)
-    print(f"  Channels       : {custom_channels if custom_channels else '(auto-fetch)'}", flush=True)
-    print(f"  SNR settle     : {snr_delay}s  (one-shot read per channel)", flush=True)
-    print(f"  Monitor window : {mon_dur}s  (poll every {mon_int}s)", flush=True)
-    print(f"  Connect TO     : {conn_to}s", flush=True)
-    print(f"{'='*65}\n", flush=True)
-
-    # ── Init output files ─────────────────────────────────
-    with open(txt_path, "w") as f:
-        f.write(f"PTMP Channel Connectivity Test — {datetime.now()}\n")
-        f.write(f"Local: {local_ip}   Remotes: {remote_ips}   Radio: {radio}\n\n")
-
-    csv_f = open(csv_path, "w", newline="")
-    csv_w = csv.writer(csv_f)
-    csv_w.writerow([
-        "Timestamp", "Channel", "Bandwidth", "Country", "Node_IP",
-        "L_SNR_A1/A2", "R_SNR_A1/A2", "Tx/Rx", "Noise",
-        "Uptime", "Status", "Notes", "SNR_Read_Info"
-    ])
-
-    # ── Main loops: country -> bandwidth -> channel ───────
-    for cty in countries:
-        country_code = COUNTRY_CODES.get(cty, 5019)
-        print(f"\n{C.HDR}  Country: {cty}  (code={country_code}){C.END}", flush=True)
-
-        with open(txt_path, "a") as f:
-            f.write(f"\n{'='*60}\nCountry: {cty}\n{'='*60}\n")
-
-        for bw in bandwidths:
-            if cty in ("Canada", "US 5GHz Non-DFS") and bw == "HT160":
-                print(f"{C.WARN}  Skipping HT160 — not supported in {cty}{C.END}", flush=True)
+            if "No Such Instance" in output:
                 continue
 
-            bw_set = "HT40+" if bw == "HT40" else bw
-            print(f"\n{C.HDR}  Bandwidth: {bw}  (setting as {bw_set}){C.END}", flush=True)
+            match = re.search(r'IpAddress:\s*([\d.]+)', output)
+            if match and match.group(1) == target_ip:
+                return idx
+        except:
+            continue
+    return None
 
-            wait_for_ping(local_ip)
-            set_bandwidth(local_ip, radio, bw_set, community, bw_wait)
-            wait_for_ping(local_ip)
 
-            if custom_channels:
-                channel_list = custom_channels
-                print(f"{C.BLUE}  Custom channels: {channel_list}{C.END}", flush=True)
-            else:
-                channel_list = fetch_channel_list_ssh(
-                    local_ip, radio, country_code, bw_set, ssh_user, ssh_pass
-                )
-                if not channel_list:
-                    print(f"{C.WARN}  No channels fetched — skipping BW {bw}{C.END}", flush=True)
-                    continue
-                print(f"  Auto-fetched channels: {channel_list}", flush=True)
+def _fetch_su_snmp_metrics(bsu_ip, radio_oid, su_index):
+    metrics = {}
 
-            for channel in channel_list:
-                freq = (int(channel) * 5) + 5000
-                print(f"\n{C.BLUE}  > CH {channel} ({freq} MHz)  BW:{bw}  Country:{cty}{C.END}", flush=True)
+    oid_map = {
+        "13": "lsnr_a1", "14": "lsnr_a2", "15": "rsnr_a1", "16": "rsnr_a2",
+        "35": "lsig_a1", "36": "lsig_a2", "37": "rsig_a1", "38": "rsig_a2",
+        "26": "local_noise", "27": "remote_noise",
+        "10": "tx_rate", "9": "rx_rate",
+        "47": "local_rtx", "48": "remote_rtx",
+        "83": "obss"
+    }
 
-                wait_for_ping(local_ip)
-                set_channel(local_ip, radio, channel, community, ch_wait)
+    for suffix, name in oid_map.items():
+        try:
+            oid = f".1.3.6.1.4.1.52619.1.3.3.1.{suffix}.{radio_oid}.{su_index}"
+            cmd = f"snmpget -v 2c -c ubr@rw123 {bsu_ip} {oid}"
+            output = subprocess.check_output(cmd, shell=True, stderr=subprocess.DEVNULL).decode("utf-8")
+            match = re.search(r'INTEGER:\s*(-?\d+)', output)
+            if match:
+                metrics[name] = match.group(1)
+        except:
+            metrics[name] = "-"
 
-                print(f"  Waiting for {len(remote_ips)} SU(s) to associate ...", flush=True)
-                links_up = wait_for_all_links(remote_ips, conn_to)
+    try:
+        oid = f".1.3.6.1.4.1.52619.1.3.3.1.52.{radio_oid}.{su_index}"
+        cmd = f"snmpget -v 2c -c ubr@rw123 {bsu_ip} {oid}"
+        output = subprocess.check_output(cmd, shell=True, stderr=subprocess.DEVNULL).decode("utf-8")
+        match = re.search(r'\(([^)]+)\)', output)
+        metrics["uptime"] = match.group(1) if match else output.split(":")[-1].strip()
+    except:
+        metrics["uptime"] = "-"
 
-                if not links_up:
-                    msg = f"Link Timeout ({conn_to}s)"
-                    print(f"{C.FAIL}  {msg} — skipping channel {channel}{C.END}", flush=True)
-                    all_channel_results.append({
-                        "channel": channel, "freq_mhz": freq, "bandwidth": bw,
-                        "country": cty,     "status": "FAIL", "notes": msg,
-                        "snr_snapshot": {}, "remote_ips": remote_ips,
-                    })
-                    with open(txt_path, "a") as f:
-                        f.write(f"\n[FAIL] CH:{channel} BW:{bw} — {msg}\n")
-                    csv_w.writerow([
-                        datetime.now().strftime("%H:%M:%S"),
-                        channel, bw, cty, "ALL",
-                        "-/-", "-/-", "-/-", "-", "-", "FAIL", msg, "-"
-                    ])
-                    continue
+    return metrics
 
-                print(f"{C.GREEN}  All SU links formed!{C.END}", flush=True)
 
-                ch_ok, bw_ok, op_bw, op_ch = verify_bsu_operation(
-                    local_ip, radio, bw_set, channel, community
-                )
-                if not ch_ok:
-                    print(f"{C.WARN}  WARNING: BSU channel mismatch "
-                          f"(expected {channel}, got {op_ch}){C.END}", flush=True)
+def _calculate_overall_status(channel_results):
+    if not channel_results:
+        return "FAIL"
 
-                # ── ONE-SHOT SNR fetch after settle delay ─────────
-                print(f"\n  Waiting {snr_delay}s before reading SNR ...", flush=True)
-                time.sleep(snr_delay)
+    statuses = [r["status"] for r in channel_results]
+    if all(s == "PASS" for s in statuses):
+        return "PASS"
+    elif all(s == "FAIL" for s in statuses):
+        return "FAIL"
+    else:
+        return "PARTIAL"
 
-                snap_ts      = datetime.now().strftime("%H:%M:%S")
-                print(f"  Reading SNR / link-stats (one-shot @ {snap_ts}) ...", flush=True)
-                snr_snapshot = fetch_all_link_stats_once(local_ip, radio, community)
 
-                for ip in remote_ips:
-                    d      = snr_snapshot.get(ip, {})
-                    status = "PASS"
-                    note   = "SNR snapshot"
-                    if not d:
-                        status = "FAIL"; note = "Missing from SNMP table at snapshot"
-                        print(f"{C.FAIL}  [SNAPSHOT] {ip} — not found in BSU SNMP table{C.END}", flush=True)
-                    elif any(d.get(k, "1") == "0"
-                             for k in ("l_snr_a1", "l_snr_a2", "r_snr_a1", "r_snr_a2")):
-                        status = "FAIL"; note = "Zero SNR at snapshot"
+def _save_json_report(test_result):
+    json_file = "ptmp_channel_results.json"
 
-                    csv_w.writerow([
-                        snap_ts, channel, bw, cty, ip,
-                        f"{d.get('l_snr_a1','-')}/{d.get('l_snr_a2','-')}",
-                        f"{d.get('r_snr_a1','-')}/{d.get('r_snr_a2','-')}",
-                        f"{d.get('tx_rate','-')}/{d.get('rx_rate','-')}",
-                        d.get("noise", "-"), d.get("uptime", "-"),
-                        status, note, f"One-shot snapshot @ {snap_ts}"
-                    ])
-                    with open(txt_path, "a") as f:
-                        f.write(
-                            f"[SNAPSHOT@{snap_ts}] CH:{channel} BW:{bw} IP:{ip} "
-                            f"L:{d.get('l_snr_a1','-')}/{d.get('l_snr_a2','-')} "
-                            f"R:{d.get('r_snr_a1','-')}/{d.get('r_snr_a2','-')} "
-                            f"TX:{d.get('tx_rate','-')} Noise:{d.get('noise','-')} "
-                            f"Up:{d.get('uptime','-')}\n"
-                        )
+    try:
+        with open(json_file, "r") as f:
+            data = json.load(f)
+            if not isinstance(data, dict) or "iterations" not in data:
+                data = {"iterations": []}
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = {"iterations": []}
 
-                su_indices = discover_su_indices(local_ip, radio, community, set(remote_ips))
+    data["iterations"].append(test_result)
 
-                print(f"\n  Starting {mon_dur}s stability window ...", flush=True)
-                with open(txt_path, "a") as txt_f:
-                    issues = monitor_stability(
-                        local_ip, remote_ips, radio, channel, bw,
-                        community, mon_dur, mon_int,
-                        su_indices, txt_f, csv_w,
-                        snr_snapshot, snap_ts
-                    )
+    with open(json_file, "w") as f:
+        json.dump(data, f, indent=4)
 
-                unique_issues = list(set(issues))
-                status = "PASS" if not unique_issues else "FAIL"
-                notes  = "Stable" if not unique_issues else "; ".join(unique_issues[:5])
+    print(f"{Colors.OKGREEN}✓ Results saved to {json_file}{Colors.ENDC}", flush=True)
 
-                all_channel_results.append({
-                    "channel":      channel,
-                    "freq_mhz":     freq,
-                    "bandwidth":    bw,
-                    "country":      cty,
-                    "status":       status,
-                    "notes":        notes,
-                    "snr_snapshot": snr_snapshot,
-                    "remote_ips":   remote_ips,
-                    "op_bw":        op_bw,
-                    "op_ch":        str(op_ch),
-                    "snap_ts":      snap_ts,
-                })
 
-                with open(txt_path, "a") as f:
-                    f.write(f"\n[SUMMARY] CH:{channel} BW:{bw} Country:{cty} -> {status} — {notes}\n")
+def _save_failed_result(radio, bsu_ip, su_ips, bandwidth, country, reason):
+    test_result = {
+        "test": "test_ptmp_channelconnectivity",
+        "topology": "PTMP",
+        "status": "FAIL",
+        "Radio": radio,
+        "BSU_IP": bsu_ip,
+        "SU_IPs": su_ips,
+        "Bandwidth": bandwidth,
+        "Country": country,
+        "Tested_Channels": [],
+        "failure_reason": reason,
+        "test_timestamp": datetime.now().isoformat()
+    }
+    _save_json_report(test_result)
 
-                color = C.GREEN if status == "PASS" else C.FAIL
-                print(f"{color}  > CH:{channel} ({freq} MHz) {bw} {cty} -> {status}  ({notes}){C.END}\n",
-                      flush=True)
 
-    csv_f.close()
+def test_ptmp_changecountry(local_ip, remote_ip, radio, country):
+    country_codes = {
+        "US 5GHz All": 5012, "US 5GHz Non-DFS": 5011, "Europe": 276,
+        "Canada": 124, "5GHz": 5019, "India": 356
+    }
 
-    # ── Reports ───────────────────────────────────────────
-    generate_excel(all_channel_results, xlsx_path)
-    write_json(
-        all_channel_results,
-        {"local_ip": local_ip, "remote_ips": remote_ips, "radio": radio,
-         "bandwidths": bandwidths, "countries": countries, "snr_delay_s": snr_delay},
-        json_path
-    )
+    if country not in country_codes:
+        print(f"{Colors.FAIL}Invalid country: {country}{Colors.ENDC}", flush=True)
+        assert False
 
-    # ── Final console summary ─────────────────────────────
-    print(f"\n{'='*65}", flush=True)
-    print(f"  FINAL SUMMARY", flush=True)
-    print(f"{'='*65}", flush=True)
-    for r in all_channel_results:
-        c = C.GREEN if r["status"] == "PASS" else C.FAIL
-        print(f"  {c}CH {r['channel']:>5} ({r['freq_mhz']} MHz)  "
-              f"{r['bandwidth']:<6}  {r['country']:<20}  "
-              f"{r['status']}  — {r['notes']}{C.END}", flush=True)
+    country_code = country_codes[country]
 
-    total   = len(all_channel_results)
-    passed  = sum(1 for r in all_channel_results if r["status"] == "PASS")
-    overall = "PASS" if passed == total and total > 0 else ("PARTIAL" if passed > 0 else "FAIL")
-    oc      = C.GREEN if overall == "PASS" else (C.WARN if overall == "PARTIAL" else C.FAIL)
-    print(f"\n  {oc}{C.BOLD}Overall: {overall}  ({passed}/{total} passed){C.END}\n", flush=True)
+    radio_config = {
+        "Radio1": {"index": 2},
+        "Radio2": {"index": 3}
+    }
 
-    # Parsed by Jenkins pipeline to get status + file paths
-    print(f"OUTPUT_TXT={txt_path}",    flush=True)
-    print(f"OUTPUT_CSV={csv_path}",    flush=True)
-    print(f"OUTPUT_JSON={json_path}",  flush=True)
-    print(f"OUTPUT_XLSX={xlsx_path}",  flush=True)
-    print(f"OVERALL_STATUS={overall}", flush=True)
+    if radio not in radio_config:
+        print(f"{Colors.FAIL}Invalid radio: {radio}{Colors.ENDC}", flush=True)
+        assert False
 
-    # Fail the pytest build if every channel failed
-    assert overall != "FAIL", \
-        f"PTMP Channel Test FAILED — {total - passed}/{total} channels failed"
+    radio_ind = radio_config[radio]["index"]
+
+    time.sleep(5)
+
+    # Configure SUs first
+    for su_ip in remote_ip:
+        if pingFunction.check_access(su_ip):
+            print(f"Configuring country {country_code} on SU {su_ip}", flush=True)
+            snmp_operations.change_country(su_ip, radio_ind, country_code, 5)
+        else:
+            print(f"{Colors.WARNING}SU {su_ip} not reachable, skipping{Colors.ENDC}", flush=True)
+
+    # Configure BSU last (to avoid losing connection)
+    if pingFunction.check_access(local_ip):
+        print(f"Configuring country {country_code} on BSU {local_ip}", flush=True)
+        snmp_operations.change_country(local_ip, radio_ind, country_code, 120)
+    else:
+        print(f"{Colors.FAIL}BSU {local_ip} not reachable!{Colors.ENDC}", flush=True)
+        assert False
+
+
+# Suppress warnings
+warnings.warn = lambda *args, **kwargs: None
