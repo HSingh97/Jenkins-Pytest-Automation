@@ -39,29 +39,6 @@ def pytest_addoption(parser):
     parser.addoption("--powers", action="store", default="26",
                      help="Comma-separated list of Tx power levels in dBm (e.g. 20,23,26)")
 
-    # ── PTMP Channel Connectivity Test args ──────────────────────────────────
-    parser.addoption("--remote-ips", action="store", default="192.168.1.110",
-                     help="PTMP: Comma-separated SU IP addresses (e.g. 192.168.1.110,192.168.1.111)")
-    parser.addoption("--snr-settle-delay", action="store", default="45",
-                     help="PTMP: Seconds to wait after link-up before reading SNR (one-shot per channel)")
-    parser.addoption("--monitor-duration", action="store", default="60",
-                     help="PTMP: Total stability monitoring window per channel (seconds)")
-    parser.addoption("--monitor-interval", action="store", default="10",
-                     help="PTMP: Uptime / link-reform poll cadence during monitoring (seconds)")
-    parser.addoption("--connect-timeout", action="store", default="180",
-                     help="PTMP: Max seconds to wait for all SUs to associate after channel change")
-    parser.addoption("--bw-settle-wait", action="store", default="60",
-                     help="PTMP: Seconds to wait after changing bandwidth")
-    parser.addoption("--chan-settle-wait", action="store", default="10",
-                     help="PTMP: Seconds to wait after changing channel before checking links")
-    parser.addoption("--snmp-community", action="store", default="ubr@rw123",
-                     help="PTMP: SNMP v2c read-write community string")
-    parser.addoption("--output-prefix", action="store", default="ptmp_channel_test",
-                     help="PTMP: Base name for output files (.txt / .csv / .xlsx / .json)")
-
-
-# ── Existing fixtures (unchanged) ────────────────────────────────────────────
-
 @pytest.fixture
 def channels(request):
     channels_str = request.config.getoption("--channels")
