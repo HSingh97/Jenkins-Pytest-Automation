@@ -1097,7 +1097,7 @@ def _sendEmailNotification(reportFilename) {
 
     // User email mapping (update as needed)
     def userEmails = [
-        "puneet": "puneet.sharma@senao.com"
+        "puneet": "puneet.sharma@senao.com",
         "harman": "harmanjot.singh@senao.com",
         "mahesh": "mahesh.battala@senao.com",
         "sandeep": "sandeep.manchikanti@senao.com",
@@ -1105,7 +1105,7 @@ def _sendEmailNotification(reportFilename) {
         "jayanth": "jayanth.munnaluru@senao.com",
         "srilatha": "srilatha.tadiboina@senao.com",
         "phani": "phani.darla@senao.com",
-        "dinesh": "dinesh.redddy@senao.com",
+        "dinesh": "dinesh.redddy@senao.com"
     ]
 
     def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
