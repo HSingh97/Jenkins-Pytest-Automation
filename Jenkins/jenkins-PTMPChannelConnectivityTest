@@ -180,7 +180,7 @@ pipeline {
                                 echo "📡 ${ct} / ${bw}"
                                 sh 'echo {"iterations":[]} > ptmp_channel_results.json'
 
-                                def cmd = "python3.10 -m pytest -v -s testCases/test_PTMPChannelConnectivity.py::test_ptmp_channelconnectivity --local-ip '${bsuIP}' --remote-ip '${suIPs}' --radio '${radio}' --bandwidth '${bw}' --country '${ct}' --extra '${randCh}' --sleep '${snapTime}' 2>&1"
+                                def cmd = "python3.10 -m pytest -v -s testCases/test_PTMPChannelConnectivity.py::test_PTMPChannelConnectivity.py--local-ip '${bsuIP}' --remote-ip '${suIPs}' --radio '${radio}' --bandwidth '${bw}' --country '${ct}' --extra '${randCh}' --sleep '${snapTime}' 2>&1"
                                 if(custCh) cmd += " --channels '${custCh}'"
 
                                 def out = ""
