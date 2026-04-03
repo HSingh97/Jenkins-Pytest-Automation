@@ -1,4 +1,5 @@
 #!/usr/bin/env python3.10
+
 import time
 import warnings
 import pytest
@@ -9,7 +10,6 @@ import subprocess
 from datetime import datetime
 from preMadeFunctions import pingFunction
 from preMadeFunctions import snmp_operations
-from preMadeFunctions import get_snmp_values
 from preMadeFunctions import fetch_ssh_values
 
 
@@ -33,7 +33,7 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
     print(f"Country : {country}", flush=True)
     print(f"Sleep Time : {sleep}s", flush=True)
 
-    # ================= CHANNEL LOGIC =================
+    # ================= ✅ SIMPLE CHANNEL LOGIC =================
     if channels and len(channels) > 0:
         print(f"{Colors.OKBLUE}Using CUSTOM channels: {channels}{Colors.ENDC}", flush=True)
         channel_list = [str(ch).strip() for ch in channels if str(ch).strip()]
@@ -110,7 +110,7 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
             su_result = _capture_and_print_metrics(local_ip, su_ip, radio_ind, channel, frequency)
             su_results.append(su_result)
 
-            # ✅ Print detailed metrics to console
+            # ✅ Print detailed metrics to console (visible in Jenkins)
             _print_su_metrics_console(su_result)
 
         # Determine channel status
@@ -229,56 +229,56 @@ def _capture_and_print_metrics(bsu_ip, su_ip, radio_oid, channel, frequency):
 
 
 def _print_su_metrics_console(su_result):
-    print(f"    {Colors.OKBLUE}┌{'─' * 60}{Colors.ENDC}", flush=True)
-    print(f"    {Colors.OKBLUE}│{Colors.ENDC} {Colors.BOLD}METRICS FOR {su_result['su_ip']}{Colors.ENDC}", flush=True)
-    print(f"    {Colors.OKBLUE}├{'─' * 60}{Colors.ENDC}", flush=True)
+    print(f"    {Colors.OKBLUE}+{'-' * 60}{Colors.ENDC}", flush=True)
+    print(f"    {Colors.OKBLUE}|{Colors.ENDC} {Colors.BOLD}METRICS FOR {su_result['su_ip']}{Colors.ENDC}", flush=True)
+    print(f"    {Colors.OKBLUE}+{'-' * 60}{Colors.ENDC}", flush=True)
 
     # SNR
-    print(f"    {Colors.OKBLUE}│{Colors.ENDC} {Colors.BOLD}SNR (dB):{Colors.ENDC}", flush=True)
+    print(f"    {Colors.OKBLUE}|{Colors.ENDC} {Colors.BOLD}SNR (dB):{Colors.ENDC}", flush=True)
     print(
-        f"    {Colors.OKBLUE}│{Colors.ENDC}   Local  A1: {su_result['local_snr_a1']:>4}  A2: {su_result['local_snr_a2']:>4}",
+        f"    {Colors.OKBLUE}|{Colors.ENDC}   Local  A1: {su_result['local_snr_a1']:>4}  A2: {su_result['local_snr_a2']:>4}",
         flush=True)
     print(
-        f"    {Colors.OKBLUE}│{Colors.ENDC}   Remote A1: {su_result['remote_snr_a1']:>4}  A2: {su_result['remote_snr_a2']:>4}",
+        f"    {Colors.OKBLUE}|{Colors.ENDC}   Remote A1: {su_result['remote_snr_a1']:>4}  A2: {su_result['remote_snr_a2']:>4}",
         flush=True)
 
     # Signal
-    print(f"    {Colors.OKBLUE}│{Colors.ENDC} {Colors.BOLD}Signal (dBm):{Colors.ENDC}", flush=True)
+    print(f"    {Colors.OKBLUE}|{Colors.ENDC} {Colors.BOLD}Signal (dBm):{Colors.ENDC}", flush=True)
     print(
-        f"    {Colors.OKBLUE}│{Colors.ENDC}   Local  A1: {su_result['local_signal_a1']:>5}  A2: {su_result['local_signal_a2']:>5}",
+        f"    {Colors.OKBLUE}|{Colors.ENDC}   Local  A1: {su_result['local_signal_a1']:>5}  A2: {su_result['local_signal_a2']:>5}",
         flush=True)
     print(
-        f"    {Colors.OKBLUE}│{Colors.ENDC}   Remote A1: {su_result['remote_signal_a1']:>5}  A2: {su_result['remote_signal_a2']:>5}",
+        f"    {Colors.OKBLUE}|{Colors.ENDC}   Remote A1: {su_result['remote_signal_a1']:>5}  A2: {su_result['remote_signal_a2']:>5}",
         flush=True)
 
     # Noise
-    print(f"    {Colors.OKBLUE}│{Colors.ENDC} {Colors.BOLD}Noise Floor (dBm):{Colors.ENDC}", flush=True)
+    print(f"    {Colors.OKBLUE}|{Colors.ENDC} {Colors.BOLD}Noise Floor (dBm):{Colors.ENDC}", flush=True)
     print(
-        f"    {Colors.OKBLUE}│{Colors.ENDC}   Local: {su_result['local_noise']:>5}  Remote: {su_result['remote_noise']:>5}",
+        f"    {Colors.OKBLUE}|{Colors.ENDC}   Local: {su_result['local_noise']:>5}  Remote: {su_result['remote_noise']:>5}",
         flush=True)
 
     # Rates
-    print(f"    {Colors.OKBLUE}│{Colors.ENDC} {Colors.BOLD}Data Rates (Mbps):{Colors.ENDC}", flush=True)
-    print(f"    {Colors.OKBLUE}│{Colors.ENDC}   Tx: {su_result['tx_rate']:>5}  Rx: {su_result['rx_rate']:>5}",
+    print(f"    {Colors.OKBLUE}|{Colors.ENDC} {Colors.BOLD}Data Rates (Mbps):{Colors.ENDC}", flush=True)
+    print(f"    {Colors.OKBLUE}|{Colors.ENDC}   Tx: {su_result['tx_rate']:>5}  Rx: {su_result['rx_rate']:>5}",
           flush=True)
 
     # Retries
-    print(f"    {Colors.OKBLUE}│{Colors.ENDC} {Colors.BOLD}Retry %:{Colors.ENDC}", flush=True)
+    print(f"    {Colors.OKBLUE}|{Colors.ENDC} {Colors.BOLD}Retry %:{Colors.ENDC}", flush=True)
     print(
-        f"    {Colors.OKBLUE}│{Colors.ENDC}   Local: {su_result['local_retry_pct']:>4}%  Remote: {su_result['remote_retry_pct']:>4}%",
+        f"    {Colors.OKBLUE}|{Colors.ENDC}   Local: {su_result['local_retry_pct']:>4}%  Remote: {su_result['remote_retry_pct']:>4}%",
         flush=True)
 
     # Other
-    print(f"    {Colors.OKBLUE}│{Colors.ENDC} {Colors.BOLD}Other:{Colors.ENDC}", flush=True)
-    print(f"    {Colors.OKBLUE}│{Colors.ENDC}   OBSS: {su_result['obss']:>3}  Uptime: {su_result['uptime']}",
+    print(f"    {Colors.OKBLUE}|{Colors.ENDC} {Colors.BOLD}Other:{Colors.ENDC}", flush=True)
+    print(f"    {Colors.OKBLUE}|{Colors.ENDC}   OBSS: {su_result['obss']:>3}  Uptime: {su_result['uptime']}",
           flush=True)
 
     # Status
     status_color = Colors.OKGREEN if su_result['status'] == 'PASS' else Colors.FAIL
     print(
-        f"    {Colors.OKBLUE}│{Colors.ENDC} {Colors.BOLD}Status:{Colors.ENDC} {status_color}{su_result['status']}{Colors.ENDC}  Notes: {su_result['notes']}",
+        f"    {Colors.OKBLUE}|{Colors.ENDC} {Colors.BOLD}Status:{Colors.ENDC} {status_color}{su_result['status']}{Colors.ENDC}  Notes: {su_result['notes']}",
         flush=True)
-    print(f"    {Colors.OKBLUE}└{'─' * 60}{Colors.ENDC}", flush=True)
+    print(f"    {Colors.OKBLUE}+{'-' * 60}{Colors.ENDC}", flush=True)
 
 
 def _find_su_index_in_table(bsu_ip, target_ip, radio_oid):

@@ -73,7 +73,7 @@ pipeline {
                                 echo "\n📡 Testing: ${country} / ${bandwidth}"
                                 sh 'echo {"iterations":[]} > ptmp_channel_results.json'
 
-                                // Build command
+                                // Build command - NO .take() or restricted methods
                                 def cmdParts = [
                                     "python3.10 -m pytest -v -s testCases/test_PTMPChannelConnectivity.py::test_ptmp_channelconnectivity",
                                     "--local-ip '${bsuIP}'",
@@ -97,14 +97,19 @@ pipeline {
 
                                 def out = ""
                                 try {
-                                    out = sh(script: cmd, returnStdout: true)?.trim() ?: ""
+                                    out = sh(script: cmd, returnStdout: true)
+                                    if(out) { out = out.trim() } else { out = "" }
                                 } catch(Exception e) {
                                     echo "⚠️ ${e.message}"
                                     out = "Error: ${e.message}"
                                 }
 
-                                // Show more output for debugging
-                                echo "Pytest Output (first 1500 chars):\n${out?.take(1500) ?: 'N/A'}..."
+                                // Show output - use simple substring instead of .take()
+                                if(out && out.length() > 1500) {
+                                    echo "Pytest Output (first 1500 chars):\n${out.substring(0, 1500)}..."
+                                } else {
+                                    echo "Pytest Output:\n${out ?: 'N/A'}"
+                                }
 
                                 def res = [iterations: []]
                                 try { res = readJSON file: 'ptmp_channel_results.json' }
@@ -165,11 +170,17 @@ pipeline {
 
                     def lFW = "N/A", sFW = "N/A"
                     try {
-                        lFW = sh(script: "sshpass -p '${SSH_PASS}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${SSH_USER}@${lIP} 'cat /etc/version 2>/dev/null || echo N/A'", returnStdout: true)?.trim() ?: "N/A"
-                        sFW = sIPs.collect { ip ->
-                            try { sh(script: "sshpass -p '${SSH_PASS}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${SSH_USER}@${ip} 'cat /etc/version 2>/dev/null || echo N/A'", returnStdout: true)?.trim() ?: "N/A" }
-                            catch(Exception e) { "N/A" }
-                        }.unique().join(" | ")
+                        lFW = sh(script: "sshpass -p '${SSH_PASS}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${SSH_USER}@${lIP} 'cat /etc/version 2>/dev/null || echo N/A'", returnStdout: true)
+                        if(lFW) { lFW = lFW.trim() } else { lFW = "N/A" }
+
+                        def suFWList = []
+                        sIPs.each { ip ->
+                            try {
+                                def fw = sh(script: "sshpass -p '${SSH_PASS}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${SSH_USER}@${ip} 'cat /etc/version 2>/dev/null || echo N/A'", returnStdout: true)
+                                if(fw) { suFWList.add(fw.trim()) } else { suFWList.add("N/A") }
+                            } catch(Exception e) { suFWList.add("N/A") }
+                        }
+                        sFW = suFWList.unique().join(" | ")
                     } catch(Exception e) { echo "⚠️ SSH fetch: ${e.message}" }
 
                     def paramsMap = [
@@ -264,10 +275,20 @@ def generatePTMPHTMLReport(buildParams, allResults, currentDateTime, companyLogo
         </table>
     """
 
-    def total = allResults?.sum{it?.content?.size() ?: 0} ?: 0
-    def passC = allResults?.sum{it?.content?.count{it?.status == 'PASS'} ?: 0} ?: 0
+    def total = 0
+    def passC = 0
+    if(allResults) {
+        allResults.each { rf ->
+            if(rf?.content) {
+                total += rf.content.size() ?: 0
+                rf.content.each { iter ->
+                    if(iter?.status == 'PASS') { passC += 1 }
+                }
+            }
+        }
+    }
     def failC = total - passC
-    // ✅ FIXED: Simple integer percentage calculation (no Math.round(BigDecimal))
+    // ✅ Simple integer percentage - NO Math.round(BigDecimal)
     def passPct = total > 0 ? (int)((passC * 100) / total) : 0
 
     html += """
@@ -281,14 +302,14 @@ def generatePTMPHTMLReport(buildParams, allResults, currentDateTime, companyLogo
     """
 
     if(allResults) {
-        allResults.each{ rf ->
+        allResults.each { rf ->
             if(!rf?.filename) return
             def parts = rf.filename.replace('.json','').split('_')
             def bw = parts?.last() ?: 'Unknown'
             def ct = parts?.take(parts.size()-1)?.join(' ')?.replace('_PTMP','')?.replaceAll('_', ' ') ?: 'Unknown'
 
             if(rf?.content) {
-                rf.content.each{ iter ->
+                rf.content.each { iter ->
                     if(!iter) return
                     def st = iter.status ?: 'UNKNOWN'
                     def cls = st == "PASS" ? "status-pass" : (st == "FAIL" ? "status-fail" : "status-partial")
@@ -307,7 +328,7 @@ def generatePTMPHTMLReport(buildParams, allResults, currentDateTime, companyLogo
                     """
 
                     if(iter['Tested Channels']) {
-                        iter['Tested Channels'].each{ ch ->
+                        iter['Tested Channels'].each { ch ->
                             if(!ch) return
                             def cs = ch.status ?: 'N/A'
                             def ccls = cs == "PASS" ? "status-pass" : (cs == "FAIL" ? "status-fail" : "status-partial")
@@ -326,7 +347,7 @@ def generatePTMPHTMLReport(buildParams, allResults, currentDateTime, companyLogo
                             """
 
                             if(ch.su_results) {
-                                ch.su_results.each{ su ->
+                                ch.su_results.each { su ->
                                     if(!su) return
                                     def scls = su.status == "PASS" ? "status-pass" : "status-fail"
                                     html += """<tr>
