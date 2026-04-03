@@ -17,11 +17,18 @@ pipeline {
         stage('Prepare') {
             steps {
                 script {
-                    echo "=== PTMP CHANNEL TEST ==="
+                    echo "========================================"
+                    echo "PTMP CHANNEL CONNECTIVITY TEST"
+                    echo "========================================"
                     echo "Stand: ${TARGET_STAND?:'N/A'}"
                     echo "BSU: ${params['Local IP Address']?:'N/A'}"
                     echo "SUs: ${params['Remote IP Addresses']?:'N/A'}"
-                    echo "Channels: ${params['Custom Channels']?:'Default from conftest'}"
+                    echo "Radio: ${params.Radio ?: 'Radio1'}"
+                    echo "Bandwidth: ${params.Bandwidth ?: 'HT20'}"
+                    echo "Country: ${params.Countries ?: '5GHz'}"
+                    echo "Custom Channels: ${params['Custom Channels'] ?: 'ALL (auto-discover)'}"
+                    echo "Snapshot Time: ${params['Snapshot Time'] ?: '30'}s"
+                    echo "========================================"
 
                     if(!params['Local IP Address']?.trim()) error "❌ BSU IP required"
                     if(!params['Remote IP Addresses']?.trim()) error "❌ SU IPs required"
@@ -39,10 +46,9 @@ pipeline {
                         def bsuIP = params['Local IP Address']?.trim() ?: '192.168.1.10'
                         def suIPs = params['Remote IP Addresses']?.trim() ?: '192.168.1.11'
                         def radio = params.Radio ?: 'Radio1'
-                        def bw = params.Bandwidth ?: 'HT20'
-                        def ct = params.Countries ?: '5GHz'
+                        def bwParam = params.Bandwidth ?: 'HT20'
+                        def ctParam = params.Countries ?: '5GHz'
                         def snapTime = params['Snapshot Time']?.trim() ?: '30'
-                        def randCh = params['Random Channels'] ?: '0'
                         def custCh = params['Custom Channels']?.trim() ?: ''
 
                         sh 'rm -f ptmp_*.json *_PTMP.json || true'
@@ -50,46 +56,45 @@ pipeline {
 
                         def iterNum = 1
 
-                        // Loop through countries
-                        (ct ?: '5GHz').split(',').each { country ->
-                            echo "🌍 Country: ${country}"
+                        (ctParam ?: '5GHz').split(',').each { country ->
+                            echo "\n🌍 Country: ${country}"
 
                             sh """
                                 pytest -v -s testCases/test_PTMPChannelConnectivity.py::test_ptmp_changecountry \\
-                                --local-ip '${bsuIP}' \\
-                                --remote-ip '${suIPs}' \\
-                                --radio '${radio}' \\
-                                --country '${country}' 2>&1 || true
+                                --local-ip '${bsuIP}' --remote-ip '${suIPs}' \\
+                                --radio '${radio}' --country '${country}' 2>&1 || true
                             """
 
-                            // Loop through bandwidths
-                            (bw ?: 'HT20').split(',').each { bandwidth ->
+                            (bwParam ?: 'HT20').split(',').each { bandwidth ->
                                 if((country == "Canada" || country == "US 5GHz Non-DFS") && bandwidth == "HT160") {
                                     echo "⚠ Skip HT160 for ${country}"; return
                                 }
 
-                                echo "📡 ${country} / ${bandwidth}"
+                                echo "\n📡 Testing: ${country} / ${bandwidth}"
                                 sh 'echo {"iterations":[]} > ptmp_channel_results.json'
 
-                                // Build pytest command
-                                def cmd = """
-                                    python3.10 -m pytest -v -s testCases/test_PTMPChannelConnectivity.py::test_ptmp_channelconnectivity \\
-                                    --local-ip '${bsuIP}' \\
-                                    --remote-ip '${suIPs}' \\
-                                    --radio '${radio}' \\
-                                    --bandwidth '${bandwidth}' \\
-                                    --country '${country}' \\
-                                    --extra '${randCh}' \\
-                                    --sleep '${snapTime}'
-                                """
+                                // Build command
+                                def cmdParts = [
+                                    "python3.10 -m pytest -v -s testCases/test_PTMPChannelConnectivity.py::test_ptmp_channelconnectivity",
+                                    "--local-ip '${bsuIP}'",
+                                    "--remote-ip '${suIPs}'",
+                                    "--radio '${radio}'",
+                                    "--bandwidth '${bandwidth}'",
+                                    "--country '${country}'",
+                                    "--extra '0'",
+                                    "--sleep '${snapTime}'"
+                                ]
 
-                                // ✅ Add custom channels if specified in Jenkins UI
+                                // Add custom channels ONLY if specified
                                 if(custCh) {
-                                    cmd += " --channels '${custCh}'"
-                                    echo "🎯 Using custom channels: ${custCh}"
+                                    cmdParts.add("--channels '${custCh}'")
+                                    echo "🎯 Using CUSTOM channels: ${custCh}"
+                                } else {
+                                    echo "🔍 Auto-discovering ALL channels"
                                 }
 
-                                cmd += " 2>&1"
+                                def cmd = cmdParts.join(' ') + " 2>&1"
+                                echo "🚀 Executing: ${cmd}"
 
                                 def out = ""
                                 try {
@@ -99,15 +104,11 @@ pipeline {
                                     out = "Error: ${e.message}"
                                 }
 
-                                echo "Pytest Output (first 500 chars):\n${out?.take(500) ?: 'N/A'}..."
+                                echo "Pytest Output (first 800 chars):\n${out?.take(800) ?: 'N/A'}..."
 
-                                // Read results
                                 def res = [iterations: []]
-                                try {
-                                    res = readJSON file: 'ptmp_channel_results.json'
-                                } catch(Exception e) {
-                                    echo "⚠️ JSON read: ${e.message}"
-                                }
+                                try { res = readJSON file: 'ptmp_channel_results.json' }
+                                catch(Exception e) { echo "⚠️ JSON read: ${e.message}" }
 
                                 def nBW = bandwidth == "HT40" ? "HT40+" : bandwidth
                                 def matches = (res?.iterations ?: []).findAll { t ->
@@ -126,7 +127,7 @@ pipeline {
                                 writeJSON file: fname, json: [iterations: matches]
 
                                 matches.each { m ->
-                                    if(m) echo "✅ Iter ${m.iteration}: ${m.status ?: 'N/A'}"
+                                    if(m) echo "✅ Iter ${m.iteration}: ${m.status ?: 'N/A'} | ${m['Tested Channels']?.size() ?: 0} channels"
                                 }
                             }
                         }
@@ -138,14 +139,14 @@ pipeline {
         stage('Generate HTML Report') {
             steps {
                 script {
+                    echo "📊 Generating HTML Report..."
+
                     def files = []
                     try {
                         files = findFiles(glob: '*_PTMP.json')?.findAll { f ->
                             f?.name && f.name != 'ptmp_channel_results.json' && f.length > 20
                         } ?: []
-                    } catch(Exception e) {
-                        echo "⚠️ Find files: ${e.message}"
-                    }
+                    } catch(Exception e) { echo "⚠️ Find files: ${e.message}" }
 
                     def results = []
                     files.each { f ->
@@ -155,44 +156,40 @@ pipeline {
                                 if(data?.iterations && !data.iterations.isEmpty()) {
                                     results << [filename: f.name, content: data.iterations]
                                 }
-                            } catch(Exception e) {
-                                echo "⚠️ Parse ${f.name}: ${e.message}"
-                            }
+                            } catch(Exception e) { echo "⚠️ Parse ${f.name}: ${e.message}" }
                         }
                     }
 
-                    // Fetch firmware versions
                     def lIP = params['Local IP Address']?.trim() ?: '192.168.1.10'
                     def sIPs = (params['Remote IP Addresses'] ?: '').split(',').collect{it?.trim()}.findAll{it && !it.isEmpty()}
 
-                    def lFW = "N/A"
-                    def sFW = "N/A"
+                    def lFW = "N/A", sFW = "N/A"
                     try {
                         lFW = sh(script: "sshpass -p '${SSH_PASS}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${SSH_USER}@${lIP} 'cat /etc/version 2>/dev/null || echo N/A'", returnStdout: true)?.trim() ?: "N/A"
                         sFW = sIPs.collect { ip ->
-                            sh(script: "sshpass -p '${SSH_PASS}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${SSH_USER}@${ip} 'cat /etc/version 2>/dev/null || echo N/A'", returnStdout: true)?.trim() ?: "N/A"
+                            try { sh(script: "sshpass -p '${SSH_PASS}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${SSH_USER}@${ip} 'cat /etc/version 2>/dev/null || echo N/A'", returnStdout: true)?.trim() ?: "N/A" }
+                            catch(Exception e) { "N/A" }
                         }.unique().join(" | ")
-                    } catch(Exception e) {
-                        echo "⚠️ SSH fetch: ${e.message}"
-                    }
+                    } catch(Exception e) { echo "⚠️ SSH fetch: ${e.message}" }
 
                     def paramsMap = [
-                        "Test": "PTMP Channel",
-                        "BSU IP": lIP,
-                        "SU IPs": params['Remote IP Addresses'] ?: 'N/A',
-                        "SUs": env.SU_IP_COUNT ?: 'N/A',
+                        "Test Type": "PTMP Channel Connectivity",
+                        "BSU IP Address": lIP,
+                        "SU IP Addresses": params['Remote IP Addresses'] ?: 'N/A',
+                        "SU Count": env.SU_IP_COUNT ?: 'N/A',
                         "Radio": params.Radio ?: 'Radio1',
                         "Countries": params.Countries ?: '5GHz',
                         "Bandwidths": params.Bandwidth ?: 'HT20',
-                        "Custom Channels": params['Custom Channels'] ?: 'Auto-discover',
-                        "FW": "${lFW} / ${sFW ?: 'N/A'}"
+                        "Custom Channels": params['Custom Channels'] ?: 'ALL (auto-discover)',
+                        "Snapshot Delay": "${params['Snapshot Time'] ?: '30'} seconds",
+                        "Firmware (BSU/SUs)": "${lFW} / ${sFW ?: 'N/A'}"
                     ]
 
                     def tz = TimeZone.getTimeZone("Asia/Kolkata")
                     def now = new Date().format("dd MMM yyyy, HH:mm:ss z", tz)
                     def logo = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
-                    def html = generatePTMPHTMLReport(paramsMap, results, now, logo, env.JOB_NAME ?: 'PTMP', reportFilename)
+                    def html = generatePTMPHTMLReport(paramsMap, results, now, logo, env.JOB_NAME ?: 'PTMP-Channel-Test', reportFilename)
                     writeFile file: reportFilename, text: html
                     echo "📄 Report: ${reportFilename}"
                 }
@@ -202,53 +199,22 @@ pipeline {
 
     post {
         always {
-            publishHTML(target: [
-                allowMissing: false,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: '.',
-                reportFiles: "${reportFilename}",
-                reportName: "PTMP Report - Build ${env.BUILD_NUMBER}"
-            ])
-
-            step([$class: 'ArtifactArchiver',
-                  artifacts: '*_PTMP.json, ptmp_channel_results.json',
-                  fingerprint: true,
-                  onlyIfSuccessful: false,
-                  allowEmptyArchive: true])
-
-            echo "✅ Done"
+            publishHTML(target: [allowMissing:false, alwaysLinkToLastBuild:true, keepAll:true, reportDir:'.', reportFiles:"${reportFilename}", reportName:"PTMP Report - Build ${env.BUILD_NUMBER}"])
+            step([$class: 'ArtifactArchiver', artifacts: '*_PTMP.json, ptmp_channel_results.json', fingerprint: true, onlyIfSuccessful: false, allowEmptyArchive: true])
+            echo "✅ Pipeline completed"
 
             script {
-                def userEmails = [
-                    "puneet": "puneet.sharma@senao.com",
-                    "harman": "harmanjot.singh@senao.com",
-                    "mahesh": "mahesh.battala@senao.com",
-                    "sandeep": "sandeep.manchikanti@senao.com",
-                    "sampath": "sampath.marella@senao.com",
-                    "jayanth": "jayanth.munnaluru@senao.com",
-                    "srilatha": "srilatha.tadiboina@senao.com",
-                    "phani": "phani.darla@senao.com",
-                    "dinesh": "dinesh.redddy@senao.com"
-                ]
-
+                def userEmails = ["puneet": "puneet.sharma@senao.com", "harman": "harmanjot.singh@senao.com", "mahesh": "mahesh.battala@senao.com", "sandeep": "sandeep.manchikanti@senao.com", "sampath": "sampath.marella@senao.com", "jayanth": "jayanth.munnaluru@senao.com", "srilatha": "srilatha.tadiboina@senao.com", "phani": "phani.darla@senao.com", "dinesh": "dinesh.redddy@senao.com"]
                 def buildCauses = currentBuild.getBuildCauses()
                 def userCause = buildCauses?.find{ it?._class == 'hudson.model.Cause$UserIdCause' }
                 def buildUserId = userCause?.userId ?: "automation"
                 def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+                echo "📧 Email to: ${userEmail}"
 
-                echo "Sending email to: ${userEmail}"
-
-                def statusColor = currentBuild.currentResult == 'SUCCESS' ? '#22c55e' :
-                                 (currentBuild.currentResult == 'FAILURE' ? '#ef4444' : '#f59e0b')
-
-                emailext(
-                    subject: "[PTMP] Build ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
-                    body: "<html><body><h2>PTMP Test</h2><p><b>Build:</b> ${currentBuild.fullDisplayName}</p><p><b>Status:</b> <span style='color:${statusColor}'>${currentBuild.currentResult}</span></p><p><b>SUs:</b> ${env.SU_IP_COUNT?:'N/A'}</p><p><a href='${env.BUILD_URL}'>View Build</a> | <a href='${env.BUILD_URL}artifact/${reportFilename}'>Report</a></p></body></html>",
-                    to: userEmail,
-                    mimeType: 'text/html',
-                    attachmentsPattern: "${reportFilename}"
-                )
+                def statusColor = currentBuild.currentResult == 'SUCCESS' ? '#22c55e' : (currentBuild.currentResult == 'FAILURE' ? '#ef4444' : '#f59e0b')
+                emailext(subject: "[PTMP] Build ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    body: "<html><body><h2>PTMP Test</h2><p><b>Build:</b> ${currentBuild.fullDisplayName}</p><p><b>Status:</b> <span style='color:${statusColor}'>${currentBuild.currentResult}</span></p><p><b>SUs:</b> ${env.SU_IP_COUNT?:'N/A'}</p><p><a href='${env.BUILD_URL}'>Build</a> | <a href='${env.BUILD_URL}artifact/${reportFilename}'>Report</a></p></body></html>",
+                    to: userEmail, mimeType: 'text/html', attachmentsPattern: "${reportFilename}")
             }
         }
         success { echo "🎉 SUCCESS" }
@@ -261,43 +227,55 @@ def generatePTMPHTMLReport(buildParams, allResults, currentDateTime, companyLogo
     def html = """
         <!DOCTYPE html><html><head><title>PTMP Report</title><style>
         body{font-family:Segoe UI,Tahoma,sans-serif;padding:20px;background:#f8f9fa;color:#2c3e50}
-        .header{display:flex;justify-content:space-between;align-items:center;background:white;padding:20px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);margin-bottom:30px}
-        .header img{height:60px}.header-info{text-align:right}
-        .header-info h1{margin:0 0 5px 0;font-size:22px;color:#1a365d}
-        .header-info p{margin:3px 0;font-size:13px;color:#666}
-        .topology-badge{background:#667eea;color:white;padding:4px 12px;border-radius:20px;font-weight:bold;font-size:12px}
-        h2{margin:30px 0 15px 0;font-size:18px;border-left:4px solid #667eea;padding-left:12px;color:#1a365d}
-        table{width:100%;border-collapse:collapse;margin:15px 0;background:white;box-shadow:0 2px 5px rgba(0,0,0,0.05);border-radius:6px;overflow:hidden}
-        th,td{padding:10px 12px;border:1px solid #e2e8f0;text-align:left;vertical-align:middle;font-size:13px}
-        th{background:#1a365d;color:white;font-weight:600}
+        .header{display:flex;justify-content:space-between;align-items:center;background:white;padding:25px;border-radius:12px;box-shadow:0 4px 15px rgba(0,0,0,0.1);margin-bottom:30px}
+        .header img{height:70px}.header-info{text-align:right}
+        .header-info h1{margin:0 0 8px 0;font-size:26px;color:#1a365d;font-weight:700}
+        .header-info p{margin:5px 0;font-size:14px;color:#64748b}
+        .topology-badge{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:6px 16px;border-radius:25px;font-weight:bold;font-size:13px;display:inline-block;margin-top:8px}
+        h2{margin:35px 0 18px 0;font-size:20px;border-left:5px solid #667eea;padding-left:15px;color:#1a365d;font-weight:600}
+        h3{margin:25px 0 12px 0;font-size:16px;color:#2d3748;font-weight:600}
+        table{width:100%;border-collapse:collapse;margin:18px 0;background:white;box-shadow:0 2px 8px rgba(0,0,0,0.08);border-radius:8px;overflow:hidden}
+        th,td{padding:12px 14px;border:1px solid #e2e8f0;text-align:center;vertical-align:middle;font-size:13px}
+        th{background:linear-gradient(135deg,#1a365d 0%,#2c5282 100%);color:white;font-weight:600;text-transform:uppercase;font-size:12px}
         tr:nth-child(even){background:#f8fafc}tr:hover{background:#edf2f7}
-        .status-pass{color:#22c55e;font-weight:bold}.status-fail{color:#ef4444;font-weight:bold}.status-partial{color:#f59e0b;font-weight:bold}
-        .summary-card{background:white;padding:15px;border-radius:8px;box-shadow:0 2px 5px rgba(0,0,0,0.05);margin:10px 0}
-        .summary-stats{display:flex;gap:20px;flex-wrap:wrap}.stat-item{text-align:center}
-        .stat-value{font-size:24px;font-weight:bold;color:#1a365d}.stat-label{font-size:12px;color:#64748b}
-        @media print{body{background:white}.no-print{display:none}}
+        .status-pass{color:#22c55e;font-weight:bold;font-size:14px}
+        .status-fail{color:#ef4444;font-weight:bold;font-size:14px}
+        .status-partial{color:#f59e0b;font-weight:bold;font-size:14px}
+        .summary-card{background:white;padding:20px;border-radius:10px;box-shadow:0 3px 10px rgba(0,0,0,0.08);margin:15px 0}
+        .summary-stats{display:flex;gap:25px;flex-wrap:wrap;justify-content:center}
+        .stat-item{text-align:center;padding:15px 25px;background:linear-gradient(135deg,#f8fafc 0%,#e2e8f0 100%);border-radius:10px;min-width:120px}
+        .stat-value{font-size:32px;font-weight:bold;color:#1a365d;margin-bottom:5px}
+        .stat-label{font-size:13px;color:#64748b;font-weight:500}
+        .channel-section{background:white;padding:20px;border-radius:10px;margin:20px 0;box-shadow:0 2px 8px rgba(0,0,0,0.08)}
+        .config-table td{text-align:left;padding:10px 14px}
+        .config-table td:first-child{font-weight:600;color:#1a365d;width:35%}
+        .footer{margin-top:50px;text-align:center;color:#94a3b8;font-size:13px;padding:20px;border-top:2px solid #e2e8f0}
+        .footer a{color:#667eea;text-decoration:none;font-weight:500}
+        @media print{body{background:white}}
         </style></head><body>
-        <div class="header"><img src="${companyLogoUrl}" alt="Logo"/>
+        <div class="header"><img src="${companyLogoUrl}"/>
         <div class="header-info"><h1>PTMP Channel Connectivity Report</h1>
         <p><strong>Pipeline:</strong> ${pipelineName}</p><p><strong>Generated:</strong> ${currentDateTime}</p>
-        <p><span class="topology-badge">1 BSU + ${buildParams['SUs']} SUs</span></p></div></div>
+        <p><span class="topology-badge">📡 1 BSU + ${buildParams['SU Count']} SUs</span></p></div></div>
 
         <h2>📋 Test Configuration</h2>
-        <table class="build-params">
-            ${buildParams.collect{"<tr><td width='30%'><b>${it.key}</b></td><td>${it.value ?: 'N/A'}</td></tr>"}.join('\n')}
+        <table class="config-table">
+            ${buildParams.collect{"<tr><td><b>${it.key}</b></td><td>${it.value ?: 'N/A'}</td></tr>"}.join('\n')}
         </table>
     """
 
     def total = allResults?.sum{it?.content?.size() ?: 0} ?: 0
     def passC = allResults?.sum{it?.content?.count{it?.status == 'PASS'} ?: 0} ?: 0
     def failC = total - passC
+    def passPct = total > 0 ? Math.round((passC / total) * 100) : 0
 
     html += """
         <h2>📊 Test Summary</h2>
         <div class="summary-card"><div class="summary-stats">
             <div class="stat-item"><div class="stat-value">${total}</div><div class="stat-label">Total Channels</div></div>
-            <div class="stat-item"><div class="stat-value status-pass">${passC}</div><div class="stat-label">Passed</div></div>
-            <div class="stat-item"><div class="stat-value status-fail">${failC}</div><div class="stat-label">Failed</div></div>
+            <div class="stat-item"><div class="stat-value" style="color:#22c55e">${passC}</div><div class="stat-label">Passed</div></div>
+            <div class="stat-item"><div class="stat-value" style="color:#ef4444">${failC}</div><div class="stat-label">Failed</div></div>
+            <div class="stat-item"><div class="stat-value" style="color:#667eea">${passPct}%</div><div class="stat-label">Success Rate</div></div>
         </div></div>
     """
 
@@ -313,17 +291,18 @@ def generatePTMPHTMLReport(buildParams, allResults, currentDateTime, companyLogo
                     if(!iter) return
                     def st = iter.status ?: 'UNKNOWN'
                     def cls = st == "PASS" ? "status-pass" : (st == "FAIL" ? "status-fail" : "status-partial")
+                    def chCount = iter['Tested Channels']?.size() ?: 0
 
                     html += """
-                        <h2>🌍 ${ct} | 📡 ${bw} | Iter #${iter.iteration ?: 'N/A'}</h2>
+                        <h2>🌍 ${ct} | 📡 ${bw}</h2>
                         <div class="summary-card">
-                            <p><strong>Status:</strong> <span class="${cls}">${st}</span> |
-                               <strong>Channels:</strong> ${iter['Tested Channels']?.size() ?: 0} |
-                               <strong>SUs:</strong> ${iter.su_count ?: 'N/A'}</p>
+                            <p style="margin:0;font-size:15px">
+                                <strong>Status:</strong> <span class="${cls}">${st}</span> &nbsp;|&nbsp;
+                                <strong>Channels:</strong> ${chCount} &nbsp;|&nbsp;
+                                <strong>SUs:</strong> ${iter.su_count ?: 'N/A'} &nbsp;|&nbsp;
+                                <strong>Iteration:</strong> #${iter.iteration ?: 'N/A'}
+                            </p>
                         </div>
-                        <table><tr class="channel-header">
-                            <th>Channel</th><th>Status</th><th>Frequency</th><th>BSU OK</th><th>Timestamp</th>
-                        </tr>
                     """
 
                     if(iter['Tested Channels']) {
@@ -331,25 +310,50 @@ def generatePTMPHTMLReport(buildParams, allResults, currentDateTime, companyLogo
                             if(!ch) return
                             def cs = ch.status ?: 'N/A'
                             def ccls = cs == "PASS" ? "status-pass" : (cs == "FAIL" ? "status-fail" : "status-partial")
+                            def freq = ch.frequency_mhz ?: 'N/A'
 
-                            html += """<tr>
-                                <td><b>${ch.channel ?: 'N/A'}</b></td>
-                                <td class="${ccls}">${cs}</td>
-                                <td>${ch.frequency_mhz ?: 'N/A'} MHz</td>
-                                <td>${ch.bsu_verified ? '✓' : '✗'}</td>
-                                <td style="font-size:11px">${ch.timestamp ?: '-'}</td>
-                            </tr>"""
+                            html += """
+                                <div class="channel-section">
+                                    <h3 style="color:#1a365d;border-bottom:2px solid #e2e8f0;padding-bottom:10px">
+                                        Channel: ${ch.channel ?: 'N/A'} <span class="${ccls}" style="margin-left:15px">${cs}</span>
+                                        <span style="font-size:13px;color:#64748b;margin-left:10px">(${freq} MHz)</span>
+                                    </h3>
+                                    <table>
+                                        <thead><tr>
+                                            <th>SU IP</th><th>Status</th><th>SNR (L/R)</th><th>Signal (L/R)</th><th>Noise (L/R)</th><th>Tx/Rx Rate</th><th>Retries (L/R)</th><th>OBSS</th><th>Uptime</th>
+                                        </tr></thead><tbody>
+                            """
+
+                            if(ch.su_results) {
+                                ch.su_results.each{ su ->
+                                    if(!su) return
+                                    def scls = su.status == "PASS" ? "status-pass" : "status-fail"
+                                    html += """<tr>
+                                        <td style="font-weight:600;color:#1a365d">${su.su_ip ?: 'N/A'}</td>
+                                        <td class="${scls}"><b>${su.status ?: 'N/A'}</b></td>
+                                        <td>${su.local_snr_a1 ?: '-'}/${su.local_snr_a2 ?: '-'} / ${su.remote_snr_a1 ?: '-'}/${su.remote_snr_a2 ?: '-'}</td>
+                                        <td>${su.local_signal_a1 ?: '-'}/${su.local_signal_a2 ?: '-'} / ${su.remote_signal_a1 ?: '-'}/${su.remote_signal_a2 ?: '-'} dBm</td>
+                                        <td>${su.local_noise ?: '-'} / ${su.remote_noise ?: '-'} dBm</td>
+                                        <td>${su.tx_rate ?: '-'} / ${su.rx_rate ?: '-'} Mbps</td>
+                                        <td>${su.local_retry_pct ?: '-'} / ${su.remote_retry_pct ?: '-'} %</td>
+                                        <td>${su.obss ?: '-'}</td>
+                                        <td style="font-size:11px;color:#64748b">${su.uptime ?: '-'}</td>
+                                    </tr>"""
+                                }
+                            }
+                            html += "</tbody></table></div>"
                         }
                     }
-                    html += "</table>"
                 }
             }
         }
     }
 
     html += """
-        <div style="margin-top:40px;text-align:center;color:#94a3b8;font-size:12px">
-            <p>PTMP Pipeline Report | Build #${env.BUILD_NUMBER} | <a href="${env.BUILD_URL}">View Build</a></p>
+        <div class="footer">
+            <p><strong>PTMP Channel Connectivity Pipeline Report</strong></p>
+            <p>Build #${env.BUILD_NUMBER} | <a href="${env.BUILD_URL}">View Build</a> | <a href="${env.BUILD_URL}console">Console</a></p>
+            <p style="margin-top:15px;font-size:12px">Generated by Jenkins Automation | ${currentDateTime}</p>
         </div></body></html>
     """
     return html
