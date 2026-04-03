@@ -1,12 +1,9 @@
 #!/usr/bin/env python3.10
-
 import time
 import warnings
 import pytest
 import os
-import paramiko
 import json
-import sys
 import random
 import re
 import subprocess
@@ -33,9 +30,7 @@ class Colors:
     BOLD = '\033[1m'
 
 
-def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, extra, sleep, channels=None,
-                                  snapshot_time=30):
-
+def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, extra, sleep, channels):
     print("\n\n" + "=" * 80, flush=True)
     print(f"{Colors.BOLD}PTMP CHANNEL CONNECTIVITY TEST{Colors.ENDC}", flush=True)
     print(f"Selected Radio : {radio}", flush=True)
@@ -43,9 +38,8 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
     print(f"SU IPs (Remote): {remote_ip}", flush=True)
     print(f"Selected Bandwidth : {bandwidth}", flush=True)
     print(f"Selected Country : {country}", flush=True)
-    print(f"Snapshot Delay : {snapshot_time}s", flush=True)
     print(f"Custom Channels : {channels if channels else 'Auto-discover'}", flush=True)
-    print(f"Short Test (Random Channels) : {extra}", flush=True)
+    print(f"Short Test (Random) : {extra}", flush=True)
     print("=" * 80 + "\n", flush=True)
 
     # ================= COUNTRY CODE MAPPING =================
@@ -60,7 +54,7 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
 
     if country not in country_codes:
         print(f"{Colors.FAIL}ERROR: Invalid country '{country}'{Colors.ENDC}", flush=True)
-        assert False, f"Country '{country}' not supported"
+        assert False
 
     country_code = country_codes[country]
 
@@ -72,7 +66,7 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
 
     if radio not in radio_config:
         print(f"{Colors.FAIL}ERROR: Invalid radio '{radio}'{Colors.ENDC}", flush=True)
-        assert False, f"Radio '{radio}' not supported"
+        assert False
 
     radio_ind = radio_config[radio]["index"]
     intf = radio_config[radio]["intf"]
@@ -81,9 +75,9 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
     # ================= BANDWIDTH NORMALIZATION =================
     new_bandwidth = "HT40+" if bandwidth == "HT40" else bandwidth
 
-    # ================= CHANNEL LIST LOGIC =================
+    # ================= ✅ KEY FIX: CHANNEL LIST LOGIC =================
     if channels and len(channels) > 0:
-        print(f"{Colors.OKBLUE}Using CUSTOM channel list: {channels}{Colors.ENDC}", flush=True)
+        print(f"{Colors.OKBLUE}Using CUSTOM channel list from fixture: {channels}{Colors.ENDC}", flush=True)
         channel_list = [str(ch).strip() for ch in channels if str(ch).strip()]
     else:
         print(f"{Colors.OKBLUE}Auto-discovering channels for {country} / {new_bandwidth}{Colors.ENDC}", flush=True)
@@ -91,6 +85,7 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
         time.sleep(2)
 
     # ================= RANDOM CHANNEL SELECTION =================
+    # Only apply random if extra=1 AND no custom channels provided
     if int(extra) == 1 and not (channels and len(channels) > 0):
         channel_groups = {}
         for channel in channel_list:
@@ -141,7 +136,7 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
         formatted_channel = f"{channel} ({frequency} MHz)"
 
         # Wait for SUs to associate
-        wait_time = int(sleep) if sleep else snapshot_time
+        wait_time = int(sleep) if sleep else 30
         print(f"\nWaiting {wait_time}s for SUs to associate on channel {channel}...", flush=True)
         time.sleep(wait_time)
 
@@ -188,7 +183,7 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
         "SU_IPs": remote_ip,
         "Bandwidth": new_bandwidth,
         "Country": country,
-        "Snapshot_Time_Seconds": int(sleep) if sleep else snapshot_time,
+        "Snapshot_Time_Seconds": int(sleep) if sleep else 30,
         "Tested_Channels": channel_results,
         "Ping_Results": {
             "BSU": pingFunction.check_access(local_ip),
@@ -227,9 +222,6 @@ def _verify_bsu_operation(bsu_ip, radio_oid, expected_bw, expected_chan):
             print(f"{Colors.WARNING}⚠ BSU Channel Mismatch: Expected {expected_chan}, Got {op_ch}{Colors.ENDC}",
                   flush=True)
             return False
-        if not bw_match:
-            print(f"{Colors.WARNING}⚠ BSU Bandwidth Mismatch: Expected {expected_bw}, Got {op_bw}{Colors.ENDC}",
-                  flush=True)
 
         return True
     except Exception as e:

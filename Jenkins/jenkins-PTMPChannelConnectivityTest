@@ -1,113 +1,6 @@
-
 def archiveArtifacts(pattern) {
     step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false, allowEmptyArchive: true])
 }
-
-def _fetchFirmwareVersion(ip, label, sshUser, sshPass) {
-    try {
-        sh "ssh-keygen -R ${ip} 2>/dev/null || true"
-        return sh(
-            script: "sshpass -p '${sshPass}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${sshUser}@${ip} 'cat /etc/version 2>/dev/null || echo N/A'",
-            returnStdout: true
-        )?.trim() ?: "N/A"
-    } catch (Exception e) {
-        echo "⚠️ Failed to get FW from ${label} (${ip}): ${e.message}"
-        return "N/A (unreachable)"
-    }
-}
-
-def _generatePTMPHTMLReport(buildParams, allResults, currentDateTime, companyLogoUrl, pipelineName, reportFilename) {
-    def html = """
-        <!DOCTYPE html><html><head><title>PTMP Report</title><style>
-        body{font-family:Segoe UI;padding:20px;background:#f8f9fa}
-        .header{display:flex;justify-content:space-between;background:white;padding:20px;border-radius:8px;margin-bottom:30px}
-        .header img{height:60px}.status-pass{color:#22c55e;font-weight:bold}
-        .status-fail{color:#ef4444;font-weight:bold}.status-partial{color:#f59e0b;font-weight:bold}
-        table{width:100%;border-collapse:collapse;margin:15px 0;background:white}
-        th,td{padding:10px;border:1px solid #e2e8f0;text-align:left}
-        th{background:#1a365d;color:white}tr:nth-child(even){background:#f8fafc}
-        </style></head><body>
-        <div class="header"><img src="${companyLogoUrl}"/>
-        <div><h1>PTMP Channel Report</h1><p>Pipeline: ${pipelineName}</p><p>Generated: ${currentDateTime}</p></div></div>
-        <h2>Configuration</h2><table>
-        ${buildParams.collect{"<tr><td><b>${it.key}</b></td><td>${it.value?:'N/A'}</td></tr>"}.join('\n')}
-        </table><h2>Summary</h2>
-    """
-
-    def total = allResults?.sum{it?.content?.size()?:0}?:0
-    def passC = allResults?.sum{it?.content?.count{it?.status=='PASS'}?:0}?:0
-    def failC = allResults?.sum{it?.content?.count{it?.status=='FAIL'}?:0}?:0
-
-    html += "<p>Total: ${total} | Pass: <span class='status-pass'>${passC}</span> | Fail: <span class='status-fail'>${failC}</span></p>"
-
-    if(allResults){
-        allResults.each{ rf ->
-            if(!rf?.filename)return
-            def parts = rf.filename.replace('.json','').split('_')
-            def bw = parts?.last()?:'Unknown'
-            def ct = parts?.take(parts.size()-1)?.join(' ')?:'Unknown'
-
-            if(rf?.content){
-                rf.content.each{ iter ->
-                    if(!iter)return
-                    def st = iter.status?:'UNKNOWN'
-                    def cls = st=='PASS'?'status-pass':(st=='FAIL'?'status-fail':'status-partial')
-                    html += "<h3>${ct} | ${bw} | Iter #${iter.iteration?:'N/A'} <span class='${cls}'>${st}</span></h3><table><tr><th>Channel</th><th>Status</th><th>Frequency</th><th>SUs</th></tr>"
-
-                    if(iter['Tested Channels']){
-                        iter['Tested Channels'].each{ ch ->
-                            if(!ch)return
-                            def cs = ch.status?:'N/A'
-                            def ccls = cs=='PASS'?'status-pass':(cs=='FAIL'?'status-fail':'status-partial')
-                            def sus = ch.su_results?.collect{ s -> (s?.su_ip?:'N/A') + ':' + (s?.status=='PASS'?'✓':'✗') }?.join(', ')?:'N/A'
-                            html += "<tr><td><b>${ch.channel?:'N/A'}</b></td><td class='${ccls}'>${cs}</td><td>${ch.frequency_mhz?:'N/A'}MHz</td><td>${sus}</td></tr>"
-                        }
-                    }
-                    html += "</table>"
-                }
-            }
-        }
-    }
-    html += "<p style='margin-top:40px;text-align:center;color:#666'>Build #${env.BUILD_NUMBER} | <a href='${env.BUILD_URL}'>View</a></p></body></html>"
-    return html
-}
-
-def _sendEmailNotification(reportFilename) {
-    def buildCauses = currentBuild.getBuildCauses()
-    def userCause = buildCauses?.find{ it?._class == 'hudson.model.Cause$UserIdCause' }
-    def buildUserName = userCause?.userName ?: "Automation"
-    def buildUserId = userCause?.userId ?: "automation"
-
-    def userEmails = [
-        "puneet": "puneet.sharma@senao.com",
-        "harman": "harmanjot.singh@senao.com",
-        "mahesh": "mahesh.battala@senao.com",
-        "sandeep": "sandeep.manchikanti@senao.com",
-        "sampath": "sampath.marella@senao.com",
-        "jayanth": "jayanth.munnaluru@senao.com",
-        "srilatha": "srilatha.tadiboina@senao.com",
-        "phani": "phani.darla@senao.com",
-        "dinesh": "dinesh.redddy@senao.com"
-    ]
-
-    def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
-    echo "Sending email to: ${userEmail}"
-
-    def statusColor = currentBuild.currentResult == 'SUCCESS' ? '#22c55e' :
-                     (currentBuild.currentResult == 'FAILURE' ? '#ef4444' : '#f59e0b')
-
-    emailext(
-        subject: "[PTMP] Build ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
-        body: "<html><body><h2>PTMP Test</h2><p><b>Build:</b> ${currentBuild.fullDisplayName}</p><p><b>Status:</b> <span style='color:${statusColor}'>${currentBuild.currentResult}</span></p><p><b>SUs:</b> ${env.SU_IP_COUNT?:'N/A'}</p><p><a href='${env.BUILD_URL}'>View Build</a> | <a href='${env.BUILD_URL}artifact/${reportFilename}'>Report</a></p></body></html>",
-        to: userEmail,
-        mimeType: 'text/html',
-        attachmentsPattern: "${reportFilename}"
-    )
-    echo "📧 Email sent to: ${userEmail}"
-}
-
-
-// ==================== MAIN PIPELINE ====================
 
 def dateStamp = new Date().format("yyyyMMdd", TimeZone.getTimeZone("Asia/Kolkata"))
 def reportFilename = "ptmp_channel_report_${env.BUILD_NUMBER}_${dateStamp}.html"
@@ -125,22 +18,16 @@ pipeline {
             steps {
                 script {
                     echo "=== PTMP CHANNEL TEST ==="
-                    echo "Stand: ${TARGET_STAND?:'N/A'} | BSU: ${params['Local IP Address']?:'N/A'} | SUs: ${params['Remote IP Addresses']?:'N/A'}"
+                    echo "Stand: ${TARGET_STAND?:'N/A'}"
+                    echo "BSU: ${params['Local IP Address']?:'N/A'}"
+                    echo "SUs: ${params['Remote IP Addresses']?:'N/A'}"
+                    echo "Channels: ${params['Custom Channels']?:'Default from conftest'}"
 
                     if(!params['Local IP Address']?.trim()) error "❌ BSU IP required"
                     if(!params['Remote IP Addresses']?.trim()) error "❌ SU IPs required"
 
-                    def suList = (params['Remote IP Addresses']?:'').split(',').collect{it?.trim()}.findAll{it && !it.isEmpty()}
-                    env.SU_IP_COUNT = suList.size()
+                    env.SU_IP_COUNT = params['Remote IP Addresses'].split(',').size()
                     echo "✅ Testing ${env.SU_IP_COUNT} SU(s)"
-                }
-            }
-        }
-
-        stage('Dependencies') {
-            steps {
-                script {
-                    sh "pip3.10 install -r utilities/requirements.txt --quiet 2>&1 || true"
                 }
             }
         }
@@ -152,8 +39,8 @@ pipeline {
                         def bsuIP = params['Local IP Address']?.trim() ?: '192.168.1.10'
                         def suIPs = params['Remote IP Addresses']?.trim() ?: '192.168.1.11'
                         def radio = params.Radio ?: 'Radio1'
-                        def bws = (params.Bandwidth ?: 'HT20').split(',').collect{it?.trim() ?: 'HT20'}
-                        def cts = (params.Countries ?: '5GHz').split(',').collect{it?.trim() ?: '5GHz'}
+                        def bw = params.Bandwidth ?: 'HT20'
+                        def ct = params.Countries ?: '5GHz'
                         def snapTime = params['Snapshot Time']?.trim() ?: '30'
                         def randCh = params['Random Channels'] ?: '0'
                         def custCh = params['Custom Channels']?.trim() ?: ''
@@ -163,41 +50,84 @@ pipeline {
 
                         def iterNum = 1
 
-                        for(ct in cts){
-                            echo "🌍 Country: ${ct}"
-                            sh "pytest -v -s testCases/test_PTMPChannelConnectivity.py::test_ptmp_changecountry --local-ip '${bsuIP}' --remote-ip '${suIPs}' --radio '${radio}' --country '${ct}' 2>&1 || true"
+                        // Loop through countries
+                        (ct ?: '5GHz').split(',').each { country ->
+                            echo "🌍 Country: ${country}"
 
-                            for(bw in bws){
-                                if((ct=="Canada" || ct=="US 5GHz Non-DFS") && bw=="HT160"){ echo "⚠ Skip HT160 for ${ct}"; continue }
-                                echo "📡 ${ct} / ${bw}"
+                            sh """
+                                pytest -v -s testCases/test_PTMPChannelConnectivity.py::test_ptmp_changecountry \\
+                                --local-ip '${bsuIP}' \\
+                                --remote-ip '${suIPs}' \\
+                                --radio '${radio}' \\
+                                --country '${country}' 2>&1 || true
+                            """
+
+                            // Loop through bandwidths
+                            (bw ?: 'HT20').split(',').each { bandwidth ->
+                                if((country == "Canada" || country == "US 5GHz Non-DFS") && bandwidth == "HT160") {
+                                    echo "⚠ Skip HT160 for ${country}"; return
+                                }
+
+                                echo "📡 ${country} / ${bandwidth}"
                                 sh 'echo {"iterations":[]} > ptmp_channel_results.json'
 
-                                // ✅ FIXED: Correct function name + proper spacing
-                                def cmd = "python3.10 -m pytest -v -s testCases/test_PTMPChannelConnectivity.py::test_ptmp_channelconnectivity --local-ip '${bsuIP}' --remote-ip '${suIPs}' --radio '${radio}' --bandwidth '${bw}' --country '${ct}' --extra '${randCh}' --sleep '${snapTime}' 2>&1"
+                                // Build pytest command
+                                def cmd = """
+                                    python3.10 -m pytest -v -s testCases/test_PTMPChannelConnectivity.py::test_ptmp_channelconnectivity \\
+                                    --local-ip '${bsuIP}' \\
+                                    --remote-ip '${suIPs}' \\
+                                    --radio '${radio}' \\
+                                    --bandwidth '${bandwidth}' \\
+                                    --country '${country}' \\
+                                    --extra '${randCh}' \\
+                                    --sleep '${snapTime}'
+                                """
 
-                                // ✅ Add custom channels if specified
-                                if(custCh){
+                                // ✅ Add custom channels if specified in Jenkins UI
+                                if(custCh) {
                                     cmd += " --channels '${custCh}'"
+                                    echo "🎯 Using custom channels: ${custCh}"
                                 }
+
+                                cmd += " 2>&1"
 
                                 def out = ""
-                                try{ out = sh(script:cmd, returnStdout:true)?.trim() ?: "" }
-                                catch(Exception e){ echo "⚠️ ${e.message}"; out = "Error: ${e.message}" }
-
-                                def res = [iterations:[]]
-                                try{ res = readJSON file:'ptmp_channel_results.json' }
-                                catch(Exception e){ echo "⚠️ JSON read: ${e.message}" }
-
-                                def nBW = bw=="HT40" ? "HT40+" : bw
-                                def matches = (res?.iterations?:[]).findAll{ t -> t?.Country==ct && t?.Bandwidth==nBW }
-
-                                matches.each{ t ->
-                                    if(t){ t.iteration=iterNum++; t.logs=out?:"No logs"; t.su_count=env.SU_IP_COUNT?.toInteger()?:0 }
+                                try {
+                                    out = sh(script: cmd, returnStdout: true)?.trim() ?: ""
+                                } catch(Exception e) {
+                                    echo "⚠️ ${e.message}"
+                                    out = "Error: ${e.message}"
                                 }
 
-                                def fname = "${ct.trim().replaceAll("\\s+","_")}_${bw.trim()}_PTMP.json"
-                                writeJSON file:fname, json:[iterations:matches]
-                                matches.each{ m -> if(m) echo "✅ Iter ${m.iteration}: ${m.status?:'N/A'}" }
+                                echo "Pytest Output (first 500 chars):\n${out?.take(500) ?: 'N/A'}..."
+
+                                // Read results
+                                def res = [iterations: []]
+                                try {
+                                    res = readJSON file: 'ptmp_channel_results.json'
+                                } catch(Exception e) {
+                                    echo "⚠️ JSON read: ${e.message}"
+                                }
+
+                                def nBW = bandwidth == "HT40" ? "HT40+" : bandwidth
+                                def matches = (res?.iterations ?: []).findAll { t ->
+                                    t?.Country == country && t?.Bandwidth == nBW
+                                }
+
+                                matches.each { t ->
+                                    if(t) {
+                                        t.iteration = iterNum++
+                                        t.logs = out ?: "No logs"
+                                        t.su_count = env.SU_IP_COUNT?.toInteger() ?: 0
+                                    }
+                                }
+
+                                def fname = "${country.trim().replaceAll("\\s+", "_")}_${bandwidth.trim()}_PTMP.json"
+                                writeJSON file: fname, json: [iterations: matches]
+
+                                matches.each { m ->
+                                    if(m) echo "✅ Iter ${m.iteration}: ${m.status ?: 'N/A'}"
+                                }
                             }
                         }
                     }
@@ -205,42 +135,65 @@ pipeline {
             }
         }
 
-        stage('Generate Report') {
+        stage('Generate HTML Report') {
             steps {
                 script {
                     def files = []
-                    try{ files = findFiles(glob:'*_PTMP.json')?.findAll{ f -> f?.name && f.name!='ptmp_channel_results.json' && f.length>20 }?:[] }
-                    catch(Exception e){ echo "⚠️ Find files: ${e.message}" }
+                    try {
+                        files = findFiles(glob: '*_PTMP.json')?.findAll { f ->
+                            f?.name && f.name != 'ptmp_channel_results.json' && f.length > 20
+                        } ?: []
+                    } catch(Exception e) {
+                        echo "⚠️ Find files: ${e.message}"
+                    }
 
                     def results = []
-                    files.each{ f ->
-                        if(f?.name){
-                            try{
-                                def data = readJSON file:f.name
-                                if(data?.iterations && !data.iterations.isEmpty()) results << [filename:f.name, content:data.iterations]
-                            }catch(Exception e){ echo "⚠️ Parse ${f.name}: ${e.message}" }
+                    files.each { f ->
+                        if(f?.name) {
+                            try {
+                                def data = readJSON file: f.name
+                                if(data?.iterations && !data.iterations.isEmpty()) {
+                                    results << [filename: f.name, content: data.iterations]
+                                }
+                            } catch(Exception e) {
+                                echo "⚠️ Parse ${f.name}: ${e.message}"
+                            }
                         }
                     }
 
+                    // Fetch firmware versions
                     def lIP = params['Local IP Address']?.trim() ?: '192.168.1.10'
-                    def sIPs = (params['Remote IP Addresses']?:'').split(',').collect{it?.trim()}.findAll{it && !it.isEmpty()}
+                    def sIPs = (params['Remote IP Addresses'] ?: '').split(',').collect{it?.trim()}.findAll{it && !it.isEmpty()}
 
-                    def lFW = _fetchFirmwareVersion(lIP, "BSU", env.SSH_USER, env.SSH_PASS)
-                    def sFW = sIPs.collect{ ip -> _fetchFirmwareVersion(ip, "SU", env.SSH_USER, env.SSH_PASS) }.unique().join(" | ")
+                    def lFW = "N/A"
+                    def sFW = "N/A"
+                    try {
+                        lFW = sh(script: "sshpass -p '${SSH_PASS}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${SSH_USER}@${lIP} 'cat /etc/version 2>/dev/null || echo N/A'", returnStdout: true)?.trim() ?: "N/A"
+                        sFW = sIPs.collect { ip ->
+                            sh(script: "sshpass -p '${SSH_PASS}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${SSH_USER}@${ip} 'cat /etc/version 2>/dev/null || echo N/A'", returnStdout: true)?.trim() ?: "N/A"
+                        }.unique().join(" | ")
+                    } catch(Exception e) {
+                        echo "⚠️ SSH fetch: ${e.message}"
+                    }
 
                     def paramsMap = [
-                        "Test":"PTMP Channel","BSU IP":lIP,"SU IPs":params['Remote IP Addresses']?:'N/A',
-                        "SUs":env.SU_IP_COUNT?:'N/A',"Radio":params.Radio?:'Radio1',
-                        "Countries":params.Countries?:'5GHz',"Bandwidths":params.Bandwidth?:'HT20',
-                        "FW":"${lFW} / ${sFW?:'N/A'}"
+                        "Test": "PTMP Channel",
+                        "BSU IP": lIP,
+                        "SU IPs": params['Remote IP Addresses'] ?: 'N/A',
+                        "SUs": env.SU_IP_COUNT ?: 'N/A',
+                        "Radio": params.Radio ?: 'Radio1',
+                        "Countries": params.Countries ?: '5GHz',
+                        "Bandwidths": params.Bandwidth ?: 'HT20',
+                        "Custom Channels": params['Custom Channels'] ?: 'Auto-discover',
+                        "FW": "${lFW} / ${sFW ?: 'N/A'}"
                     ]
 
                     def tz = TimeZone.getTimeZone("Asia/Kolkata")
                     def now = new Date().format("dd MMM yyyy, HH:mm:ss z", tz)
                     def logo = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
 
-                    def html = _generatePTMPHTMLReport(paramsMap, results, now, logo, env.JOB_NAME?:'PTMP', reportFilename)
-                    writeFile file:reportFilename, text:html
+                    def html = generatePTMPHTMLReport(paramsMap, results, now, logo, env.JOB_NAME ?: 'PTMP', reportFilename)
+                    writeFile file: reportFilename, text: html
                     echo "📄 Report: ${reportFilename}"
                 }
             }
@@ -249,16 +202,155 @@ pipeline {
 
     post {
         always {
-            publishHTML(target:[allowMissing:false, alwaysLinkToLastBuild:true, keepAll:true, reportDir:'.', reportFiles:"${reportFilename}", reportName:"PTMP Report - Build ${env.BUILD_NUMBER}"])
+            publishHTML(target: [
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: '.',
+                reportFiles: "${reportFilename}",
+                reportName: "PTMP Report - Build ${env.BUILD_NUMBER}"
+            ])
 
-            // ✅ FIXED: Use step() directly with correct ArtifactArchiver syntax
-            step([$class: 'ArtifactArchiver', artifacts: '*_PTMP.json, ptmp_channel_results.json', fingerprint: true, onlyIfSuccessful: false, allowEmptyArchive: true])
+            step([$class: 'ArtifactArchiver',
+                  artifacts: '*_PTMP.json, ptmp_channel_results.json',
+                  fingerprint: true,
+                  onlyIfSuccessful: false,
+                  allowEmptyArchive: true])
 
             echo "✅ Done"
-            script { _sendEmailNotification(reportFilename) }
+
+            script {
+                def userEmails = [
+                    "puneet": "puneet.sharma@senao.com",
+                    "harman": "harmanjot.singh@senao.com",
+                    "mahesh": "mahesh.battala@senao.com",
+                    "sandeep": "sandeep.manchikanti@senao.com",
+                    "sampath": "sampath.marella@senao.com",
+                    "jayanth": "jayanth.munnaluru@senao.com",
+                    "srilatha": "srilatha.tadiboina@senao.com",
+                    "phani": "phani.darla@senao.com",
+                    "dinesh": "dinesh.redddy@senao.com"
+                ]
+
+                def buildCauses = currentBuild.getBuildCauses()
+                def userCause = buildCauses?.find{ it?._class == 'hudson.model.Cause$UserIdCause' }
+                def buildUserId = userCause?.userId ?: "automation"
+                def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
+
+                echo "Sending email to: ${userEmail}"
+
+                def statusColor = currentBuild.currentResult == 'SUCCESS' ? '#22c55e' :
+                                 (currentBuild.currentResult == 'FAILURE' ? '#ef4444' : '#f59e0b')
+
+                emailext(
+                    subject: "[PTMP] Build ${currentBuild.fullDisplayName} - ${currentBuild.currentResult}",
+                    body: "<html><body><h2>PTMP Test</h2><p><b>Build:</b> ${currentBuild.fullDisplayName}</p><p><b>Status:</b> <span style='color:${statusColor}'>${currentBuild.currentResult}</span></p><p><b>SUs:</b> ${env.SU_IP_COUNT?:'N/A'}</p><p><a href='${env.BUILD_URL}'>View Build</a> | <a href='${env.BUILD_URL}artifact/${reportFilename}'>Report</a></p></body></html>",
+                    to: userEmail,
+                    mimeType: 'text/html',
+                    attachmentsPattern: "${reportFilename}"
+                )
+            }
         }
         success { echo "🎉 SUCCESS" }
         failure { echo "❌ FAILED" }
         unstable { echo "⚠️ UNSTABLE" }
     }
+}
+
+def generatePTMPHTMLReport(buildParams, allResults, currentDateTime, companyLogoUrl, pipelineName, reportFilename) {
+    def html = """
+        <!DOCTYPE html><html><head><title>PTMP Report</title><style>
+        body{font-family:Segoe UI,Tahoma,sans-serif;padding:20px;background:#f8f9fa;color:#2c3e50}
+        .header{display:flex;justify-content:space-between;align-items:center;background:white;padding:20px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);margin-bottom:30px}
+        .header img{height:60px}.header-info{text-align:right}
+        .header-info h1{margin:0 0 5px 0;font-size:22px;color:#1a365d}
+        .header-info p{margin:3px 0;font-size:13px;color:#666}
+        .topology-badge{background:#667eea;color:white;padding:4px 12px;border-radius:20px;font-weight:bold;font-size:12px}
+        h2{margin:30px 0 15px 0;font-size:18px;border-left:4px solid #667eea;padding-left:12px;color:#1a365d}
+        table{width:100%;border-collapse:collapse;margin:15px 0;background:white;box-shadow:0 2px 5px rgba(0,0,0,0.05);border-radius:6px;overflow:hidden}
+        th,td{padding:10px 12px;border:1px solid #e2e8f0;text-align:left;vertical-align:middle;font-size:13px}
+        th{background:#1a365d;color:white;font-weight:600}
+        tr:nth-child(even){background:#f8fafc}tr:hover{background:#edf2f7}
+        .status-pass{color:#22c55e;font-weight:bold}.status-fail{color:#ef4444;font-weight:bold}.status-partial{color:#f59e0b;font-weight:bold}
+        .summary-card{background:white;padding:15px;border-radius:8px;box-shadow:0 2px 5px rgba(0,0,0,0.05);margin:10px 0}
+        .summary-stats{display:flex;gap:20px;flex-wrap:wrap}.stat-item{text-align:center}
+        .stat-value{font-size:24px;font-weight:bold;color:#1a365d}.stat-label{font-size:12px;color:#64748b}
+        @media print{body{background:white}.no-print{display:none}}
+        </style></head><body>
+        <div class="header"><img src="${companyLogoUrl}" alt="Logo"/>
+        <div class="header-info"><h1>PTMP Channel Connectivity Report</h1>
+        <p><strong>Pipeline:</strong> ${pipelineName}</p><p><strong>Generated:</strong> ${currentDateTime}</p>
+        <p><span class="topology-badge">1 BSU + ${buildParams['SUs']} SUs</span></p></div></div>
+
+        <h2>📋 Test Configuration</h2>
+        <table class="build-params">
+            ${buildParams.collect{"<tr><td width='30%'><b>${it.key}</b></td><td>${it.value ?: 'N/A'}</td></tr>"}.join('\n')}
+        </table>
+    """
+
+    def total = allResults?.sum{it?.content?.size() ?: 0} ?: 0
+    def passC = allResults?.sum{it?.content?.count{it?.status == 'PASS'} ?: 0} ?: 0
+    def failC = total - passC
+
+    html += """
+        <h2>📊 Test Summary</h2>
+        <div class="summary-card"><div class="summary-stats">
+            <div class="stat-item"><div class="stat-value">${total}</div><div class="stat-label">Total Channels</div></div>
+            <div class="stat-item"><div class="stat-value status-pass">${passC}</div><div class="stat-label">Passed</div></div>
+            <div class="stat-item"><div class="stat-value status-fail">${failC}</div><div class="stat-label">Failed</div></div>
+        </div></div>
+    """
+
+    if(allResults) {
+        allResults.each{ rf ->
+            if(!rf?.filename) return
+            def parts = rf.filename.replace('.json','').split('_')
+            def bw = parts?.last() ?: 'Unknown'
+            def ct = parts?.take(parts.size()-1)?.join(' ')?.replace('_PTMP','')?.replaceAll('_', ' ') ?: 'Unknown'
+
+            if(rf?.content) {
+                rf.content.each{ iter ->
+                    if(!iter) return
+                    def st = iter.status ?: 'UNKNOWN'
+                    def cls = st == "PASS" ? "status-pass" : (st == "FAIL" ? "status-fail" : "status-partial")
+
+                    html += """
+                        <h2>🌍 ${ct} | 📡 ${bw} | Iter #${iter.iteration ?: 'N/A'}</h2>
+                        <div class="summary-card">
+                            <p><strong>Status:</strong> <span class="${cls}">${st}</span> |
+                               <strong>Channels:</strong> ${iter['Tested Channels']?.size() ?: 0} |
+                               <strong>SUs:</strong> ${iter.su_count ?: 'N/A'}</p>
+                        </div>
+                        <table><tr class="channel-header">
+                            <th>Channel</th><th>Status</th><th>Frequency</th><th>BSU OK</th><th>Timestamp</th>
+                        </tr>
+                    """
+
+                    if(iter['Tested Channels']) {
+                        iter['Tested Channels'].each{ ch ->
+                            if(!ch) return
+                            def cs = ch.status ?: 'N/A'
+                            def ccls = cs == "PASS" ? "status-pass" : (cs == "FAIL" ? "status-fail" : "status-partial")
+
+                            html += """<tr>
+                                <td><b>${ch.channel ?: 'N/A'}</b></td>
+                                <td class="${ccls}">${cs}</td>
+                                <td>${ch.frequency_mhz ?: 'N/A'} MHz</td>
+                                <td>${ch.bsu_verified ? '✓' : '✗'}</td>
+                                <td style="font-size:11px">${ch.timestamp ?: '-'}</td>
+                            </tr>"""
+                        }
+                    }
+                    html += "</table>"
+                }
+            }
+        }
+    }
+
+    html += """
+        <div style="margin-top:40px;text-align:center;color:#94a3b8;font-size:12px">
+            <p>PTMP Pipeline Report | Build #${env.BUILD_NUMBER} | <a href="${env.BUILD_URL}">View Build</a></p>
+        </div></body></html>
+    """
+    return html
 }
