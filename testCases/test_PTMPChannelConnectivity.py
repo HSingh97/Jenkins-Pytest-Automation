@@ -1,9 +1,5 @@
 #!/usr/bin/env python3.10
-"""
-PTMP Channel Connectivity Test Script
-Tests channel connectivity for 1 BSU (Base Station) to Multiple SUs (Subscriber Units)
-Uses SNMP/SSH for configuration and validation
-"""
+
 import time
 import warnings
 import pytest
@@ -11,7 +7,6 @@ import os
 import paramiko
 import json
 import sys
-import argparse
 import random
 import re
 import subprocess
@@ -27,6 +22,7 @@ from preMadeFunctions import get_snmp_values
 from preMadeFunctions import ssh_operations
 from preMadeFunctions import param_helpers
 
+
 class Colors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
@@ -37,7 +33,8 @@ class Colors:
     BOLD = '\033[1m'
 
 
-def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, extra, snapshot_time=30):
+def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country, extra, sleep, channels=None,
+                                  snapshot_time=30):
 
     print("\n\n" + "=" * 80, flush=True)
     print(f"{Colors.BOLD}PTMP CHANNEL CONNECTIVITY TEST{Colors.ENDC}", flush=True)
@@ -47,6 +44,7 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
     print(f"Selected Bandwidth : {bandwidth}", flush=True)
     print(f"Selected Country : {country}", flush=True)
     print(f"Snapshot Delay : {snapshot_time}s", flush=True)
+    print(f"Custom Channels : {channels if channels else 'Auto-discover'}", flush=True)
     print(f"Short Test (Random Channels) : {extra}", flush=True)
     print("=" * 80 + "\n", flush=True)
 
@@ -83,12 +81,17 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
     # ================= BANDWIDTH NORMALIZATION =================
     new_bandwidth = "HT40+" if bandwidth == "HT40" else bandwidth
 
-    # ================= FETCH AVAILABLE CHANNELS =================
-    channel_list = fetch_ssh_values.fetch_channel_list(local_ip, radio_ind, country_code, new_bandwidth)
-    time.sleep(2)
+    # ================= CHANNEL LIST LOGIC =================
+    if channels and len(channels) > 0:
+        print(f"{Colors.OKBLUE}Using CUSTOM channel list: {channels}{Colors.ENDC}", flush=True)
+        channel_list = [str(ch).strip() for ch in channels if str(ch).strip()]
+    else:
+        print(f"{Colors.OKBLUE}Auto-discovering channels for {country} / {new_bandwidth}{Colors.ENDC}", flush=True)
+        channel_list = fetch_ssh_values.fetch_channel_list(local_ip, radio_ind, country_code, new_bandwidth)
+        time.sleep(2)
 
-    # ================= RANDOM CHANNEL SELECTION (if extra=1) =================
-    if int(extra) == 1:
+    # ================= RANDOM CHANNEL SELECTION =================
+    if int(extra) == 1 and not (channels and len(channels) > 0):
         channel_groups = {}
         for channel in channel_list:
             frequency = (int(channel) * 5) + 5000
@@ -138,8 +141,9 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
         formatted_channel = f"{channel} ({frequency} MHz)"
 
         # Wait for SUs to associate
-        print(f"\nWaiting {snapshot_time}s for SUs to associate on channel {channel}...", flush=True)
-        time.sleep(snapshot_time)
+        wait_time = int(sleep) if sleep else snapshot_time
+        print(f"\nWaiting {wait_time}s for SUs to associate on channel {channel}...", flush=True)
+        time.sleep(wait_time)
 
         # Verify BSU operating parameters
         bsu_verified = _verify_bsu_operation(local_ip, radio_ind, new_bandwidth, channel)
@@ -184,7 +188,7 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
         "SU_IPs": remote_ip,
         "Bandwidth": new_bandwidth,
         "Country": country,
-        "Snapshot_Time_Seconds": snapshot_time,
+        "Snapshot_Time_Seconds": int(sleep) if sleep else snapshot_time,
         "Tested_Channels": channel_results,
         "Ping_Results": {
             "BSU": pingFunction.check_access(local_ip),
@@ -198,8 +202,10 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
     print(f"  Channels Tested: {len(channel_results)}", flush=True)
     print(f"  SUs Tested: {len(remote_ip)}", flush=True)
 
+    # Save to JSON report
     _save_json_report(test_result)
 
+    # Assert for pytest
     if overall_status == "FAIL":
         assert False, f"PTMP Channel Test Failed: {overall_status}"
     elif overall_status == "PARTIAL":
@@ -251,16 +257,13 @@ def _collect_su_metrics(bsu_ip, su_ip, radio_oid, intf, channel, frequency):
     }
 
     try:
-        # Find SU index in BSU's association table
         su_index = _find_su_index_in_table(bsu_ip, su_ip, radio_oid)
         if not su_index:
             result["notes"] = "SU not found in BSU association table"
             return result
 
-        # Fetch SNMP metrics for this SU
         metrics = _fetch_su_snmp_metrics(bsu_ip, radio_oid, su_index)
 
-        # Populate result
         result.update({
             "local_snr": f"{metrics.get('lsnr_a1', '-')}/{metrics.get('lsnr_a2', '-')}",
             "remote_snr": f"{metrics.get('rsnr_a1', '-')}/{metrics.get('rsnr_a2', '-')}",
@@ -281,7 +284,7 @@ def _collect_su_metrics(bsu_ip, su_ip, radio_oid, intf, channel, frequency):
 
         if lsnr == "-" or rsnr == "-":
             result["notes"] = "Missing SNR data"
-        elif int(lsnr) <= 0 or int(rsnr) <= 0:
+        elif lsnr == "0" or rsnr == "0" or (lsnr != "-" and int(lsnr) <= 0) or (rsnr != "-" and int(rsnr) <= 0):
             result["notes"] = "Zero or negative SNR"
         elif pingFunction.check_access(su_ip):
             result["status"] = "PASS"
@@ -296,7 +299,7 @@ def _collect_su_metrics(bsu_ip, su_ip, radio_oid, intf, channel, frequency):
 
 
 def _find_su_index_in_table(bsu_ip, target_ip, radio_oid):
-    for idx in range(1, 33):  # Max 32 SUs typically
+    for idx in range(1, 33):
         try:
             oid = f".1.3.6.1.4.1.52619.1.3.3.1.4.{radio_oid}.{idx}"
             cmd = f"snmpget -v 2c -c ubr@rw123 {bsu_ip} {oid}"
@@ -422,7 +425,6 @@ def test_ptmp_changecountry(local_ip, remote_ip, radio, country):
 
     time.sleep(5)
 
-    # Configure SUs first
     for su_ip in remote_ip:
         if pingFunction.check_access(su_ip):
             print(f"Configuring country {country_code} on SU {su_ip}", flush=True)
@@ -430,7 +432,6 @@ def test_ptmp_changecountry(local_ip, remote_ip, radio, country):
         else:
             print(f"{Colors.WARNING}SU {su_ip} not reachable, skipping{Colors.ENDC}", flush=True)
 
-    # Configure BSU last (to avoid losing connection)
     if pingFunction.check_access(local_ip):
         print(f"Configuring country {country_code} on BSU {local_ip}", flush=True)
         snmp_operations.change_country(local_ip, radio_ind, country_code, 120)
@@ -439,5 +440,4 @@ def test_ptmp_changecountry(local_ip, remote_ip, radio, country):
         assert False
 
 
-# Suppress warnings
 warnings.warn = lambda *args, **kwargs: None
