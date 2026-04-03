@@ -33,7 +33,7 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
     print(f"Country : {country}", flush=True)
     print(f"Sleep Time : {sleep}s", flush=True)
 
-    # ================= ✅ SIMPLE CHANNEL LOGIC (Like Your Local Script) =================
+    # ================= CHANNEL LOGIC =================
     if channels and len(channels) > 0:
         print(f"{Colors.OKBLUE}Using CUSTOM channels: {channels}{Colors.ENDC}", flush=True)
         channel_list = [str(ch).strip() for ch in channels if str(ch).strip()]
@@ -50,7 +50,7 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
     print(f"{Colors.BOLD}Channels to test: {channel_list} (Total: {len(channel_list)}){Colors.ENDC}", flush=True)
     print("=" * 80 + "\n", flush=True)
 
-    # ================= COUNTRY CODE MAPPING =================
+    # ================= SETUP =================
     country_codes = {"US 5GHz All": 5012, "US 5GHz Non-DFS": 5011, "Europe": 276,
                      "Canada": 124, "5GHz": 5019, "India": 356}
     if country not in country_codes:
@@ -58,7 +58,6 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
         assert False
     country_code = country_codes[country]
 
-    # ================= RADIO CONFIGURATION =================
     radio_config = {"Radio1": {"index": 2, "intf": "ath1", "wifi_intf": "wifi1"},
                     "Radio2": {"index": 3, "intf": "ath2", "wifi_intf": "wifi2"}}
     if radio not in radio_config:
@@ -66,9 +65,6 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
         assert False
     radio_ind = radio_config[radio]["index"]
     intf = radio_config[radio]["intf"]
-    wifi_intf = radio_config[radio]["wifi_intf"]
-
-    # ================= BANDWIDTH =================
     new_bandwidth = "HT40+" if bandwidth == "HT40" else bandwidth
 
     # ================= CONNECTIVITY CHECK =================
@@ -92,29 +88,32 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
     channel_results = []
 
     for channel_idx, channel in enumerate(channel_list, 1):
-        print(f"\n{Colors.BOLD}{'=' * 60}{Colors.ENDC}", flush=True)
-        print(
-            f"{Colors.OKBLUE}>>> Testing Channel {channel_idx}/{len(channel_list)}: {channel} ({new_bandwidth}){Colors.ENDC}",
-            flush=True)
-        print(f"{Colors.BOLD}{'=' * 60}{Colors.ENDC}", flush=True)
+        print(f"\n{Colors.BOLD}{'=' * 80}{Colors.ENDC}", flush=True)
+        print(f"{Colors.OKBLUE}>>> CHANNEL {channel_idx}/{len(channel_list)}: {channel} ({new_bandwidth}){Colors.ENDC}",
+              flush=True)
+        print(f"{Colors.BOLD}{'=' * 80}{Colors.ENDC}", flush=True)
 
         snmp_operations.change_channel(local_ip, radio_ind, channel)
         frequency = (int(channel) * 5) + 5000
         formatted_channel = f"{channel} ({frequency} MHz)"
 
         wait_time = int(sleep) if sleep else 30
-        print(f"\nWaiting {wait_time}s for SUs to associate...", flush=True)
+        print(f"\n⏳ Waiting {wait_time}s for SUs to associate...", flush=True)
         time.sleep(wait_time)
 
-        # Capture ALL metrics for each SU
+        # ✅ CAPTURE AND PRINT ALL METRICS for each SU
+        print(f"\n{Colors.HEADER}📊 Capturing metrics for channel {channel}...{Colors.ENDC}", flush=True)
         su_results = []
-        for su_ip in remote_ip:
-            su_result = _capture_full_snapshot(local_ip, su_ip, radio_ind, channel, frequency)
-            su_results.append(su_result)
-            print(
-                f"  {su_ip}: Status={su_result['status']}, SNR={su_result['local_snr_a1']}/{su_result['remote_snr_a1']}",
-                flush=True)
 
+        for su_ip in remote_ip:
+            print(f"\n  {Colors.BOLD}SU: {su_ip}{Colors.ENDC}", flush=True)
+            su_result = _capture_and_print_metrics(local_ip, su_ip, radio_ind, channel, frequency)
+            su_results.append(su_result)
+
+            # ✅ Print detailed metrics to console
+            _print_su_metrics_console(su_result)
+
+        # Determine channel status
         all_pass = all(su['status'] == 'PASS' for su in su_results)
         all_fail = all(su['status'] == 'FAIL' for su in su_results)
         channel_status = "PASS" if all_pass else ("FAIL" if all_fail else "PARTIAL")
@@ -128,11 +127,12 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         channel_results.append(result)
+
         print(
-            f"\n{Colors.OKGREEN if channel_status == 'PASS' else Colors.FAIL}Channel {channel} Result: {channel_status}{Colors.ENDC}",
+            f"\n{Colors.BOLD}Channel {channel} Result: {Colors.OKGREEN if channel_status == 'PASS' else Colors.FAIL}{channel_status}{Colors.ENDC}",
             flush=True)
 
-    # ================= FINAL REPORT =================
+    # ================= FINAL SUMMARY =================
     overall_status = "PASS" if all(c["status"] == "PASS" for c in channel_results) else \
         ("FAIL" if all(c["status"] == "FAIL" for c in channel_results) else "PARTIAL")
 
@@ -152,10 +152,15 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
         "test_timestamp": datetime.now().isoformat()
     }
 
-    print(f"\n{Colors.HEADER}Test Result Summary:{Colors.ENDC}", flush=True)
-    print(f"  Overall Status: {overall_status}", flush=True)
+    print(f"\n{Colors.HEADER}{'=' * 80}{Colors.ENDC}", flush=True)
+    print(f"{Colors.BOLD}📋 FINAL TEST SUMMARY{Colors.ENDC}", flush=True)
+    print(f"{Colors.HEADER}{'=' * 80}{Colors.ENDC}", flush=True)
+    print(
+        f"  Overall Status: {Colors.OKGREEN if overall_status == 'PASS' else Colors.FAIL}{overall_status}{Colors.ENDC}",
+        flush=True)
     print(f"  Channels Tested: {len(channel_results)}", flush=True)
     print(f"  SUs Tested: {len(remote_ip)}", flush=True)
+    print(f"  Custom Channels: {channels if channels else 'ALL (auto-discovered)'}", flush=True)
 
     _save_json_report(test_result)
 
@@ -165,7 +170,8 @@ def test_ptmp_channelconnectivity(radio, local_ip, remote_ip, bandwidth, country
         pytest.skip(f"PTMP Channel Test Partial: Some channels/SUs failed")
 
 
-def _capture_full_snapshot(bsu_ip, su_ip, radio_oid, channel, frequency):
+def _capture_and_print_metrics(bsu_ip, su_ip, radio_oid, channel, frequency):
+    """Capture ALL metrics and return result dict"""
     result = {
         "su_ip": su_ip, "status": "FAIL",
         "local_snr_a1": "-", "local_snr_a2": "-",
@@ -204,6 +210,7 @@ def _capture_full_snapshot(bsu_ip, su_ip, radio_oid, channel, frequency):
             "uptime": metrics.get('uptime', '-')
         })
 
+        # Determine status
         lsnr = metrics.get('lsnr_a1', '0')
         rsnr = metrics.get('rsnr_a1', '0')
 
@@ -219,6 +226,59 @@ def _capture_full_snapshot(bsu_ip, su_ip, radio_oid, channel, frequency):
         result["notes"] = f"Error: {str(e)}"
 
     return result
+
+
+def _print_su_metrics_console(su_result):
+    print(f"    {Colors.OKBLUE}┌{'─' * 60}{Colors.ENDC}", flush=True)
+    print(f"    {Colors.OKBLUE}│{Colors.ENDC} {Colors.BOLD}METRICS FOR {su_result['su_ip']}{Colors.ENDC}", flush=True)
+    print(f"    {Colors.OKBLUE}├{'─' * 60}{Colors.ENDC}", flush=True)
+
+    # SNR
+    print(f"    {Colors.OKBLUE}│{Colors.ENDC} {Colors.BOLD}SNR (dB):{Colors.ENDC}", flush=True)
+    print(
+        f"    {Colors.OKBLUE}│{Colors.ENDC}   Local  A1: {su_result['local_snr_a1']:>4}  A2: {su_result['local_snr_a2']:>4}",
+        flush=True)
+    print(
+        f"    {Colors.OKBLUE}│{Colors.ENDC}   Remote A1: {su_result['remote_snr_a1']:>4}  A2: {su_result['remote_snr_a2']:>4}",
+        flush=True)
+
+    # Signal
+    print(f"    {Colors.OKBLUE}│{Colors.ENDC} {Colors.BOLD}Signal (dBm):{Colors.ENDC}", flush=True)
+    print(
+        f"    {Colors.OKBLUE}│{Colors.ENDC}   Local  A1: {su_result['local_signal_a1']:>5}  A2: {su_result['local_signal_a2']:>5}",
+        flush=True)
+    print(
+        f"    {Colors.OKBLUE}│{Colors.ENDC}   Remote A1: {su_result['remote_signal_a1']:>5}  A2: {su_result['remote_signal_a2']:>5}",
+        flush=True)
+
+    # Noise
+    print(f"    {Colors.OKBLUE}│{Colors.ENDC} {Colors.BOLD}Noise Floor (dBm):{Colors.ENDC}", flush=True)
+    print(
+        f"    {Colors.OKBLUE}│{Colors.ENDC}   Local: {su_result['local_noise']:>5}  Remote: {su_result['remote_noise']:>5}",
+        flush=True)
+
+    # Rates
+    print(f"    {Colors.OKBLUE}│{Colors.ENDC} {Colors.BOLD}Data Rates (Mbps):{Colors.ENDC}", flush=True)
+    print(f"    {Colors.OKBLUE}│{Colors.ENDC}   Tx: {su_result['tx_rate']:>5}  Rx: {su_result['rx_rate']:>5}",
+          flush=True)
+
+    # Retries
+    print(f"    {Colors.OKBLUE}│{Colors.ENDC} {Colors.BOLD}Retry %:{Colors.ENDC}", flush=True)
+    print(
+        f"    {Colors.OKBLUE}│{Colors.ENDC}   Local: {su_result['local_retry_pct']:>4}%  Remote: {su_result['remote_retry_pct']:>4}%",
+        flush=True)
+
+    # Other
+    print(f"    {Colors.OKBLUE}│{Colors.ENDC} {Colors.BOLD}Other:{Colors.ENDC}", flush=True)
+    print(f"    {Colors.OKBLUE}│{Colors.ENDC}   OBSS: {su_result['obss']:>3}  Uptime: {su_result['uptime']}",
+          flush=True)
+
+    # Status
+    status_color = Colors.OKGREEN if su_result['status'] == 'PASS' else Colors.FAIL
+    print(
+        f"    {Colors.OKBLUE}│{Colors.ENDC} {Colors.BOLD}Status:{Colors.ENDC} {status_color}{su_result['status']}{Colors.ENDC}  Notes: {su_result['notes']}",
+        flush=True)
+    print(f"    {Colors.OKBLUE}└{'─' * 60}{Colors.ENDC}", flush=True)
 
 
 def _find_su_index_in_table(bsu_ip, target_ip, radio_oid):
@@ -238,7 +298,6 @@ def _find_su_index_in_table(bsu_ip, target_ip, radio_oid):
 
 
 def _fetch_all_snmp_metrics(bsu_ip, radio_oid, su_index):
-    """Fetch ALL SNMP metrics (like your local script)"""
     metrics = {}
     oid_map = {
         "13": "lsnr_a1", "14": "lsnr_a2", "15": "rsnr_a1", "16": "rsnr_a2",

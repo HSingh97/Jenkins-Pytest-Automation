@@ -85,7 +85,6 @@ pipeline {
                                     "--sleep '${snapTime}'"
                                 ]
 
-                                // Add custom channels ONLY if specified
                                 if(custCh) {
                                     cmdParts.add("--channels '${custCh}'")
                                     echo "🎯 Using CUSTOM channels: ${custCh}"
@@ -104,7 +103,8 @@ pipeline {
                                     out = "Error: ${e.message}"
                                 }
 
-                                echo "Pytest Output (first 800 chars):\n${out?.take(800) ?: 'N/A'}..."
+                                // Show more output for debugging
+                                echo "Pytest Output (first 1500 chars):\n${out?.take(1500) ?: 'N/A'}..."
 
                                 def res = [iterations: []]
                                 try { res = readJSON file: 'ptmp_channel_results.json' }
@@ -267,7 +267,8 @@ def generatePTMPHTMLReport(buildParams, allResults, currentDateTime, companyLogo
     def total = allResults?.sum{it?.content?.size() ?: 0} ?: 0
     def passC = allResults?.sum{it?.content?.count{it?.status == 'PASS'} ?: 0} ?: 0
     def failC = total - passC
-    def passPct = total > 0 ? Math.round((passC / total) * 100) : 0
+    // ✅ FIXED: Simple integer percentage calculation (no Math.round(BigDecimal))
+    def passPct = total > 0 ? (int)((passC * 100) / total) : 0
 
     html += """
         <h2>📊 Test Summary</h2>
