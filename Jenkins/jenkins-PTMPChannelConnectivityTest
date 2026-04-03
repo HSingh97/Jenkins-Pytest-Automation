@@ -1,12 +1,12 @@
 // ============================================================================
-// PTMP Channel Connectivity Test Pipeline - FINAL PERFECT VERSION
-// Zero compilation errors | Unique closure params | Clean structure
+// PTMP Channel Connectivity Test Pipeline - FINAL FIXED VERSION
+// Fixes: archiveArtifacts call + pytest command syntax
 // ============================================================================
 
 // ==================== HELPER FUNCTIONS (BEFORE pipeline {}) ====================
 
 def archiveArtifacts(pattern) {
-    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false])
+    step([$class: 'ArtifactArchiver', artifacts: pattern, fingerprint: true, onlyIfSuccessful: false, allowEmptyArchive: true])
 }
 
 def _fetchFirmwareVersion(ip, label, sshUser, sshPass) {
@@ -65,7 +65,7 @@ def _generatePTMPHTMLReport(buildParams, allResults, currentDateTime, companyLog
                             if(!ch)return
                             def cs = ch.status?:'N/A'
                             def ccls = cs=='PASS'?'status-pass':(cs=='FAIL'?'status-fail':'status-partial')
-                            def sus = ch.su_results?.collect{ s -> s?.su_ip?:'N/A' + ':' + (s?.status=='PASS'?'✓':'✗') }?.join(', ')?:'N/A'
+                            def sus = ch.su_results?.collect{ s -> (s?.su_ip?:'N/A') + ':' + (s?.status=='PASS'?'✓':'✗') }?.join(', ')?:'N/A'
                             html += "<tr><td><b>${ch.channel?:'N/A'}</b></td><td class='${ccls}'>${cs}</td><td>${ch.frequency_mhz?:'N/A'}MHz</td><td>${sus}</td></tr>"
                         }
                     }
@@ -84,7 +84,6 @@ def _sendEmailNotification(reportFilename) {
     def buildUserName = userCause?.userName ?: "Automation"
     def buildUserId = userCause?.userId ?: "automation"
 
-    // Define a mapping of user IDs to emails (update as needed)
     def userEmails = [
         "puneet": "puneet.sharma@senao.com",
         "harman": "harmanjot.singh@senao.com",
@@ -97,7 +96,6 @@ def _sendEmailNotification(reportFilename) {
         "dinesh": "dinesh.redddy@senao.com"
     ]
 
-    // Get email from predefined mapping, else use default
     def userEmail = userEmails.get(buildUserId, "puneet.sharma@senao.com")
     echo "Sending email to: ${userEmail}"
 
@@ -180,7 +178,8 @@ pipeline {
                                 echo "📡 ${ct} / ${bw}"
                                 sh 'echo {"iterations":[]} > ptmp_channel_results.json'
 
-                                def cmd = "python3.10 -m pytest -v -s testCases/test_PTMPChannelConnectivity.py::test_PTMPChannelConnectivity.py--local-ip '${bsuIP}' --remote-ip '${suIPs}' --radio '${radio}' --bandwidth '${bw}' --country '${ct}' --extra '${randCh}' --sleep '${snapTime}' 2>&1"
+                                // ✅ FIXED: Correct test function name + space before --local-ip
+                                def cmd = "python3.10 -m pytest -v -s testCases/test_PTMPChannelConnectivity.py::test_ptmp_channelconnectivity --local-ip '${bsuIP}' --remote-ip '${suIPs}' --radio '${radio}' --bandwidth '${bw}' --country '${ct}' --extra '${randCh}' --sleep '${snapTime}' 2>&1"
                                 if(custCh) cmd += " --channels '${custCh}'"
 
                                 def out = ""
@@ -253,7 +252,10 @@ pipeline {
     post {
         always {
             publishHTML(target:[allowMissing:false, alwaysLinkToLastBuild:true, keepAll:true, reportDir:'.', reportFiles:"${reportFilename}", reportName:"PTMP Report - Build ${env.BUILD_NUMBER}"])
-            archiveArtifacts artifacts:'*_PTMP.json, ptmp_channel_results.json', allowEmptyArchive:true
+
+            // ✅ FIXED: Use step() directly with correct ArtifactArchiver syntax
+            step([$class: 'ArtifactArchiver', artifacts: '*_PTMP.json, ptmp_channel_results.json', fingerprint: true, onlyIfSuccessful: false, allowEmptyArchive: true])
+
             echo "✅ Done"
             script { _sendEmailNotification(reportFilename) }
         }
