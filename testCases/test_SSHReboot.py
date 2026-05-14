@@ -4,8 +4,8 @@ import pytest
 import json
 import os
 from testCases.conftest import local_ip
-from preMadeFunctions import pingFunction, ssh_netmiko
-from netmiko import ConnectHandler
+from preMadeFunctions import pingFunction
+from netmiko import ConnectHandler, NetmikoTimeoutException, NetmikoAuthenticationException
 
 # Define constants for SSH credentials
 USERNAME = "root"
@@ -74,7 +74,24 @@ def test_reboot(local_ip, remote_ip, iter):
     }
 
     # Trigger device reboot using root credentials
-    ssh_netmiko.runcommand(local_ip, "reboot &")
+    try:
+        print(f"--- Executing : reboot & on {local_ip} as {USERNAME} ---", flush=True)
+        device_root = {
+            "device_type": "linux",
+            "host": local_ip,
+            "username": USERNAME,
+            "password": PASSWORD,
+            "timeout": 20,
+            "session_timeout": 20,
+            "fast_cli": False,
+        }
+        conn = ConnectHandler(**device_root)
+        conn.send_command("reboot &")
+        conn.disconnect()
+        print("Reboot command sent successfully", flush=True)
+    except Exception as e:
+        # It's highly common for the SSH connection to break abruptly when a reboot is triggered.
+        print(f"SSH connection closed (expected during reboot): {e}", flush=True)
 
     # Wait for device to complete reboot
     print("Waiting for device to reboot...", flush=True)
@@ -91,7 +108,10 @@ def test_reboot(local_ip, remote_ip, iter):
                 'device_type': 'linux',
                 'host': local_ip,
                 'username': ADMIN_USERNAME,
-                'password': ADMIN_PASSWORD
+                'password': ADMIN_PASSWORD,
+                'timeout': 20,
+                'session_timeout': 20,
+                'fast_cli': False
             }
             conn = ConnectHandler(**device)
             logs = conn.send_command("show monitor logs devicelog all")
