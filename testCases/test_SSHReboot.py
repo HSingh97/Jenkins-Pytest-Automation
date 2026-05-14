@@ -9,7 +9,7 @@ from netmiko import ConnectHandler
 
 # Define constants for SSH credentials
 USERNAME = "root"
-PASSWORD = "admin"
+PASSWORD = "Sen@0ubRNwk$"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin"
 
