@@ -4,14 +4,13 @@ import os
 import pytest
 from netmiko import ConnectHandler, NetmikoTimeoutException, NetmikoAuthenticationException
 from testCases.conftest import local_ip
-from preMadeFunctions import pingFunction, ssh_netmiko
+from preMadeFunctions import pingFunction
 
 USERNAME = "root"
 PASSWORD = "Sen@0ubRNwk$"
 
-def rundmesg(ip, timeout=20):
-    from netmiko import ConnectHandler, NetmikoTimeoutException, NetmikoAuthenticationException
 
+def rundmesg(ip, timeout=20):
     device = {
         "device_type": "linux",
         "host": ip,
@@ -55,21 +54,10 @@ def perform_ping_check(local_ip, remote_ips, result_dict):
 
         if all_remote_pass:
             print(f"\nRunning 'dmesg' on {local_ip}...", flush=True)
-            dmesg_output = ""
 
-            try:
-                print(f"--- Executing : dmesg on {local_ip} ---", flush=True)
-                raw = ssh_netmiko.runcommand(local_ip, "dmesg")
-                if raw and str(raw).strip():
-                    dmesg_output = str(raw)
-                    print(f"   dmesg via runcommand: {len(dmesg_output)} chars", flush=True)
-                else:
-                    print("   runcommand returned empty/None → using fallback", flush=True)
-            except Exception as e:
-                print(f"   runcommand failed: {e} → using fallback", flush=True)
-
-            if not dmesg_output.strip():
-                dmesg_output = rundmesg(local_ip, timeout=20)
+            # Use our unified rundmesg function instead of the buggy ssh_netmiko module
+            print(f"--- Executing : dmesg on {local_ip} ---", flush=True)
+            dmesg_output = rundmesg(local_ip, timeout=20)
 
             if dmesg_output.startswith("[DMESG ERROR]"):
                 result_dict["dmesg_output"] = ["ERROR", dmesg_output]
@@ -107,7 +95,7 @@ def wait_for_ping(ip, timeout=30, interval=3):
         if pingFunction.check_access(ip):
             print(f"{ip} is reachable", flush=True)
             return True
-        print(f"Waiting for {ip}... ({int(time.time()-start)}s)", flush=True)
+        print(f"Waiting for {ip}... ({int(time.time() - start)}s)", flush=True)
         time.sleep(interval)
     print(f"Timeout: {ip} not reachable after {timeout}s", flush=True)
     return False
@@ -117,11 +105,11 @@ def wait_for_ping(ip, timeout=30, interval=3):
 def test_soft_reset(local_ip, remote_ip, iter, local_ping=None, remote_ping=None, timeout=20):
     remote_ips = remote_ip  # Already a clean list from conftest fixture
 
-    print("\n" + "="*60, flush=True)
+    print("\n" + "=" * 60, flush=True)
     print(f"Local IP  : {local_ip}", flush=True)
     print(f"Remote IPs: {remote_ips}", flush=True)
     print(f"Iteration : {iter}", flush=True)
-    print("="*60, flush=True)
+    print("=" * 60, flush=True)
 
     result = {
         "iteration": iter,
@@ -136,17 +124,18 @@ def test_soft_reset(local_ip, remote_ip, iter, local_ping=None, remote_ping=None
         "dmesg_output": []
     }
 
+    device = {
+        "device_type": "linux",
+        "host": local_ip,
+        "username": USERNAME,
+        "password": PASSWORD,
+        "session_timeout": timeout,
+        "timeout": timeout,
+        "fast_cli": False,
+    }
+
     # --- Clear dmesg before reload ---
     try:
-        device = {
-            "device_type": "linux",
-            "host": local_ip,
-            "username": USERNAME,
-            "password": PASSWORD,
-            "session_timeout": timeout,
-            "timeout": timeout,
-            "fast_cli": False,
-        }
         conn = ConnectHandler(**device)
         output = conn.send_command("dmesg -c", read_timeout=timeout)
         conn.disconnect()
@@ -156,7 +145,11 @@ def test_soft_reset(local_ip, remote_ip, iter, local_ping=None, remote_ping=None
 
     # --- Trigger network reload ---
     try:
-        ssh_netmiko.runcommand(local_ip, "/etc/init.d/network reload &")
+        print(f"--- Executing : /etc/init.d/network reload & on {local_ip} ---", flush=True)
+        conn = ConnectHandler(**device)
+        # We use send_command_timing or read_timeout to handle background processes cleanly
+        conn.send_command("/etc/init.d/network reload &", read_timeout=timeout)
+        conn.disconnect()
         print("Network reload started in background", flush=True)
         time.sleep(3)
     except Exception as e:
@@ -195,5 +188,7 @@ def test_soft_reset(local_ip, remote_ip, iter, local_ping=None, remote_ping=None
 def warn(*args, **kwargs):
     pass
 
+
 import warnings
+
 warnings.warn = warn
