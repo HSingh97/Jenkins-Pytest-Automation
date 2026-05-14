@@ -2,21 +2,27 @@ import time
 import json
 import pytest
 import re
-from netmiko import ConnectHandler
+from netmiko import ConnectHandler, NetmikoTimeoutException, NetmikoAuthenticationException
 from preMadeFunctions.param_helpers import get_radio_index
 from preMadeFunctions import pingFunction
 
+# Define constants for SSH credentials
+USERNAME = "root"
+PASSWORD = "Sen@0ubRNwk$"
 
 def runcommand(ip, cmd, return_output=False):
     try:
         connection = ConnectHandler(
             device_type="linux",
             host=ip,
-            username="root",
-            password="admin",
-            fast_cli=False
+            username=USERNAME,
+            password=PASSWORD,
+            fast_cli=False,
+            timeout=20,
+            session_timeout=20
         )
-        output = connection.send_command(cmd)
+        # Added read_timeout for safety
+        output = connection.send_command(cmd, read_timeout=20)
         connection.disconnect()
         if return_output:
             return output.strip()
