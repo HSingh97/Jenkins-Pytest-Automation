@@ -7,7 +7,7 @@ from testCases.conftest import local_ip
 from preMadeFunctions import pingFunction, ssh_netmiko
 
 USERNAME = "root"
-PASSWORD = "admin"
+PASSWORD = "Sen@0ubRNwk$"
 
 def rundmesg(ip, timeout=20):
     from netmiko import ConnectHandler, NetmikoTimeoutException, NetmikoAuthenticationException
