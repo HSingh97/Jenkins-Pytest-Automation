@@ -4,14 +4,30 @@ import subprocess
 import platform
 import re
 import pytest
+import json
 from datetime import datetime
+
+
+def append_result_to_json(result, filename="iteration_results.json"):
+    try:
+        with open(filename, "r") as f:
+            data = json.load(f)
+        if not isinstance(data, dict) or "iterations" not in data:
+            data = {"iterations": []}
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = {"iterations": []}
+
+    data["iterations"].append(result)
+    with open(filename, "w") as f:
+        json.dump(data, f, indent=4)
+
 
 def ping(host):
     param = '-n' if platform.system().lower() == 'windows' else '-c'
     with open(os.devnull, 'w') as DEVNULL:
         try:
             result = subprocess.call(['ping', param, '3', host],
-                                    stdout=DEVNULL, stderr=DEVNULL, timeout=10) == 0
+                                     stdout=DEVNULL, stderr=DEVNULL, timeout=10) == 0
             print(f"{host} is {'Reachable' if result else 'Not Reachable'}", flush=True)
             return result
         except:
@@ -104,17 +120,29 @@ def channel_to_frequency(channel, band):
     except:
         return "?"
 
-def test_snr_tx_power(local_ip, remote_ip, radio, remote_interface, pow):
-    # get_radio_index(radio)["radio_ind"]
 
+# FIX: Added 'channels' and 'powers' as explicit pytest arguments. Removed 'pow' and undefined vars.
+def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers):
     print(f"\nSTARTING SNR vs TX POWER TEST at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", flush=True)
-    print(f"Local IP: {local_ip} | Remote IP: {remote_ip} | Radio: {request.config.getoption('--radio')}", flush=True)
+
+    # Parse comma-separated strings into lists
+    channel_list = [c.strip() for c in channels.split(',')] if isinstance(channels, str) else channels
+    power_list = [p.strip() for p in powers.split(',')] if isinstance(powers, str) else powers
+
+    # Convert radio string to OID integer (radio1 -> 1, radio2 -> 2)
+    radio_oid = "1" if str(radio).lower() == "radio1" else "2"
+
+    # Auto-detect frequency band based on the first channel number
+    first_chan = int(channel_list[0]) if channel_list and str(channel_list[0]).isdigit() else 36
+    band = "6GHz" if first_chan > 180 else "5GHz"
+
+    print(f"Local IP: {local_ip} | Remote IP: {remote_ip} | Radio: {radio} (OID: {radio_oid})", flush=True)
     print(f"Frequency Band: {band}", flush=True)
-    print(f"Channels: {channels}", flush=True)
-    print(f"Powers: {powers}", flush=True)
+    print(f"Channels: {channel_list}", flush=True)
+    print(f"Powers: {power_list}", flush=True)
     print("=" * 80, flush=True)
 
-    for channel in channels:
+    for channel in channel_list:
         print(f"\n====== SWITCHING TO CHANNEL: {channel} ({band}) ======", flush=True)
 
         if ping(local_ip) and ping(remote_ip):
@@ -127,8 +155,22 @@ def test_snr_tx_power(local_ip, remote_ip, radio, remote_interface, pow):
             print("Devices not reachable before channel change", flush=True)
             continue
 
-        for power in powers:
+        for power in power_list:
             print(f"\n--- Testing Channel {channel} @ {power} dBm ---", flush=True)
+
+            result_dict = {
+                "channel": channel,
+                "freq": channel_to_frequency(channel, band),
+                "power": power,
+                "remote_ip": "N/A",
+                "local_snr_a1": "-",
+                "local_snr_a2": "-",
+                "remote_snr_a1": "-",
+                "remote_snr_a2": "-",
+                "tx_rate": "-",
+                "rx_rate": "-",
+                "status": "FAIL"
+            }
 
             if ping(local_ip) and ping(remote_ip):
                 set_power(remote_ip, power, radio_oid)
@@ -141,16 +183,22 @@ def test_snr_tx_power(local_ip, remote_ip, radio, remote_interface, pow):
                 current_channel = get_channel(local_ip, radio_oid)
 
                 if stats:
-                    freq = channel_to_frequency(current_channel, band)
-                    print(f"DATA_SAVED | Channel: {current_channel} | Frequency: {freq} MHz | Power: {power} | "
-                          f"Remote IP: {stats['IP']} | "
-                          f"Local SNR A1: {stats['Local SNR A1']} | Local SNR A2: {stats['Local SNR A2']} | "
-                          f"Remote SNR A1: {stats['Remote SNR A1']} | Remote SNR A2: {stats['Remote SNR A2']} | "
-                          f"Tx Rate: {stats['Tx Rate']} | Rx Rate: {stats['Rx Rate']} | Status: OK", flush=True)
+                    result_dict.update({
+                        "remote_ip": stats['IP'],
+                        "local_snr_a1": stats['Local SNR A1'],
+                        "local_snr_a2": stats['Local SNR A2'],
+                        "remote_snr_a1": stats['Remote SNR A1'],
+                        "remote_snr_a2": stats['Remote SNR A2'],
+                        "tx_rate": stats['Tx Rate'],
+                        "rx_rate": stats['Rx Rate'],
+                        "status": "PASS"
+                    })
+                    print(
+                        f"DATA_SAVED | Channel: {current_channel} | Frequency: {result_dict['freq']} MHz | Power: {power} | Status: OK",
+                        flush=True)
                 else:
                     print("No link stats retrieved", flush=True)
             else:
                 print("Link lost during test", flush=True)
 
-def test_changeChannel(local_ip, radio, channels):
-    snmp_operations.change_channel(local_ip, get_radio_index(radio)["radio_ind"], "124")
+            append_result_to_json(result_dict)
