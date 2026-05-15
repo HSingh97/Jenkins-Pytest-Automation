@@ -50,8 +50,9 @@ def run_ssh_command_with_retry(ip, password, command, timeout=30, retries=4, del
 
                 # If the SSH service just isn't up yet, wait and try again
                 if "Connection refused" in error_msg or "No route to host" in error_msg or "Connection timed out" in error_msg:
-                    print(f"SSH service might not be ready. Waiting {delay}s before retry...", flush=True)
-                    time.sleep(delay)
+                    if attempt < retries - 1:
+                        print(f"SSH service might not be ready. Waiting {delay}s before retry...", flush=True)
+                        time.sleep(delay)
                     continue
                 return None
 
@@ -62,7 +63,8 @@ def run_ssh_command_with_retry(ip, password, command, timeout=30, retries=4, del
             print(f"SSH Error: {e}", flush=True)
             return None
 
-    print("All SSH attempts failed.", flush=True)
+    if retries > 1:
+        print("All SSH attempts failed.", flush=True)
     return None
 
 
@@ -140,17 +142,19 @@ def test_factory_reset(local_ip, iter):
     # =================================================================
     print(f"\n[Step 4] Reconfiguring IP back to {local_ip} via SSH on {DEFAULT_IP}...", flush=True)
 
-    # 4a. Set the new IP
+    # 4a. Set the new IP (Retries set to 1 because we expect the connection to hang/drop)
     cmd_1 = f"ucidyn set network.lan.ipaddr {local_ip}"
-    run_ssh_command_with_retry(DEFAULT_IP, PASSWORD, cmd_1, timeout=20)
+    print("\nSending 'ucidyn set'...", flush=True)
+    run_ssh_command_with_retry(DEFAULT_IP, PASSWORD, cmd_1, timeout=15, retries=1)
 
-    time.sleep(3)  # tiny buffer between commands
+    time.sleep(2)
 
-    # 4b. Apply the settings (this usually causes the network interface to drop)
+    # 4b. Apply the settings (Expect 'No route to host' here, so we only try once)
     cmd_2 = "ucidyn apply"
-    run_ssh_command_with_retry(DEFAULT_IP, PASSWORD, cmd_2, timeout=20)
+    print("\nSending 'ucidyn apply' (Expecting SSH drop/No route to host)...", flush=True)
+    run_ssh_command_with_retry(DEFAULT_IP, PASSWORD, cmd_2, timeout=10, retries=1)
 
-    print("Reconfiguration commands sent. Giving the network service 20 seconds to apply and restart...", flush=True)
+    print("\nReconfiguration commands sent. Giving the network service 20 seconds to apply and restart...", flush=True)
     time.sleep(20)
 
     # =================================================================
