@@ -142,19 +142,14 @@ def test_factory_reset(local_ip, iter):
     # =================================================================
     print(f"\n[Step 4] Reconfiguring IP back to {local_ip} via SSH on {DEFAULT_IP}...", flush=True)
 
-    # 4a. Set the new IP (Retries set to 1 because we expect the connection to hang/drop)
-    cmd_1 = f"ucidyn set network.lan.ipaddr {local_ip}"
-    print("\nSending 'ucidyn set'...", flush=True)
-    run_ssh_command_with_retry(DEFAULT_IP, PASSWORD, cmd_1, timeout=15, retries=1)
+    # Send both set and apply in a single chained command
+    combined_cmd = f"ucidyn set network.lan.ipaddr {local_ip} && ucidyn apply"
+    print("\nSending chained 'ucidyn set && apply' (Expecting SSH drop/Timeout)...", flush=True)
 
-    time.sleep(2)
+    # Retries set to 1 because the 'apply' portion will purposely break the SSH connection
+    run_ssh_command_with_retry(DEFAULT_IP, PASSWORD, combined_cmd, timeout=15, retries=1)
 
-    # 4b. Apply the settings (Expect 'No route to host' here, so we only try once)
-    cmd_2 = "ucidyn apply"
-    print("\nSending 'ucidyn apply' (Expecting SSH drop/No route to host)...", flush=True)
-    run_ssh_command_with_retry(DEFAULT_IP, PASSWORD, cmd_2, timeout=10, retries=1)
-
-    print("\nReconfiguration commands sent. Giving the network service 20 seconds to apply and restart...", flush=True)
+    print("\nReconfiguration command sent. Giving the network service 20 seconds to apply and restart...", flush=True)
     time.sleep(20)
 
     # =================================================================
