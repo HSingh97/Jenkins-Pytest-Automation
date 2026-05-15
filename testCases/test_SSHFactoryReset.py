@@ -5,6 +5,14 @@ import subprocess
 import os
 from preMadeFunctions import pingFunction
 
+# ================= Configuration =================
+DEFAULT_IP = "192.168.2.1"
+DEFAULT_PASSWORD = "admin"
+CURRENT_PASSWORD = "Sen@0ubRNwk$"  # Adjust if your pre-reset password is "admin"
+
+
+# =================================================
+
 def append_result_to_json(result, filename="iteration_results.json"):
     try:
         with open(filename, "r") as f:
@@ -20,8 +28,11 @@ def append_result_to_json(result, filename="iteration_results.json"):
     print(f"\nUpdated JSON Report: {json.dumps(result, indent=4)}", flush=True)
 
 
-def run_ssh_command(ip, command, timeout=30):
-    full_cmd = f"sshpass -p admin ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@{ip} \"{command}\""
+def run_ssh_command(ip, password, command, timeout=30):
+    # Clear SSH key for the target IP to prevent strict host key checking failures after reset
+    os.system(f"ssh-keygen -R {ip} >/dev/null 2>&1")
+
+    full_cmd = f"sshpass -p '{password}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@{ip} \"{command}\""
     print(f"Executing → {full_cmd}", flush=True)
     try:
         result = subprocess.run(
@@ -38,16 +49,15 @@ def run_ssh_command(ip, command, timeout=30):
             print(f"Command failed: {result.stderr.strip()}", flush=True)
             return None
     except subprocess.TimeoutExpired:
-        print(f"Command timed out after {timeout}s (expected during reset)", flush=True)
+        print(f"Command timed out after {timeout}s (expected during reset/network reload)", flush=True)
         return None
     except Exception as e:
         print(f"SSH Error: {e}", flush=True)
         return None
 
 
-def wait_for_default_ip(duration=220, interval=6):
-    target_ip = "192.168.1.1"
-    print(f"\nWaiting for device to boot on default IP {target_ip} (up to {duration}s)...", flush=True)
+def wait_for_ip(target_ip, duration=220, interval=6):
+    print(f"\nWaiting for device to respond on IP {target_ip} (up to {duration}s)...", flush=True)
     start_time = time.time()
 
     while time.time() - start_time < duration:
@@ -62,49 +72,78 @@ def wait_for_default_ip(duration=220, interval=6):
     return False
 
 
-@pytest.fixture(autouse=True)
-def cleanup_ssh_keys():
-    os.system("ssh-keygen -R 192.168.1.1 >/dev/null 2>&1")
-    os.system("ssh-keygen -R 192.168.1.10 >/dev/null 2>&1")  # Add your current IP if needed
-    yield
-
-
 def test_factory_reset(local_ip, iter):
-    print("\n" + "="*85, flush=True)
-    print(f" FACTORY RESET TEST (Senao Official Method) - ITERATION {iter} ".center(85, "="), flush=True)
+    print("\n" + "=" * 85, flush=True)
+    print(f" FACTORY RESET & RECOVERY TEST - ITERATION {iter} ".center(85, "="), flush=True)
     print(f" DUT Current IP (before reset) : {local_ip}", flush=True)
-    print(f" Expected IP after reset        : 192.168.1.1", flush=True)
-    print(f" Method                         : ucidyn + factory_reset.sh", flush=True)
-    print("="*85, flush=True)
+    print(f" Expected IP after reset       : {DEFAULT_IP}", flush=True)
+    print("=" * 85, flush=True)
 
     result = {
         "iteration": iter,
-        "test": "SSH_factory_reset",
+        "test": "SSH_factory_reset_and_recover",
         "status": "FAIL",
-        "DUT IP (before reset)": local_ip,
-        "DUT IP (after reset)": "192.168.1.1",
-        "ping_after_reset": False,
+        "DUT_IP_Start": local_ip,
+        "Ping_Start": False,
+        "Ping_Default": False,
+        "Ping_Recovered": False,
     }
 
-    print(f"[1/2] Disabling IP retention...", flush=True)
-    run_ssh_command(local_ip, "ucidyn set tftp.retip.retainip 0", timeout=15)
+    # =================================================================
+    # STEP 1: Check initial ping to local_ip
+    # =================================================================
+    print(f"\n[Step 1] Checking initial connectivity to {local_ip}...", flush=True)
+    if pingFunction.check_access(local_ip):
+        print(f"Success: Device is reachable at {local_ip}", flush=True)
+        result["Ping_Start"] = True
+    else:
+        print(f"Error: Cannot reach {local_ip}. Aborting iteration.", flush=True)
+        append_result_to_json(result)
+        pytest.fail(f"Iteration {iter} FAILED: Device not reachable at {local_ip} before reset.")
 
-    # factory reset
-    print(f"[2/2] Triggering factory reset...", flush=True)
-    run_ssh_command(local_ip, "/usr/sbin/factory_reset.sh", timeout=90)
-
-    print("Factory reset initiated. Waiting for device to boot with default IP...", flush=True)
+    # =================================================================
+    # STEP 2: Trigger Factory Reset
+    # =================================================================
+    print(f"\n[Step 2] Triggering factory reset on {local_ip}...", flush=True)
+    run_ssh_command(local_ip, CURRENT_PASSWORD, "ucidyn set tftp.retip.retainip 0", timeout=15)
+    run_ssh_command(local_ip, CURRENT_PASSWORD, "/usr/sbin/factory_reset.sh", timeout=90)
+    print("Factory reset initiated. Waiting for device to boot...", flush=True)
     time.sleep(20)
 
-    if wait_for_default_ip(duration=220, interval=6):
-        result["ping_after_reset"] = True
-        result["status"] = "PASS"
-        print(f"\nFACTORY RESET PASSED - Iteration {iter} → 192.168.1.1 is reachable!", flush=True)
+    # =================================================================
+    # STEP 3: Wait for Default IP (192.168.2.1)
+    # =================================================================
+    print(f"\n[Step 3] Waiting for device to boot on default IP {DEFAULT_IP}...", flush=True)
+    if wait_for_ip(DEFAULT_IP, duration=220, interval=6):
+        result["Ping_Default"] = True
     else:
-        result["ping_after_reset"] = False
-        print(f"\nFACTORY RESET FAILED - Iteration {iter} → No response from 192.168.1.1", flush=True)
+        print(f"Error: Device did not boot on default IP {DEFAULT_IP}.", flush=True)
+        append_result_to_json(result)
+        pytest.fail(f"Iteration {iter} FAILED: No response from default IP {DEFAULT_IP} after reset.")
+
+    # =================================================================
+    # STEP 4: Reconfigure back to local_ip
+    # =================================================================
+    print(f"\n[Step 4] Reconfiguring IP back to {local_ip} via SSH on {DEFAULT_IP}...", flush=True)
+    # Using OpenWrt 'uci' commands to set the LAN IP, commit, and reload the network
+    reconfig_cmd = f"uci set network.lan.ipaddr='{local_ip}' && uci commit network && /etc/init.d/network reload &"
+    run_ssh_command(DEFAULT_IP, DEFAULT_PASSWORD, reconfig_cmd, timeout=20)
+
+    print("Reconfiguration command sent. Giving the network service time to restart...", flush=True)
+    time.sleep(10)
+
+    # =================================================================
+    # STEP 5: Verify recovery on original local_ip
+    # =================================================================
+    print(f"\n[Step 5] Waiting for device to come back online at {local_ip}...", flush=True)
+    if wait_for_ip(local_ip, duration=120, interval=5):
+        result["Ping_Recovered"] = True
+        result["status"] = "PASS"
+        print(f"\n✅ ITERATION {iter} PASSED: Successfully reset and recovered back to {local_ip}!", flush=True)
+    else:
+        print(f"Error: Device did not recover its original IP {local_ip}.", flush=True)
 
     append_result_to_json(result)
 
     if result["status"] != "PASS":
-        pytest.fail(f"Iteration {iter} FAILED: Device did not come up on 192.168.1.1")
+        pytest.fail(f"Iteration {iter} FAILED: Device did not come back online at {local_ip} after reconfiguration.")

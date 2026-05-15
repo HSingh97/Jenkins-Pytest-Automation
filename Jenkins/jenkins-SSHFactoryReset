@@ -51,11 +51,13 @@ pipeline {
                     for (int i = 1; i <= resetCount.toInteger(); i++) {
                         echo "Running Factory Reset - Iteration ${i}"
                         try {
-                            sh """
-                                pytest -v -s testCases/test_SSHFactoryReset.py::test_factory_reset \
-                                --local-ip '${localIP}' \
-                                --iter ${i}
-                            """
+                            // FIX: Added bash pipefail and tee to correctly capture logs for the HTML report
+                            sh """#!/bin/bash
+set -o pipefail
+pytest -v -s testCases/test_SSHFactoryReset.py::test_factory_reset \
+--local-ip '${localIP}' \
+--iter ${i} 2>&1 | tee test-${i}.log
+"""
                         } catch (Exception e) {
                             echo "Iteration ${i} failed: ${e.message}"
                         }
@@ -154,7 +156,6 @@ pipeline {
                                 font-size: 15px; /* Slightly larger sub-text */
                                 color: #4a5568; /* Darker gray */
                             }
-                            /* ######## END: MODIFIED CSS (HEADER) ######## --> */
 
                             h2 {
                                 margin-top: 32px;
@@ -496,7 +497,8 @@ pipeline {
                     </html>
                     """
 
-                    writeFile file: 'report.html', text: htmlContent
+                    // FIX: Changed file output name
+                    writeFile file: 'Test_Factory_Reset.html', text: htmlContent
                 }
             }
         }
@@ -504,13 +506,14 @@ pipeline {
 
     post {
         always {
+            // FIX: Changed reportFiles and reportName to match the specific test
             publishHTML(target: [
                 allowMissing: false,
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
                 reportDir: '.',
-                reportFiles: 'report.html',
-                reportName: 'Factory Reset Test Report'
+                reportFiles: 'Test_Factory_Reset.html',
+                reportName: 'Test Factory Reset'
             ])
             sh 'rm -f test-*.log || true'
             echo "-----------------------------------------"
@@ -543,12 +546,13 @@ pipeline {
                     <p><strong>DUT IP (before):</strong> ${params['Local IP Address']}</p>
                     <p><strong>Expected IP after reset:</strong> 192.168.1.1</p>
                     <p><strong>Status:</strong> <span style="color:${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};font-weight:bold;">${currentBuild.currentResult}</span></p>
-                    <p><strong>Report:</strong> <a href="${env.BUILD_URL}Factory_20Reset_20Test_20Report/">Click here to view detailed report</a></p>
+                    <p><strong>Report:</strong> <a href="${env.BUILD_URL}Test_20Factory_20Reset/">Click here to view detailed report</a></p>
                     <p><strong>Console:</strong> <a href="${env.BUILD_URL}console">View Console Output</a></p>
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: 'report.html,iteration_results.json'
+                    // FIX: Attach the updated file name
+                    attachmentsPattern: 'Test_Factory_Reset.html,iteration_results.json'
                 )
             }
         }
