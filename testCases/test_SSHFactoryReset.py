@@ -49,7 +49,7 @@ def run_ssh_command(ip, password, command, timeout=30):
             print(f"Command failed: {result.stderr.strip()}", flush=True)
             return None
     except subprocess.TimeoutExpired:
-        print(f"Command timed out after {timeout}s (expected during reset/network reload)", flush=True)
+        print(f"Command timed out after {timeout}s (expected during network reload)", flush=True)
         return None
     except Exception as e:
         print(f"SSH Error: {e}", flush=True)
@@ -124,12 +124,20 @@ def test_factory_reset(local_ip, iter):
     # =================================================================
     # STEP 4: Reconfigure back to local_ip
     # =================================================================
-    print(f"\n[Step 4] Reconfiguring IP back to {local_ip} via SSH on {DEFAULT_IP}...", flush=True)
-    # Using OpenWrt 'uci' commands to set the LAN IP, commit, and reload the network
-    reconfig_cmd = f"uci set network.lan.ipaddr='{local_ip}' && uci commit network && /etc/init.d/network reload &"
-    run_ssh_command(DEFAULT_IP, DEFAULT_PASSWORD, reconfig_cmd, timeout=20)
+    print("\nGiving the SSH service a few seconds to start after ping success...", flush=True)
+    time.sleep(15)  # Buffer to prevent "Connection refused"
 
-    print("Reconfiguration command sent. Giving the network service time to restart...", flush=True)
+    print(f"\n[Step 4] Reconfiguring IP back to {local_ip} via SSH on {DEFAULT_IP}...", flush=True)
+
+    # Send the first command
+    cmd_1 = f"ucidyn set network.lan.ipaddr {local_ip}"
+    run_ssh_command(DEFAULT_IP, DEFAULT_PASSWORD, cmd_1, timeout=20)
+
+    # Send the second command
+    cmd_2 = "ucidyn apply"
+    run_ssh_command(DEFAULT_IP, DEFAULT_PASSWORD, cmd_2, timeout=20)
+
+    print("Reconfiguration commands sent. Giving the network service time to restart...", flush=True)
     time.sleep(10)
 
     # =================================================================
