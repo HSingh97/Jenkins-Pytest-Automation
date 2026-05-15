@@ -26,7 +26,7 @@ def ping(host):
     param = '-n' if platform.system().lower() == 'windows' else '-c'
     with open(os.devnull, 'w') as DEVNULL:
         try:
-            result = subprocess.call(['ping', param, '3', host],
+            result = subprocess.call(['ping', param, '3', str(host)],
                                      stdout=DEVNULL, stderr=DEVNULL, timeout=10) == 0
             print(f"{host} is {'Reachable' if result else 'Not Reachable'}", flush=True)
             return result
@@ -121,13 +121,20 @@ def channel_to_frequency(channel, band):
         return "?"
 
 
-# FIX: Added 'channels' and 'powers' as explicit pytest arguments. Removed 'pow' and undefined vars.
 def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers):
     print(f"\nSTARTING SNR vs TX POWER TEST at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", flush=True)
 
-    # Parse comma-separated strings into lists
-    channel_list = [c.strip() for c in channels.split(',')] if isinstance(channels, str) else channels
-    power_list = [p.strip() for p in powers.split(',')] if isinstance(powers, str) else powers
+    # --- ROBUST INPUT PARSING ---
+    # Handle the fact that conftest.py passes remote_ip as a list (e.g. ['192.168.2.11'])
+    if isinstance(remote_ip, list):
+        target_remote = remote_ip[0]
+    else:
+        # Strip out string representations of lists just in case
+        target_remote = str(remote_ip).replace('[', '').replace(']', '').replace("'", "").replace('"', '').split(',')[
+            0].strip()
+
+    channel_list = channels if isinstance(channels, list) else [c.strip() for c in str(channels).split(',')]
+    power_list = powers if isinstance(powers, list) else [p.strip() for p in str(powers).split(',')]
 
     # Convert radio string to OID integer (radio1 -> 1, radio2 -> 2)
     radio_oid = "1" if str(radio).lower() == "radio1" else "2"
@@ -136,7 +143,7 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers):
     first_chan = int(channel_list[0]) if channel_list and str(channel_list[0]).isdigit() else 36
     band = "6GHz" if first_chan > 180 else "5GHz"
 
-    print(f"Local IP: {local_ip} | Remote IP: {remote_ip} | Radio: {radio} (OID: {radio_oid})", flush=True)
+    print(f"Local IP: {local_ip} | Clean Remote IP: {target_remote} | Radio: {radio} (OID: {radio_oid})", flush=True)
     print(f"Frequency Band: {band}", flush=True)
     print(f"Channels: {channel_list}", flush=True)
     print(f"Powers: {power_list}", flush=True)
@@ -145,8 +152,8 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers):
     for channel in channel_list:
         print(f"\n====== SWITCHING TO CHANNEL: {channel} ({band}) ======", flush=True)
 
-        if ping(local_ip) and ping(remote_ip):
-            set_channel(remote_ip, channel, radio_oid)
+        if ping(local_ip) and ping(target_remote):
+            set_channel(target_remote, channel, radio_oid)
             time.sleep(2)
             set_channel(local_ip, channel, radio_oid)
             print("Waiting 60s for DFS/Link establishment...", flush=True)
@@ -162,7 +169,7 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers):
                 "channel": channel,
                 "freq": channel_to_frequency(channel, band),
                 "power": power,
-                "remote_ip": "N/A",
+                "remote_ip": target_remote,
                 "local_snr_a1": "-",
                 "local_snr_a2": "-",
                 "remote_snr_a1": "-",
@@ -172,8 +179,8 @@ def test_snr_tx_power(local_ip, remote_ip, radio, channels, powers):
                 "status": "FAIL"
             }
 
-            if ping(local_ip) and ping(remote_ip):
-                set_power(remote_ip, power, radio_oid)
+            if ping(local_ip) and ping(target_remote):
+                set_power(target_remote, power, radio_oid)
                 time.sleep(2)
                 set_power(local_ip, power, radio_oid)
                 print("Waiting 30s for link to stabilize...", flush=True)
