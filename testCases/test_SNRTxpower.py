@@ -37,23 +37,23 @@ def ping(host):
 
 def set_power(ip, power, radio_oid):
     print(f"Setting power on {ip} to {power} dBm", flush=True)
-    os.system(f"snmpset -v 2c -c private {ip} .1.3.6.1.4.1.52619.1.1.1.2.1.12.{radio_oid}.1 i {power}")
+    os.system(f"snmpset -v 2c -c ubr@rw123 {ip} .1.3.6.1.4.1.52619.1.1.1.2.1.12.{radio_oid}.1 i {power}")
     time.sleep(1)
-    os.system(f"snmpset -v 2c -c private {ip} .1.3.6.1.4.1.52619.1.2.1.1.0 i 1")
+    os.system(f"snmpset -v 2c -c ubr@rw123 {ip} .1.3.6.1.4.1.52619.1.2.1.1.0 i 1")
     time.sleep(10)
 
 
 def set_channel(ip, chan, radio_oid):
     print(f"Setting Channel on {ip} to {chan}", flush=True)
-    os.system(f"snmpset -v 2c -c private {ip} .1.3.6.1.4.1.52619.1.1.1.1.1.9.{radio_oid} i {chan}")
+    os.system(f"snmpset -v 2c -c ubr@rw123 {ip} .1.3.6.1.4.1.52619.1.1.1.1.1.9.{radio_oid} i {chan}")
     time.sleep(1)
-    os.system(f"snmpset -v 2c -c private {ip} .1.3.6.1.4.1.52619.1.2.1.1.0 i 1")
+    os.system(f"snmpset -v 2c -c ubr@rw123 {ip} .1.3.6.1.4.1.52619.1.2.1.1.0 i 1")
     time.sleep(10)
 
 
 def get_channel(host, radio_oid):
     oid = f".1.3.6.1.4.1.52619.1.1.1.1.1.23.{radio_oid}"
-    cmd = f"snmpget -v 2c -c private {host} {oid}"
+    cmd = f"snmpget -v 2c -c ubr@rw123 {host} {oid}"
     try:
         output = subprocess.check_output(cmd, shell=True, timeout=15).decode("utf-8")
         match = re.search(r'INTEGER:\s*(\d+)', output)
@@ -68,7 +68,7 @@ def get_channel(host, radio_oid):
 def get_linkstats(host, radio_oid):
     i = 1
     while i < 33:
-        remoteip_cmd = f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.4.{radio_oid}.{i}"
+        remoteip_cmd = f"snmpget -v 2c -c ubr@rw123 {host} .1.3.6.1.4.1.52619.1.3.3.1.4.{radio_oid}.{i}"
         try:
             remoteip_output = subprocess.check_output(remoteip_cmd, shell=True, timeout=10).decode("utf-8")
         except:
@@ -82,7 +82,7 @@ def get_linkstats(host, radio_oid):
         ip_address = match.group(1) if match else "-"
 
         def get_oid_value(suffix):
-            cmd = f"snmpget -v 2c -c private {host} .1.3.6.1.4.1.52619.1.3.3.1.{suffix}.{radio_oid}.{i}"
+            cmd = f"snmpget -v 2c -c ubr@rw123 {host} .1.3.6.1.4.1.52619.1.3.3.1.{suffix}.{radio_oid}.{i}"
             try:
                 out = subprocess.check_output(cmd, shell=True, timeout=10).decode("utf-8")
                 match = re.search(r'INTEGER:\s*(\d+)', out)
