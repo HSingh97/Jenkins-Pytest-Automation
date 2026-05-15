@@ -15,8 +15,8 @@ args = parser.parse_args()
 
 SU_IP = args.su_ip
 ITER = args.iter
-WRITE_COMMUNITY = "private"
-READ_COMMUNITY = "public"
+WRITE_COMMUNITY = "ubr@rw123"
+READ_COMMUNITY = "ubr@ro123"
 
 # OIDs
 OID_ETHERNET_MODE = ".1.3.6.1.4.1.52619.1.1.5.1.0"
