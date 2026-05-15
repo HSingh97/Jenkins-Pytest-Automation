@@ -271,7 +271,6 @@ pipeline {
                             } catch (e) {
                                 logContent = "ERROR: Log file not found (${logFile})."
                             }
-                            // FIX: Updated to 'See Logs' and fixed onclick escaping
                             def logButton = "<button class='log-button' onclick=\"showLog('${logDataId}')\">See Logs</button>"
                             tableRows += "<tr><td>${iteration}</td><td style='text-align:center;'>${status}</td><td style='text-align:center;'>${logButton}</td></tr>"
                             logDataBlocks += "<div id='${logDataId}' style='display:none;'>${logContent}</div>"
@@ -299,7 +298,6 @@ pipeline {
                     </html>
                     """
 
-                    // FIX: Replaced report.html with the descriptive name
                     writeFile file: 'Test_Ethernet_Speed_Duplex.html', text: htmlContent
                 }
             }
@@ -324,10 +322,11 @@ pipeline {
                 def fail = total - pass
                 def rate = total > 0 ? String.format("%.1f", (pass * 100.0 / total)) : "0.0"
 
-                // FIX: Updated to Test_Ethernet_Speed_Duplex.html
+                // FIX: Used String.format instead of .format(1) to avoid the Groovy Method exception
+                def failRate = total > 0 ? String.format("%.1f", 100.0 - rate.toDouble()) : "0.0"
+
                 archiveArtifacts("${reportJsonFile}, ${debugArtifacts}, test-*.log, Test_Ethernet_Speed_Duplex.html")
 
-                // FIX: Updated to Test_Ethernet_Speed_Duplex.html
                 publishHTML(target: [
                     allowMissing: false,
                     alwaysLinkToLastBuild: true,
@@ -375,7 +374,7 @@ pipeline {
                             <tr><th>Metric</th><th>Count</th><th>Rate</th></tr>
                             <tr><td>Total Runs</td><td>${total}</td><td>100%</td></tr>
                             <tr style="background-color: #d1fae5;"><td>Passed</td><td>${pass}</td><td>${rate}%</td></tr>
-                            <tr style="background-color: #fee2e2;"><td>Failed</td><td>${fail}</td><td>${(100.0 - rate.toDouble()).format(1)}%</td></tr>
+                            <tr style="background-color: #fee2e2;"><td>Failed</td><td>${fail}</td><td>${failRate}%</td></tr>
                         </table>
 
                         <h3 style="margin-top: 20px;">Links:</h3>
@@ -394,7 +393,6 @@ pipeline {
                     body: emailBody,
                     to: userEmail,
                     mimeType: 'text/html',
-                    // FIX: Updated attachment target to Test_Ethernet_Speed_Duplex.html
                     attachmentsPattern: "Test_Ethernet_Speed_Duplex.html,${reportJsonFile}"
                 )
             }
