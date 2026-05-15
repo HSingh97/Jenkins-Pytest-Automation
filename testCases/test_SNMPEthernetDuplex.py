@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-import argparse, time, json, subprocess, warnings
+import argparse
+import time
+import json
+import subprocess
+import warnings
 from datetime import datetime
 
-
-def warn(*args, **kwargs): pass
-
+def warn(*args, **kwargs):
+    pass
 
 warnings.warn = warn
 
@@ -29,13 +32,11 @@ OID_ETHERNET_DUPLEX_1 = ".1.3.6.1.4.1.52619.1.3.2.1.5.1"
 RESULT_FILE = "EthernetSpeedDuplexTest.json"
 LOG_FILE = f"test-{ITER}.log"
 
-
 def log_print(*msg):
     line = " ".join(map(str, msg))
-    print(line)
+    print(line, flush=True)
     with open(LOG_FILE, "a") as f:
         f.write(line + "\n")
-
 
 def run(cmd):
     log_print(f"\n>>> {cmd}")
@@ -46,7 +47,6 @@ def run(cmd):
         return ""
     log_print(f"Received {len(out.splitlines())} lines")
     return out
-
 
 def set_ethernet_mode(value):
     cmd = f"snmpset -v 2c -c {WRITE_COMMUNITY} {SU_IP} {OID_ETHERNET_MODE} i {value}"
@@ -63,7 +63,6 @@ def set_ethernet_mode(value):
         log_print("FAILED to apply configuration!")
     return True
 
-
 def wait_for_link():
     log_print("Waiting 80 seconds for link to stabilize after apply...")
     time.sleep(80)
@@ -78,7 +77,6 @@ def get_single_oid(oid):
         val = val.split("STRING:", 1)[-1].strip().strip('"')
     return val.strip()
 
-
 def walk_ethernet_table():
     cmd = f"snmpwalk -v 2c -c {READ_COMMUNITY} {SU_IP} {OID_ETHERNET_STATS_TABLE}"
     raw = run(cmd)
@@ -91,7 +89,6 @@ def walk_ethernet_table():
         f.write(raw)
     log_print(f"SAVED → debug_ethernet_table_iter{ITER}.txt\n")
 
-
 def validate_link():
     status = get_single_oid(OID_ETHERNET_STATUS_1)
     speed = get_single_oid(OID_ETHERNET_SPEED_1)
@@ -100,7 +97,6 @@ def validate_link():
     log_print(f"ethernetSpeed.1   → {speed}")
     log_print(f"ethernetDuplex.1  → {duplex}")
     return {"status": status, "speed": speed, "duplex": duplex}
-
 
 def check_mode(mode_val, mode_name):
     log_print(f"\n[TEST] Setting Mode: {mode_name} (Value={mode_val})")
