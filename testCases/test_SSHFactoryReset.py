@@ -129,7 +129,6 @@ def test_factory_reset(local_ip, iter):
     if wait_for_ip(DEFAULT_IP, duration=220, interval=6):
         result["Ping_Default"] = True
 
-        # VERY IMPORTANT: Ping comes up before SSH is ready. We must wait.
         print("\nPing successful! Waiting 30 seconds for the SSH service to fully start...", flush=True)
         time.sleep(30)
     else:
@@ -146,8 +145,9 @@ def test_factory_reset(local_ip, iter):
     combined_cmd = f"ucidyn set network.lan.ipaddr {local_ip} && ucidyn apply"
     print("\nSending chained 'ucidyn set && apply' (Expecting SSH drop/Timeout)...", flush=True)
 
-    # Retries set to 1 because the 'apply' portion will purposely break the SSH connection
-    run_ssh_command_with_retry(DEFAULT_IP, PASSWORD, combined_cmd, timeout=15, retries=1)
+    # Retries increased to 5. It will retry if SSH gives "Connection refused",
+    # but once the command executes and drops the network, it will safely exit without looping.
+    run_ssh_command_with_retry(DEFAULT_IP, PASSWORD, combined_cmd, timeout=15, retries=5)
 
     print("\nReconfiguration command sent. Giving the network service 20 seconds to apply and restart...", flush=True)
     time.sleep(20)
