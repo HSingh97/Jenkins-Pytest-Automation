@@ -19,12 +19,13 @@ from datetime import datetime
 from netmiko import ConnectHandler
 
 USERNAME = "root"
-# Split so PyCharm does not treat trailing "$" as a shell-injection variable
 PASSWORD = "Sen@0ubRNwk" + "$"
 
-CHANNEL_SETTLE_S = 60
-POWER_SETTLE_S = 30
-APPLY_WAIT_S = 15
+APPLY_WAIT_S = 30          # short settle after ucidyn apply before polling
+LINK_POLL_INTERVAL_S = 10  # poll interval while waiting for RF link
+# Lab can take 7-8 min for RF link - allow 10 min after channel/power change
+CHANNEL_LINK_TIMEOUT_S = 600
+POWER_LINK_TIMEOUT_S = 600
 
 
 def append_result_to_json(result, filename="iteration_results.json"):
@@ -41,7 +42,7 @@ def append_result_to_json(result, filename="iteration_results.json"):
         json.dump(data, f, indent=4)
 
 
-def ping(host):
+def ping(host, quiet=False):
     param = "-n" if platform.system().lower() == "windows" else "-c"
     with open(os.devnull, "w") as DEVNULL:
         try:
@@ -54,10 +55,15 @@ def ping(host):
                 )
                 == 0
             )
-            print(f"{host} is {'Reachable' if result else 'Not Reachable'}", flush=True)
+            if not quiet:
+                print(
+                    f"{host} is {'Reachable' if result else 'Not Reachable'}",
+                    flush=True,
+                )
             return result
         except Exception:
-            print(f"{host} ping timeout", flush=True)
+            if not quiet:
+                print(f"{host} ping timeout", flush=True)
             return False
 
 
@@ -132,6 +138,83 @@ def set_power(ip, power, radio_idx):
         ],
         settle_s=APPLY_WAIT_S,
     )
+
+
+def rf_stations_up(local_ip, radio_idx):
+    """True when BTS has >=1 associated STA or sysfs links >= 1."""
+    ath = f"ath{radio_idx}"
+    wifi = f"wifi{radio_idx}"
+    try:
+        raw = ssh_run(
+            local_ip,
+            f"echo STA=$(wlanconfig {ath} list sta 2>/dev/null | "
+            f"awk 'NR>1 && $1 ~ /:/ {{c++}} END{{print c+0}}'); "
+            f"echo LINKS=$(cat /sys/class/kwn/{wifi}/statistics/links 2>/dev/null || echo 0)",
+            timeout=30,
+        )
+        stations = 0
+        links = 0
+        for line in (raw or "").splitlines():
+            line = line.strip()
+            if line.startswith("STA="):
+                try:
+                    stations = int(line.split("=", 1)[1].strip())
+                except ValueError:
+                    stations = 0
+            elif line.startswith("LINKS="):
+                try:
+                    links = int(line.split("=", 1)[1].strip())
+                except ValueError:
+                    links = 0
+        print(f"RF check: stations={stations}, links={links}", flush=True)
+        return stations >= 1 or links >= 1
+    except Exception as e:
+        print(f"RF check error: {e}", flush=True)
+        return False
+
+
+def wait_for_link(local_ip, remote_ip, radio_idx, timeout_s, reason="link"):
+    """
+    Poll until BTS ping + CPE ping + RF association are all up,
+    or timeout_s expires. Returns True if link is up.
+    """
+    print(
+        f"--- Waiting up to {timeout_s}s for {reason} "
+        f"(BTS+CPE ping + RF stations) ---",
+        flush=True,
+    )
+    deadline = time.time() + timeout_s
+    attempt = 0
+    while time.time() < deadline:
+        attempt += 1
+        remaining = int(deadline - time.time())
+        print(f"[{reason}] poll #{attempt} ({remaining}s left)", flush=True)
+
+        bts_ok = ping(local_ip, quiet=True)
+        cpe_ok = ping(remote_ip, quiet=True)
+        print(
+            f"  ping BTS={bts_ok} CPE={cpe_ok}",
+            flush=True,
+        )
+        if not bts_ok:
+            time.sleep(LINK_POLL_INTERVAL_S)
+            continue
+
+        rf_ok = False
+        if cpe_ok:
+            rf_ok = rf_stations_up(local_ip, radio_idx)
+        else:
+            # CPE may still be associating; still check RF on BTS
+            rf_ok = rf_stations_up(local_ip, radio_idx)
+
+        if bts_ok and cpe_ok and rf_ok:
+            print(f"[{reason}] LINK UP", flush=True)
+            return True
+
+        time.sleep(LINK_POLL_INTERVAL_S)
+
+    print(f"[{reason}] LINK NOT UP within {timeout_s}s", flush=True)
+    return False
 
 
 def get_channel(host, radio_idx):
@@ -321,11 +404,39 @@ def test_snr_tx_power_ssh(local_ip, remote_ip, radio, channels, powers):
         print(f"\n====== SWITCHING TO CHANNEL: {channel} ({band}) ======", flush=True)
 
         if ping(local_ip) and ping(target_remote):
-            set_channel(target_remote, channel, ridx)
-            time.sleep(2)
+            # Set BTS first (AP), then CPE (STA) so CPE can join the new channel
             set_channel(local_ip, channel, ridx)
-            print(f"Waiting {CHANNEL_SETTLE_S}s for DFS/Link establishment...", flush=True)
-            time.sleep(CHANNEL_SETTLE_S)
+            time.sleep(2)
+            set_channel(target_remote, channel, ridx)
+            link_ok = wait_for_link(
+                local_ip,
+                target_remote,
+                ridx,
+                CHANNEL_LINK_TIMEOUT_S,
+                reason=f"channel {channel}",
+            )
+            if not link_ok:
+                print(
+                    f"Skipping channel {channel} - RF link did not come up",
+                    flush=True,
+                )
+                for power in power_list:
+                    append_result_to_json(
+                        {
+                            "channel": channel,
+                            "freq": channel_to_frequency(channel, band),
+                            "power": power,
+                            "remote_ip": target_remote,
+                            "local_snr_a1": "-",
+                            "local_snr_a2": "-",
+                            "remote_snr_a1": "-",
+                            "remote_snr_a2": "-",
+                            "tx_rate": "-",
+                            "rx_rate": "-",
+                            "status": "FAIL",
+                        }
+                    )
+                continue
         else:
             print("Devices not reachable before channel change", flush=True)
             continue
@@ -351,8 +462,17 @@ def test_snr_tx_power_ssh(local_ip, remote_ip, radio, channels, powers):
                 set_power(target_remote, power, ridx)
                 time.sleep(2)
                 set_power(local_ip, power, ridx)
-                print(f"Waiting {POWER_SETTLE_S}s for link to stabilize...", flush=True)
-                time.sleep(POWER_SETTLE_S)
+                link_ok = wait_for_link(
+                    local_ip,
+                    target_remote,
+                    ridx,
+                    POWER_LINK_TIMEOUT_S,
+                    reason=f"power {power} dBm",
+                )
+                if not link_ok:
+                    print("Link not up after power change", flush=True)
+                    append_result_to_json(result_dict)
+                    continue
 
                 stats = get_linkstats(local_ip, prefer_ip=target_remote)
                 current_channel = get_channel(local_ip, ridx)

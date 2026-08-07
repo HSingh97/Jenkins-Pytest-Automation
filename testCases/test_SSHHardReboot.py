@@ -25,8 +25,10 @@ ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin"
 CPE_OFF_BEFORE_BTS_S = 8
 PDU_OFF_SETTLE_S = 15
-POST_POWER_ON_WAIT_S = 90
-RF_CHECK_RETRIES = 24
+POST_POWER_ON_WAIT_S = 60  # short settle, then poll for up/link
+# Lab can take 7-8 min for RF link after hard reboot - allow 10 min
+DEVICE_UP_TIMEOUT_S = 600
+RF_LINK_TIMEOUT_S = 600
 RF_CHECK_INTERVAL_S = 10
 
 DYING_GASP_PATTERNS = (
@@ -79,11 +81,28 @@ def pdu_hard_cycle_both(pdu_ip, bts_port, cpe_port):
     print("PDU hard-reboot cycle done (BTS + CPE)", flush=True)
 
 
-def wait_ping(host, label):
-    print(f"--- Waiting for {label} ({host}) to come up ---", flush=True)
-    ok = bool(pingFunction.check_access(host))
-    print(f"{label} ping: {'OK' if ok else 'FAIL'}", flush=True)
-    return ok
+def wait_ping(host, label, timeout_s=DEVICE_UP_TIMEOUT_S):
+    """Poll ping until host is up or timeout (lab reboot can take several minutes)."""
+    print(
+        f"--- Waiting up to {timeout_s}s for {label} ({host}) to come up ---",
+        flush=True,
+    )
+    deadline = time.time() + timeout_s
+    attempt = 0
+    while time.time() < deadline:
+        attempt += 1
+        if pingFunction.Ping(host):
+            print(f"{label} ping: OK (attempt {attempt})", flush=True)
+            return True
+        remaining = int(deadline - time.time())
+        if attempt == 1 or attempt % 6 == 0:
+            print(
+                f"{label} not up yet (attempt {attempt}, {remaining}s left)",
+                flush=True,
+            )
+        time.sleep(RF_CHECK_INTERVAL_S)
+    print(f"{label} ping: FAIL (timeout {timeout_s}s)", flush=True)
+    return False
 
 
 def _root_conn(host):
@@ -196,12 +215,23 @@ def check_dying_gasp(host, label, prefer_remote_file=False):
     return ok, detail, evidence
 
 
-def check_rf_link(local_ip):
-    """SSH to BTS and confirm at least one STA associated on ath1."""
+def check_rf_link(local_ip, timeout_s=RF_LINK_TIMEOUT_S):
+    """SSH to BTS and poll until at least one STA associated on ath1 (up to timeout_s)."""
     last_detail = ""
-    for attempt in range(1, RF_CHECK_RETRIES + 1):
+    deadline = time.time() + timeout_s
+    attempt = 0
+    print(
+        f"--- Waiting up to {timeout_s}s for RF link on {local_ip} ---",
+        flush=True,
+    )
+    while time.time() < deadline:
+        attempt += 1
+        remaining = int(deadline - time.time())
         try:
-            print(f"--- RF link check {attempt}/{RF_CHECK_RETRIES} on {local_ip} ---", flush=True)
+            print(
+                f"--- RF link check {attempt} ({remaining}s left) on {local_ip} ---",
+                flush=True,
+            )
             conn = _root_conn(local_ip)
             count_raw = conn.send_command(
                 "wlanconfig ath1 list sta 2>/dev/null | "
@@ -226,11 +256,13 @@ def check_rf_link(local_ip):
             last_detail = f"stations={count}, links={links}"
             print(f"RF: {last_detail}\n{sample}", flush=True)
             if count >= 1 or links >= 1:
+                print("RF link UP", flush=True)
                 return True, last_detail
         except Exception as e:
             last_detail = f"SSH/RF check error: {e}"
             print(last_detail, flush=True)
         time.sleep(RF_CHECK_INTERVAL_S)
+    print(f"RF link NOT UP within {timeout_s}s", flush=True)
     return False, last_detail or "no stations"
 
 

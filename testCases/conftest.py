@@ -15,7 +15,8 @@ def pytest_addoption(parser):
     parser.addoption("--mcs-rate", action="store", default="MCS0", help="MCS Rate")
     parser.addoption("--link-type", action="store", default="PTP", help="Link Type")
     parser.addoption("--country", action="store", default="US 5GHz All", help="Country")
-    parser.addoption("--pdu-port", action="store", default="1", help="PDU Port")
+    parser.addoption("--pdu-port", action="store", default="1", help="PDU Port (BTS outlet)")
+    parser.addoption("--pdu-port-cpe", action="store", default="2", help="PDU Port (CPE outlet)")
     parser.addoption("--iter", action="store", default="1", help="Iteration")
     parser.addoption("--pdu-ip", action="store", default="192.168.1.1", help="PDU IP Address")
     parser.addoption("--reset-type", action="store", default="1", help="Reset Type")
@@ -106,6 +107,10 @@ def pdu_ip(request):
 @pytest.fixture
 def pdu_port(request):
     return request.config.getoption("--pdu-port")
+
+@pytest.fixture
+def pdu_port_cpe(request):
+    return request.config.getoption("--pdu-port-cpe")
 
 @pytest.fixture
 def reset_type(request):
