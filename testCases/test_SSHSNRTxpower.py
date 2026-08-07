@@ -247,9 +247,95 @@ def _read_sua_field_block(host, sua_idx, fields):
     return out
 
 
+def _bulk_read_all_sua(host, fields, max_sua=8):
+    """
+    Read sua1..max_sua statistics in ONE SSH session.
+    (Per-SU SSH loops looked 'stuck' for many minutes.)
+    """
+    field_list = " ".join(fields)
+    cmd = (
+        f"for idx in $(seq 1 {max_sua}); do "
+        f'base="/sys/class/kwn/sua$idx/statistics"; '
+        f'[ -d "$base" ] || continue; '
+        f'echo "SUA_INDEX=$idx"; '
+        f"for f in {field_list}; do "
+        f'printf "%s=" "$f"; cat "$base/$f" 2>/dev/null || echo -; '
+        f"echo; done; echo ---; done"
+    )
+    print(f"Reading link stats (single SSH bulk, sua1-{max_sua})...", flush=True)
+    raw = ssh_run(host, cmd, timeout=60)
+    slots = {}
+    current_idx = None
+    current = {}
+    for line in (raw or "").splitlines():
+        text = line.strip()
+        if not text:
+            continue
+        if text.startswith("SUA_INDEX="):
+            if current_idx is not None:
+                slots[current_idx] = current
+            try:
+                current_idx = int(text.split("=", 1)[1])
+            except ValueError:
+                current_idx = None
+            current = {}
+            continue
+        if text == "---":
+            if current_idx is not None:
+                slots[current_idx] = current
+            current_idx = None
+            current = {}
+            continue
+        if "=" in text and current_idx is not None:
+            key, value = text.split("=", 1)
+            current[key] = value.strip()
+    if current_idx is not None:
+        slots[current_idx] = current
+    return slots
+
+
+def _sua_row_to_stats(data, sua_idx, note=""):
+    ip_address = (data.get("ip") or "").strip()
+    ipv6 = (data.get("ipv6") or "").strip()
+    stats = {
+        "IP": ip_address if ip_address not in ("", "0.0.0.0", "-") else (ipv6 or "-"),
+        "Local SNR A1": data.get("l_snra1") or "-",
+        "Local SNR A2": data.get("l_snra2") or "-",
+        "Remote SNR A1": data.get("r_snra1") or "-",
+        "Remote SNR A2": data.get("r_snra2") or "-",
+        "Tx Rate": data.get("tx_rate") or "-",
+        "Rx Rate": data.get("rx_rate") or "-",
+    }
+    label = f"sua{sua_idx}" + (f", {note}" if note else "")
+    print(f"Stats for {stats['IP']} ({label}):", flush=True)
+    print(
+        f"  Local SNR: A1={stats['Local SNR A1']}, A2={stats['Local SNR A2']}",
+        flush=True,
+    )
+    print(
+        f"  Remote SNR: A1={stats['Remote SNR A1']}, A2={stats['Remote SNR A2']}",
+        flush=True,
+    )
+    print(
+        f"  Tx Rate: {stats['Tx Rate']} | Rx Rate: {stats['Rx Rate']}",
+        flush=True,
+    )
+    return stats
+
+
+def _snr_positive(data):
+    for key in ("l_snra1", "r_snra1"):
+        try:
+            if int(float(data.get(key) or "0")) > 0:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def get_linkstats(host, prefer_ip=None):
     """
-    Read first associated SU (or matching prefer_ip) from BTS sysfs.
+    Read associated SU stats from BTS sysfs (one SSH bulk read).
     Returns dict matching SNMP test field names, or None.
     """
     fields = (
@@ -265,76 +351,48 @@ def get_linkstats(host, prefer_ip=None):
     )
     prefer = str(prefer_ip or "").strip()
 
-    for i in range(1, 33):
+    try:
+        slots = _bulk_read_all_sua(host, fields, max_sua=8)
+    except Exception as e:
+        print(f"Bulk sua read failed: {e}; falling back to sua1 only", flush=True)
         try:
-            data = _read_sua_field_block(host, i, fields)
-        except Exception:
-            continue
+            slots = {1: _read_sua_field_block(host, 1, fields)}
+        except Exception as e2:
+            print(f"sua1 read failed: {e2}", flush=True)
+            return None
 
+    if not slots:
+        print("No sua statistics directories found", flush=True)
+        return None
+
+    # 1) Prefer exact IP / IPv6 match
+    if prefer:
+        for idx, data in sorted(slots.items()):
+            ip_address = (data.get("ip") or "").strip()
+            ipv6 = (data.get("ipv6") or "").strip()
+            if prefer == ip_address or prefer == ipv6 or prefer in ipv6:
+                return _sua_row_to_stats(data, idx, note="ip match")
+
+        print(
+            f"No sua matched IP {prefer}; using first associated SU with SNR...",
+            flush=True,
+        )
+
+    # 2) First associated SU with positive SNR (or any non-empty slot)
+    for idx, data in sorted(slots.items()):
         ip_address = (data.get("ip") or "").strip()
         ipv6 = (data.get("ipv6") or "").strip()
-        if not ip_address and not ipv6:
-            continue
-        if ip_address in ("0.0.0.0", "-") and not ipv6:
-            continue
-
-        # Prefer matching remote IP when provided
-        if prefer and prefer not in (ip_address, ipv6):
-            continue
-
-        stats = {
-            "IP": ip_address or ipv6 or "-",
-            "Local SNR A1": data.get("l_snra1") or "-",
-            "Local SNR A2": data.get("l_snra2") or "-",
-            "Remote SNR A1": data.get("r_snra1") or "-",
-            "Remote SNR A2": data.get("r_snra2") or "-",
-            "Tx Rate": data.get("tx_rate") or "-",
-            "Rx Rate": data.get("rx_rate") or "-",
-        }
-        print(f"Stats for {stats['IP']} (sua{i}):", flush=True)
-        print(
-            f"  Local SNR: A1={stats['Local SNR A1']}, A2={stats['Local SNR A2']}",
-            flush=True,
+        assoc = (data.get("associd") or "").strip()
+        has_peer = (
+            (ip_address and ip_address not in ("0.0.0.0", "-"))
+            or (ipv6 and ipv6 not in ("", "-", "::"))
+            or (assoc and assoc not in ("0", "", "-"))
+            or _snr_positive(data)
         )
-        print(
-            f"  Remote SNR: A1={stats['Remote SNR A1']}, A2={stats['Remote SNR A2']}",
-            flush=True,
-        )
-        print(
-            f"  Tx Rate: {stats['Tx Rate']} | Rx Rate: {stats['Rx Rate']}",
-            flush=True,
-        )
-        return stats
+        if has_peer:
+            return _sua_row_to_stats(data, idx, note="first associated")
 
-    # Fallback: first SU with any SNR if prefer_ip never matched
-    if prefer:
-        print(f"No sua matched IP {prefer}; scanning any associated SU...", flush=True)
-        for i in range(1, 33):
-            try:
-                data = _read_sua_field_block(host, i, fields)
-            except Exception:
-                continue
-            ip_address = (data.get("ip") or "").strip()
-            if not ip_address or ip_address in ("0.0.0.0", "-"):
-                continue
-            snr = data.get("l_snra1") or "0"
-            try:
-                if int(float(snr)) <= 0:
-                    continue
-            except ValueError:
-                continue
-            stats = {
-                "IP": ip_address,
-                "Local SNR A1": data.get("l_snra1") or "-",
-                "Local SNR A2": data.get("l_snra2") or "-",
-                "Remote SNR A1": data.get("r_snra1") or "-",
-                "Remote SNR A2": data.get("r_snra2") or "-",
-                "Tx Rate": data.get("tx_rate") or "-",
-                "Rx Rate": data.get("rx_rate") or "-",
-            }
-            print(f"Stats for {stats['IP']} (sua{i}, fallback):", flush=True)
-            return stats
-
+    print("No associated SU found in bulk sua dump", flush=True)
     return None
 
 
