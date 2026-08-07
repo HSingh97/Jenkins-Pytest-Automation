@@ -45,7 +45,7 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                sh 'python3 -m pip install pytest || true'
+                sh 'python3 -m pip install pytest openpyxl || true'
                 sh "sh utilities/requirements.txt"
             }
         }
@@ -143,17 +143,6 @@ python3 -u -m pytest -v -s testCases/test_SSHSNRTxpower.py \
                     def companyLogoUrl = "https://manuals.plus/wp-content/uploads/2023/06/Senao-Networks-logo.png"
                     def pipelineName = env.JOB_NAME
 
-                    // Capture the entire execution log
-                    def fullLogContent = ""
-                    try {
-                        fullLogContent = readFile(file: env.LOG_FILE)
-                            .replace("&", "&amp;")
-                            .replace("<", "&lt;")
-                            .replace(">", "&gt;")
-                    } catch (e) {
-                        fullLogContent = "Log file unavailable."
-                    }
-
                     def htmlContent = """
                     <html>
                     <head>
@@ -194,28 +183,7 @@ python3 -u -m pytest -v -s testCases/test_SSHSNRTxpower.py \
 
                             .status-pass { color: #059669; font-weight: 600; background-color: #d1fae5; padding: 5px 10px; border-radius: 99px; display: inline-block; }
                             .status-fail { color: #dc2626; font-weight: 600; background-color: #fee2e2; padding: 5px 10px; border-radius: 99px; display: inline-block; }
-
-                            /* --- Log Button & Modal --- */
-                            .log-button { background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; transition: background-color 0.2s ease; border: none; cursor: pointer; display: block; margin: 40px auto; }
-                            .log-button:hover { background-color: #2563eb; }
-
-                            .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); }
-                            .modal-content { background-color: #ffffff; margin: 5% auto; border: 1px solid #e5e7eb; border-radius: 12px; width: 90%; max-width: 1200px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); overflow: hidden; }
-                            .modal-header { padding: 20px 32px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
-                            .modal-header h2 { margin: 0; font-size: 20px; }
-                            .modal-close { color: #9ca3af; font-size: 28px; font-weight: bold; cursor: pointer; }
-                            .modal-close:hover { color: #1f2937; }
-                            #log-content-pre { background-color: #1f2937; color: #e5e7eb; padding: 24px 32px; max-height: 70vh; overflow: auto; white-space: pre-wrap; word-wrap: break-word; margin: 0; font-family: monospace; font-size: 14px; }
                         </style>
-
-                        <script>
-                            function showLog() {
-                                document.getElementById('log-content-pre').innerHTML = document.getElementById('log-data').innerHTML;
-                                document.getElementById('logModal').style.display = 'block';
-                            }
-                            function closeModal() { document.getElementById('logModal').style.display = 'none'; }
-                            window.onclick = function(e) { if (e.target == document.getElementById('logModal')) closeModal(); }
-                        </script>
                     </head>
                     <body>
                         <div class="container">
@@ -266,11 +234,11 @@ python3 -u -m pytest -v -s testCases/test_SSHSNRTxpower.py \
                                 </div>
                             </div>
 
-                            <h2>SNR vs Tx Power Results</h2>
+                            <h2>SNR vs Tx Power Results (Power → Channel)</h2>
                             <table>
                                 <tr>
-                                    <th>Channel / Freq</th>
                                     <th>Power (dBm)</th>
+                                    <th>Channel / Freq</th>
                                     <th>Remote IP</th>
                                     <th style="text-align:center;">Local SNR (A1/A2)</th>
                                     <th style="text-align:center;">Remote SNR (A1/A2)</th>
@@ -279,21 +247,21 @@ python3 -u -m pytest -v -s testCases/test_SSHSNRTxpower.py \
                                 </tr>
                     """
 
-                    def currentChannel = ""
+                    def currentPower = ""
                     if (jsonReport.iterations) {
                         jsonReport.iterations.each { r ->
                             def statusClass = r.status == "PASS" ? "status-pass" : "status-fail"
 
-                            // Group rows by channel visually
-                            if (r.channel != currentChannel) {
-                                htmlContent += """<tr><td colspan="7" class="channel-cell">Channel ${r.channel} (${r.freq} MHz)</td></tr>"""
-                                currentChannel = r.channel
+                            // Group rows by power visually
+                            if ("${r.power}" != currentPower) {
+                                htmlContent += """<tr><td colspan="7" class="channel-cell">Power ${r.power} dBm</td></tr>"""
+                                currentPower = "${r.power}"
                             }
 
                             htmlContent += """
                                 <tr>
-                                    <td></td>
-                                    <td class="power-cell">${r.power}</td>
+                                    <td class="power-cell"></td>
+                                    <td>Ch ${r.channel} (${r.freq} MHz)</td>
                                     <td>${r.remote_ip}</td>
                                     <td style="text-align:center;">${r.local_snr_a1} / ${r.local_snr_a2}</td>
                                     <td style="text-align:center;">${r.remote_snr_a1} / ${r.remote_snr_a2}</td>
@@ -308,22 +276,8 @@ python3 -u -m pytest -v -s testCases/test_SSHSNRTxpower.py \
 
                     htmlContent += """
                             </table>
-
-                            <button class='log-button' onclick="showLog()">See Full Execution Logs</button>
+                            <p style="margin-top:24px;color:#6b7280;">Excel report: <b>snr_txpower_report.xlsx</b> (attached to email / build artifacts)</p>
                         </div>
-
-                        <div id="logModal" class="modal">
-                          <div class="modal-content">
-                            <div class="modal-header">
-                                <h2>Complete Test Run Log</h2>
-                                <span class="modal-close" onclick="closeModal()">&times;</span>
-                            </div>
-                            <pre id="log-content-pre"></pre>
-                          </div>
-                        </div>
-
-                        <!-- Hidden Log Data -->
-                        <div id="log-data" style="display:none;">${fullLogContent}</div>
                     </body>
                     </html>
                     """
@@ -345,7 +299,7 @@ python3 -u -m pytest -v -s testCases/test_SSHSNRTxpower.py \
                 reportName: 'SSH SNR Tx Power Test Report'
             ])
 
-            archiveArtifacts artifacts: "snr_test_report.html,${env.LOG_FILE},iteration_results.json", allowEmptyArchive: true
+            archiveArtifacts artifacts: "snr_test_report.html,snr_txpower_report.xlsx,${env.LOG_FILE},iteration_results.json", allowEmptyArchive: true
 
             sh "rm -f ${env.LOG_FILE} || true"
 
@@ -383,7 +337,7 @@ python3 -u -m pytest -v -s testCases/test_SSHSNRTxpower.py \
                     """,
                     to: userEmail,
                     mimeType: 'text/html',
-                    attachmentsPattern: "snr_test_report.html,iteration_results.json"
+                    attachmentsPattern: "snr_test_report.html,snr_txpower_report.xlsx,iteration_results.json"
                 )
             }
         }

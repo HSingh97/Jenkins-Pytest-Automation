@@ -20,6 +20,15 @@ from netmiko import ConnectHandler
 
 from preMadeFunctions import dualstack
 
+try:
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    _EXCEL_OK = True
+except ImportError:
+    _EXCEL_OK = False
+
 USERNAME = "root"
 PASSWORD = "Sen@0ubRNwk" + "$"
 
@@ -29,8 +38,11 @@ LINK_POLL_INTERVAL_S = 10  # poll interval while waiting for RF link
 CHANNEL_LINK_TIMEOUT_S = 600
 POWER_LINK_TIMEOUT_S = 600
 
+EXCEL_REPORT = "snr_txpower_report.xlsx"
+JSON_RESULTS = "iteration_results.json"
 
-def append_result_to_json(result, filename="iteration_results.json"):
+
+def append_result_to_json(result, filename=JSON_RESULTS):
     try:
         with open(filename, "r") as f:
             data = json.load(f)
@@ -42,6 +54,138 @@ def append_result_to_json(result, filename="iteration_results.json"):
     data["iterations"].append(result)
     with open(filename, "w") as f:
         json.dump(data, f, indent=4)
+
+
+def _fail_row(channel, band, power, remote_ip):
+    return {
+        "channel": channel,
+        "freq": channel_to_frequency(channel, band),
+        "power": power,
+        "remote_ip": remote_ip,
+        "local_snr_a1": "-",
+        "local_snr_a2": "-",
+        "remote_snr_a1": "-",
+        "remote_snr_a2": "-",
+        "tx_rate": "-",
+        "rx_rate": "-",
+        "status": "FAIL",
+    }
+
+
+def write_excel_report(iterations, channel_list, power_list, filename=EXCEL_REPORT):
+    """
+    Excel layout (power first, then channels under each power):
+
+      Power | Channel | Freq | Local SNR A1/A2 | Remote SNR A1/A2 | Tx/Rx | Status | ...
+
+    Plus matrix sheets: rows = Power, columns = Channel.
+    """
+    if not _EXCEL_OK:
+        print("openpyxl not installed - skipping Excel report", flush=True)
+        return None
+
+    iterations = iterations or []
+    # Lookup: (str(power), str(channel)) -> result
+    by_key = {}
+    for r in iterations:
+        by_key[(str(r.get("power")), str(r.get("channel")))] = r
+
+    wb = Workbook()
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill("solid", fgColor="0A2540")
+    power_fill = PatternFill("solid", fgColor="E5E7EB")
+    pass_fill = PatternFill("solid", fgColor="D1FAE5")
+    fail_fill = PatternFill("solid", fgColor="FEE2E2")
+
+    # --- Sheet 1: detail grouped Power → Channel ---
+    ws = wb.active
+    ws.title = "By Power"
+    headers = [
+        "Power (dBm)",
+        "Channel",
+        "Freq (MHz)",
+        "Local SNR A1",
+        "Local SNR A2",
+        "Remote SNR A1",
+        "Remote SNR A2",
+        "Tx Rate",
+        "Rx Rate",
+        "Status",
+        "Remote IP",
+    ]
+    ws.append(headers)
+    for col, _ in enumerate(headers, 1):
+        cell = ws.cell(1, col)
+        cell.font = header_font
+        cell.fill = header_fill
+
+    for power in power_list:
+        first_of_power = True
+        for channel in channel_list:
+            r = by_key.get((str(power), str(channel)), {})
+            row = [
+                power if first_of_power else "",
+                channel,
+                r.get("freq", channel_to_frequency(channel, "5GHz")),
+                r.get("local_snr_a1", "-"),
+                r.get("local_snr_a2", "-"),
+                r.get("remote_snr_a1", "-"),
+                r.get("remote_snr_a2", "-"),
+                r.get("tx_rate", "-"),
+                r.get("rx_rate", "-"),
+                r.get("status", "FAIL"),
+                r.get("remote_ip", "-"),
+            ]
+            ws.append(row)
+            row_idx = ws.max_row
+            if first_of_power:
+                ws.cell(row_idx, 1).fill = power_fill
+                ws.cell(row_idx, 1).font = Font(bold=True)
+            status_cell = ws.cell(row_idx, 10)
+            if str(r.get("status", "")).upper() == "PASS":
+                status_cell.fill = pass_fill
+            else:
+                status_cell.fill = fail_fill
+            first_of_power = False
+
+    for col in range(1, len(headers) + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 14
+    ws.column_dimensions["K"].width = 28
+
+    def _matrix_sheet(title, field):
+        ws_m = wb.create_sheet(title)
+        ws_m.cell(1, 1, "Power \\ Channel").font = header_font
+        ws_m.cell(1, 1).fill = header_fill
+        for ci, ch in enumerate(channel_list, 2):
+            cell = ws_m.cell(1, ci, f"Ch {ch}")
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+        for ri, power in enumerate(power_list, 2):
+            pcell = ws_m.cell(ri, 1, power)
+            pcell.font = Font(bold=True)
+            pcell.fill = power_fill
+            for ci, ch in enumerate(channel_list, 2):
+                r = by_key.get((str(power), str(ch)), {})
+                val = r.get(field, "-")
+                cell = ws_m.cell(ri, ci, val)
+                cell.alignment = Alignment(horizontal="center")
+                if field == "status":
+                    if str(val).upper() == "PASS":
+                        cell.fill = pass_fill
+                    else:
+                        cell.fill = fail_fill
+        ws_m.column_dimensions["A"].width = 16
+        for ci in range(2, len(channel_list) + 2):
+            ws_m.column_dimensions[get_column_letter(ci)].width = 12
+
+    _matrix_sheet("Matrix Local SNR A1", "local_snr_a1")
+    _matrix_sheet("Matrix Remote SNR A1", "remote_snr_a1")
+    _matrix_sheet("Matrix Status", "status")
+
+    wb.save(filename)
+    print(f"Excel report written: {filename}", flush=True)
+    return filename
 
 
 def ping(host_or_addrs, quiet=False):
@@ -578,62 +722,66 @@ def test_snr_tx_power_ssh(
         flush=True,
     )
     print(f"Frequency Band: {band}", flush=True)
-    print(f"Channels: {channel_list}", flush=True)
+    print(f"Order: set POWER first, then sweep CHANNELS", flush=True)
     print(f"Powers: {power_list}", flush=True)
+    print(f"Channels: {channel_list}", flush=True)
     print("=" * 80, flush=True)
 
-    for channel in channel_list:
-        print(f"\n====== SWITCHING TO CHANNEL: {channel} ({band}) ======", flush=True)
+    # Power outer → Channel inner (set Tx power, then test each channel)
+    for power in power_list:
+        print(f"\n###### SET POWER: {power} dBm ######", flush=True)
 
-        if ping(local_addrs) and ping(remote_addrs):
-            # 1) BTS AP: ACS off + HT80 + channel, then confirm beaconing
-            # 2) CPE STA: do not force channel (breaks RF); reload so it rejoins
+        if not (ping(local_addrs) and ping(remote_addrs)):
+            print("Devices not reachable before power set (v4/v6)", flush=True)
+            for channel in channel_list:
+                append_result_to_json(
+                    _fail_row(channel, band, power, target_remote)
+                )
+            continue
+
+        set_power(remote_addrs, power, ridx)
+        time.sleep(2)
+        set_power(local_addrs, power, ridx)
+        power_link_ok = wait_for_link(
+            local_addrs,
+            remote_addrs,
+            ridx,
+            POWER_LINK_TIMEOUT_S,
+            reason=f"power {power} dBm",
+        )
+        if not power_link_ok:
+            print(
+                f"Link not up after power {power} dBm - still trying channels",
+                flush=True,
+            )
+
+        for channel in channel_list:
+            print(
+                f"\n--- Power {power} dBm | Channel {channel} ({band}) ---",
+                flush=True,
+            )
+            result_dict = _fail_row(channel, band, power, target_remote)
+
+            if not ping(local_addrs, quiet=True):
+                print("BTS unreachable - recording FAIL", flush=True)
+                append_result_to_json(result_dict)
+                continue
+
             try:
                 set_channel(local_addrs, channel, ridx, role="bts")
             except RuntimeError as e:
                 print(f"BTS channel set rejected: {e}", flush=True)
-                for power in power_list:
-                    append_result_to_json(
-                        {
-                            "channel": channel,
-                            "freq": channel_to_frequency(channel, band),
-                            "power": power,
-                            "remote_ip": target_remote,
-                            "local_snr_a1": "-",
-                            "local_snr_a2": "-",
-                            "remote_snr_a1": "-",
-                            "remote_snr_a2": "-",
-                            "tx_rate": "-",
-                            "rx_rate": "-",
-                            "status": "FAIL",
-                        }
-                    )
+                append_result_to_json(result_dict)
                 continue
 
             if not wait_bts_beaconing(local_addrs, ridx, channel, timeout_s=180):
                 print(
-                    f"Skipping channel {channel} - BTS not beaconing after apply",
+                    f"Skipping ch {channel} @ {power} dBm - BTS not beaconing",
                     flush=True,
                 )
-                for power in power_list:
-                    append_result_to_json(
-                        {
-                            "channel": channel,
-                            "freq": channel_to_frequency(channel, band),
-                            "power": power,
-                            "remote_ip": target_remote,
-                            "local_snr_a1": "-",
-                            "local_snr_a2": "-",
-                            "remote_snr_a1": "-",
-                            "remote_snr_a2": "-",
-                            "tx_rate": "-",
-                            "rx_rate": "-",
-                            "status": "FAIL",
-                        }
-                    )
+                append_result_to_json(result_dict)
                 continue
 
-            # CPE may already be unreachable over RF-bridged path; try reload if pingable
             if ping(remote_addrs, quiet=True):
                 set_channel(remote_addrs, channel, ridx, role="cpe")
             else:
@@ -648,95 +796,57 @@ def test_snr_tx_power_ssh(
                 remote_addrs,
                 ridx,
                 CHANNEL_LINK_TIMEOUT_S,
-                reason=f"channel {channel}",
+                reason=f"power {power} dBm / channel {channel}",
             )
             if not link_ok:
                 print(
-                    f"Skipping channel {channel} - RF link did not come up",
+                    f"RF link did not come up for ch {channel} @ {power} dBm",
                     flush=True,
                 )
-                for power in power_list:
-                    append_result_to_json(
-                        {
-                            "channel": channel,
-                            "freq": channel_to_frequency(channel, band),
-                            "power": power,
-                            "remote_ip": target_remote,
-                            "local_snr_a1": "-",
-                            "local_snr_a2": "-",
-                            "remote_snr_a1": "-",
-                            "remote_snr_a2": "-",
-                            "tx_rate": "-",
-                            "rx_rate": "-",
-                            "status": "FAIL",
-                        }
-                    )
+                append_result_to_json(result_dict)
                 continue
-        else:
-            print("Devices not reachable before channel change (v4/v6)", flush=True)
-            continue
 
-        for power in power_list:
-            print(f"\n--- Testing Channel {channel} @ {power} dBm ---", flush=True)
-
-            result_dict = {
-                "channel": channel,
-                "freq": channel_to_frequency(channel, band),
-                "power": power,
-                "remote_ip": target_remote,
-                "local_snr_a1": "-",
-                "local_snr_a2": "-",
-                "remote_snr_a1": "-",
-                "remote_snr_a2": "-",
-                "tx_rate": "-",
-                "rx_rate": "-",
-                "status": "FAIL",
-            }
-
-            if ping(local_addrs) and ping(remote_addrs):
+            # Re-assert power after channel change (some radios reset Tx power)
+            if ping(remote_addrs, quiet=True):
                 set_power(remote_addrs, power, ridx)
-                time.sleep(2)
-                set_power(local_addrs, power, ridx)
-                link_ok = wait_for_link(
-                    local_addrs,
-                    remote_addrs,
-                    ridx,
-                    POWER_LINK_TIMEOUT_S,
-                    reason=f"power {power} dBm",
+                time.sleep(1)
+            set_power(local_addrs, power, ridx)
+            time.sleep(2)
+
+            stats = get_linkstats(local_addrs, prefer_ip=target_remote)
+            current_channel = get_channel(local_addrs, ridx)
+
+            if stats:
+                result_dict.update(
+                    {
+                        "remote_ip": stats["IP"],
+                        "local_snr_a1": stats["Local SNR A1"],
+                        "local_snr_a2": stats["Local SNR A2"],
+                        "remote_snr_a1": stats["Remote SNR A1"],
+                        "remote_snr_a2": stats["Remote SNR A2"],
+                        "tx_rate": stats["Tx Rate"],
+                        "rx_rate": stats["Rx Rate"],
+                        "status": "PASS",
+                    }
                 )
-                if not link_ok:
-                    print("Link not up after power change", flush=True)
-                    append_result_to_json(result_dict)
-                    continue
-
-                stats = get_linkstats(local_addrs, prefer_ip=target_remote)
-                current_channel = get_channel(local_addrs, ridx)
-
-                if stats:
-                    result_dict.update(
-                        {
-                            "remote_ip": stats["IP"],
-                            "local_snr_a1": stats["Local SNR A1"],
-                            "local_snr_a2": stats["Local SNR A2"],
-                            "remote_snr_a1": stats["Remote SNR A1"],
-                            "remote_snr_a2": stats["Remote SNR A2"],
-                            "tx_rate": stats["Tx Rate"],
-                            "rx_rate": stats["Rx Rate"],
-                            "status": "PASS",
-                        }
-                    )
-                    print(
-                        f"DATA_SAVED | Channel: {current_channel} | "
-                        f"Frequency: {result_dict['freq']} MHz | "
-                        f"Power: {power} | Status: OK",
-                        flush=True,
-                    )
-                else:
-                    print("No link stats retrieved via SSH sysfs", flush=True)
+                print(
+                    f"DATA_SAVED | Power: {power} | Channel: {current_channel} | "
+                    f"Frequency: {result_dict['freq']} MHz | Status: OK",
+                    flush=True,
+                )
             else:
-                print("Link lost during test (v4/v6 unreachable)", flush=True)
+                print("No link stats retrieved via SSH sysfs", flush=True)
 
             append_result_to_json(result_dict)
+
+    # Excel: Power rows with channels under each (plus matrix sheets)
+    try:
+        with open(JSON_RESULTS, "r") as f:
+            data = json.load(f)
+        iters = data.get("iterations", []) if isinstance(data, dict) else []
+    except (FileNotFoundError, json.JSONDecodeError):
+        iters = []
+    write_excel_report(iters, channel_list, power_list)
 
 
 def warn(*args, **kwargs):
