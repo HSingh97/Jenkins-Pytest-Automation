@@ -20,15 +20,21 @@ pipeline {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${params.TARGET_STAND}"
                     echo "--- Local IP     : ${params['Local IP Address']}"
+                    echo "--- Local IPv6   : ${params['Local IPv6 Address'] ?: ''}"
                     echo "--- Remote IP    : ${params['Remote IP Address']}"
+                    echo "--- Remote IPv6  : ${params['Remote IPv6 Address'] ?: ''}"
                     echo "--- Radio        : ${params.Radio}"
                     echo "--- Channels     : ${params.Channels}"
                     echo "--- Powers       : ${params.Powers}"
-                    echo "--- Mode         : SSH (ucidyn / sysfs)"
+                    echo "--- Mode         : SSH (ucidyn / sysfs) dual-stack"
                     echo "----------------------------------------"
 
-                    if (!params['Local IP Address'] || !params['Remote IP Address']) {
-                        error "Missing required IP parameters"
+                    def hasLocal = (params['Local IP Address'] ?: '').toString().trim() ||
+                                   (params['Local IPv6 Address'] ?: '').toString().trim()
+                    def hasRemote = (params['Remote IP Address'] ?: '').toString().trim() ||
+                                    (params['Remote IPv6 Address'] ?: '').toString().trim()
+                    if (!hasLocal || !hasRemote) {
+                        error "Need Local and Remote address (IPv4 and/or IPv6)"
                     }
 
                     // Initialize clean JSON file
@@ -47,14 +53,29 @@ pipeline {
         stage('SSH SNR Tx Power Test') {
             steps {
                 script {
+                    def localIP = (params['Local IP Address'] ?: '').toString().trim()
+                    def remoteIP = (params['Remote IP Address'] ?: '').toString().trim()
+                    def localIPv6 = (params['Local IPv6 Address'] ?: '').toString().trim()
+                    def remoteIPv6 = (params['Remote IPv6 Address'] ?: '').toString().trim()
+
+                    // IPv4 and/or IPv6:
+                    //   v4-only  -> Local/Remote IP fields
+                    //   v6-only  -> Local/Remote IPv6 fields (or paste v6 into IP fields)
+                    //   dual     -> both; pytest gets v4 via --local-ip/--remote-ip and v6 via --*-ipv6
+                    def localArg = localIP ?: localIPv6
+                    def remoteArg = remoteIP ?: remoteIPv6
+                    def ipv6Args = ""
+                    if (localIP && localIPv6) { ipv6Args += " --local-ipv6 '${localIPv6}'" }
+                    if (remoteIP && remoteIPv6) { ipv6Args += " --remote-ipv6 '${remoteIPv6}'" }
+
                     sh """#!/bin/bash
 set -o pipefail
 python3 -u -m pytest -v -s testCases/test_SSHSNRTxpower.py \
---local-ip '${params['Local IP Address']}' \
---remote-ip '${params['Remote IP Address']}' \
+--local-ip '${localArg}' \
+--remote-ip '${remoteArg}' \
 --radio '${params.Radio}' \
 --channels '${params.Channels}' \
---powers '${params.Powers}' 2>&1 | tee ${env.LOG_FILE}
+--powers '${params.Powers}'${ipv6Args} 2>&1 | tee ${env.LOG_FILE}
 """
                 }
             }
@@ -63,20 +84,34 @@ python3 -u -m pytest -v -s testCases/test_SSHSNRTxpower.py \
         stage('Generate Report') {
             steps {
                 script {
-                    def localIP = params['Local IP Address']
-                    def remoteIP = params['Remote IP Address']
+                    def localIP = (params['Local IP Address'] ?: '').toString().trim()
+                    def remoteIP = (params['Remote IP Address'] ?: '').toString().trim()
+                    def localIPv6 = (params['Local IPv6 Address'] ?: '').toString().trim()
+                    def remoteIPv6 = (params['Remote IPv6 Address'] ?: '').toString().trim()
 
-                    sh "ssh-keygen -R ${localIP} || true"
-                    sh "ssh-keygen -R ${remoteIP} || true"
+                    [localIP, remoteIP, localIPv6, remoteIPv6].findAll { it }.each { ip ->
+                        def host = ip.contains(':') ? "[${ip}]" : ip
+                        sh "ssh-keygen -R ${host} || true"
+                    }
 
                     def local_fw_version = "N/A"
                     def remote_fw_version = "N/A"
-                    try {
-                        local_fw_version = sh(script: "sshpass -p 'Sen@0ubRNwk\$' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (e) {}
-                    try {
-                        remote_fw_version = sh(script: "sshpass -p 'Sen@0ubRNwk\$' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (e) {}
+                    def sshHostsLocal = [localIP, localIPv6].findAll { it }
+                    def sshHostsRemote = [remoteIP, remoteIPv6].findAll { it }
+                    for (def h : sshHostsLocal) {
+                        def host = h.contains(':') ? "[${h}]" : h
+                        try {
+                            local_fw_version = sh(script: "sshpass -p 'Sen@0ubRNwk\$' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@${host} 'cat /etc/version'", returnStdout: true).trim()
+                            break
+                        } catch (e) {}
+                    }
+                    for (def h : sshHostsRemote) {
+                        def host = h.contains(':') ? "[${h}]" : h
+                        try {
+                            remote_fw_version = sh(script: "sshpass -p 'Sen@0ubRNwk\$' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@${host} 'cat /etc/version'", returnStdout: true).trim()
+                            break
+                        } catch (e) {}
+                    }
 
                     def jsonReport = readJSON file: 'iteration_results.json'
                     echo "JSON Report: ${jsonReport}"
@@ -93,9 +128,11 @@ python3 -u -m pytest -v -s testCases/test_SSHSNRTxpower.py \
                     def successPercentageStr = String.format("%.1f", successPercentage)
 
                     def buildParams = [
-                        "Mode": "SSH (ucidyn / sysfs)",
-                        "Local IP Address": localIP,
-                        "Remote IP Address": remoteIP,
+                        "Mode": "SSH (ucidyn / sysfs) dual-stack",
+                        "Local IP Address": localIP ?: "(none)",
+                        "Local IPv6 Address": localIPv6 ?: "(none)",
+                        "Remote IP Address": remoteIP ?: "(none)",
+                        "Remote IPv6 Address": remoteIPv6 ?: "(none)",
                         "Channels Tested": params.Channels,
                         "Powers Tested": params.Powers,
                         "Radio": params.Radio,

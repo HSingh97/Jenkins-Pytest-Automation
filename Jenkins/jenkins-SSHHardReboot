@@ -15,8 +15,13 @@ pipeline {
                     echo "----------------------------------------"
                     echo "--- TARGET STAND: ${TARGET_STAND}"
                     echo "----------------------------------------"
-                    if (!params['Local IP Address'] || !params['Remote IP Addresses']) {
-                        error "Missing required parameters: Local IP Address or Remote IP Addresses"
+                    if (!(params['Local IP Address'] ?: '').toString().trim() &&
+                        !(params['Local IPv6 Address'] ?: '').toString().trim()) {
+                        error "Missing Local IP Address or Local IPv6 Address"
+                    }
+                    if (!(params['Remote IP Addresses'] ?: '').toString().trim() &&
+                        !(params['Remote IPv6 Address'] ?: '').toString().trim()) {
+                        error "Missing Remote IP Addresses or Remote IPv6 Address"
                     }
                     if (!params['PDU IP Address']) {
                         error "Missing required parameter: PDU IP Address"
@@ -42,19 +47,23 @@ pipeline {
         stage('Hard Reboot') {
             steps {
                 script {
-                    def localIP = params['Local IP Address']
+                    def localIP = (params['Local IP Address'] ?: '').toString().trim()
+                    def localIPv6 = (params['Local IPv6 Address'] ?: '').toString().trim()
 
                     // Support multiple remote IPs provided as comma-separated or newline-separated values
-                    def rawRemoteIPs = params['Remote IP Addresses']
+                    def rawRemoteIPs = (params['Remote IP Addresses'] ?: '').toString()
                     def remoteIPList = rawRemoteIPs.tokenize(',\n').collect { it.trim() }.findAll { it }
                     def remoteIPsJoined = remoteIPList.join(',')
+                    def remoteIPv6 = (params['Remote IPv6 Address'] ?: '').toString().trim()
 
                     def pduIP = params['PDU IP Address']
                     def pduPortBts = params['PDU Port BTS'] ?: params['PDU Port']
                     def pduPortCpe = params['PDU Port CPE']
 
-                    echo "Local IP Address (BTS): ${localIP}"
-                    echo "Remote IP Address(es) (CPE): ${remoteIPsJoined}"
+                    echo "Local IP Address (BTS): ${localIP ?: '(none)'}"
+                    echo "Local IPv6 Address (BTS): ${localIPv6 ?: '(none)'}"
+                    echo "Remote IP Address(es) (CPE): ${remoteIPsJoined ?: '(none)'}"
+                    echo "Remote IPv6 Address (CPE): ${remoteIPv6 ?: '(none)'}"
                     echo "PDU IP Address: ${pduIP}"
                     echo "PDU Port BTS: ${pduPortBts}"
                     echo "PDU Port CPE: ${pduPortCpe}"
@@ -64,20 +73,28 @@ pipeline {
 
                     echo "----------------------------------------"
                     echo "Testing Hard Reboot - PDU (DigiLogger)"
-                    echo "Cycle: BTS + CPE | Verify: Dying Gasp → RF link → ping"
+                    echo "Cycle: BTS + CPE | Verify: Dying Gasp → RF link → ping (v4/v6)"
                     echo "----------------------------------------"
 
                     sh "echo [] > iteration_results.json"
+
+                    def ipv6Args = ""
+                    // Dual-stack: keep v4 in --local-ip/--remote-ip, add v6 flags
+                    // IPv6-only: put v6 into --local-ip/--remote-ip (no separate flags needed)
+                    def localArg = localIP ?: localIPv6
+                    def remoteArg = remoteIPsJoined ?: remoteIPv6
+                    if (localIP && localIPv6) { ipv6Args += " --local-ipv6 '${localIPv6}'" }
+                    if (remoteIPsJoined && remoteIPv6) { ipv6Args += " --remote-ipv6 '${remoteIPv6}'" }
 
                     for (int i = 1; i <= rebootCount.toInteger(); i++) {
                         echo "Running hard-reboot test iteration ${i}"
                         try {
                             sh """
                                 pytest -v -s testCases/test_SSHHardReboot.py::test_hard_reboot \
-                                --local-ip '${localIP}' --remote-ip '${remoteIPsJoined}' \
+                                --local-ip '${localArg}' --remote-ip '${remoteArg}' \
                                 --pdu-ip '${pduIP}' --pdu-port '${pduPortBts}' \
                                 --pdu-port-cpe '${pduPortCpe}' \
-                                --iter ${i} 2>&1 | tee test-${i}.log; exit \${PIPESTATUS[0]}
+                                --iter ${i}${ipv6Args} 2>&1 | tee test-${i}.log; exit \${PIPESTATUS[0]}
                             """
                         } catch (Exception e) {
                             echo "Hard reboot test iteration ${i} failed: ${e.message}"
@@ -89,31 +106,40 @@ pipeline {
         stage('Generate Report') {
             steps {
                 script {
-                    def localIP = params['Local IP Address']
+                    def localIP = (params['Local IP Address'] ?: '').toString().trim()
+                    def localIPv6 = (params['Local IPv6 Address'] ?: '').toString().trim()
 
                     // Parse remote IPs again for report generation
-                    def rawRemoteIPs = params['Remote IP Addresses']
+                    def rawRemoteIPs = (params['Remote IP Addresses'] ?: '').toString()
                     def remoteIPList = rawRemoteIPs.tokenize(',\n').collect { it.trim() }.findAll { it }
+                    def remoteIPv6 = (params['Remote IPv6 Address'] ?: '').toString().trim()
 
-                    // Clean SSH known hosts for local and all remote IPs
-                    sh "ssh-keygen -R ${localIP} || true"
-                    remoteIPList.each { remoteIP ->
-                        sh "ssh-keygen -R ${remoteIP} || true"
+                    // Clean SSH known hosts for local and all remote IPs (v4 + v6)
+                    ([localIP, localIPv6, remoteIPv6] + remoteIPList).findAll { it }.each { ip ->
+                        def host = ip.contains(':') ? "[${ip}]" : ip
+                        sh "ssh-keygen -R ${host} || true"
                     }
 
                     def local_fw_version = "N/A"
 
-                    try {
-                        local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${localIP} 'cat /etc/version'", returnStdout: true).trim()
-                    } catch (Exception e) {
-                        echo "⚠️ Failed to get local FW version from ${localIP}: ${e.message}"
+                    def sshHostsLocal = [localIP, localIPv6].findAll { it }
+                    for (def h : sshHostsLocal) {
+                        def host = h.contains(':') ? "[${h}]" : h
+                        try {
+                            local_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${host} 'cat /etc/version'", returnStdout: true).trim()
+                            break
+                        } catch (Exception e) {
+                            echo "⚠️ Failed to get local FW version from ${h}: ${e.message}"
+                        }
                     }
 
                     // FIX: All SUs share the same FW in PTMP - get version from first reachable SU only
                     def remote_fw_version = "N/A"
-                    for (def remoteIP : remoteIPList) {
+                    def sshHostsRemote = remoteIPList + ([remoteIPv6].findAll { it })
+                    for (def remoteIP : sshHostsRemote) {
+                        def host = remoteIP.contains(':') ? "[${remoteIP}]" : remoteIP
                         try {
-                            remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${remoteIP} 'cat /etc/version'", returnStdout: true).trim()
+                            remote_fw_version = sh(script: "sshpass -p 'admin' ssh -o StrictHostKeyChecking=no root@${host} 'cat /etc/version'", returnStdout: true).trim()
                             break  // Got version from first reachable SU, stop
                         } catch (Exception e) {
                             echo "⚠️ Failed to get remote FW version from ${remoteIP}: ${e.message}"
@@ -136,8 +162,10 @@ pipeline {
 
                     // FIX: Match original script - single FW Version (Local / Remote) row
                     def buildParams = [
-                        "Local IP Address (BTS)"        : params['Local IP Address'],
-                        "Remote IP Address(es) (CPE)"   : remoteIPList.join(", "),
+                        "Local IP Address (BTS)"        : localIP ?: "(none)",
+                        "Local IPv6 Address (BTS)"      : localIPv6 ?: "(none)",
+                        "Remote IP Address(es) (CPE)"   : remoteIPList.join(", ") ?: "(none)",
+                        "Remote IPv6 Address (CPE)"     : remoteIPv6 ?: "(none)",
                         "PDU IP Address"                : params['PDU IP Address'],
                         "PDU Port BTS"                  : (params['PDU Port BTS'] ?: params['PDU Port']),
                         "PDU Port CPE"                  : params['PDU Port CPE'],
@@ -404,26 +432,37 @@ pipeline {
                             def status = result.status == "PASS" ? "<span class='status-pass'>PASS</span>" : "<span class='status-fail'>FAIL</span>"
 
                             def btsDgOk = (result['Dying Gasp']?.BTS?.ok == true)
-                            def cpeDgMap = result['Dying Gasp']?.CPE
-                            def cpeDgOk = true
-                            if (cpeDgMap instanceof Map && !cpeDgMap.isEmpty()) {
-                                cpeDgMap.each { k, v -> if (v?.ok != true) { cpeDgOk = false } }
-                            } else {
-                                cpeDgOk = false
+                            def cpeDg = result['Dying Gasp']?.CPE
+                            def cpeDgOk = false
+                            def cpeDgDetail = ""
+                            if (cpeDg instanceof Map) {
+                                if (cpeDg.containsKey('ok')) {
+                                    // New dual-stack shape: {ok, detail}
+                                    cpeDgOk = (cpeDg.ok == true)
+                                    cpeDgDetail = cpeDg.detail ?: ""
+                                } else if (!cpeDg.isEmpty()) {
+                                    // Legacy per-IP map
+                                    cpeDgOk = true
+                                    cpeDg.each { k, v -> if (v?.ok != true) { cpeDgOk = false } }
+                                }
                             }
                             def dgStatus = (btsDgOk && cpeDgOk) ? "<span class='status-pass'>OK</span>" : "<span class='status-fail'>FAIL</span>"
                             def btsDgDetail = result['Dying Gasp']?.BTS?.detail ?: ""
                             if (btsDgDetail) {
                                 dgStatus += "<br/><small>BTS: ${btsDgDetail}</small>"
                             }
+                            if (cpeDgDetail) {
+                                dgStatus += "<br/><small>CPE: ${cpeDgDetail}</small>"
+                            }
 
                             def btsPing = (result['Ping Results']?.Local == true) ? "<span class='status-pass'>OK</span>" : "<span class='status-fail'>FAIL</span>"
-                            def remoteMap = result['Ping Results']?.Remote
-                            def cpeOk = true
-                            if (remoteMap instanceof Map) {
-                                remoteMap.each { k, v -> if (v != true) { cpeOk = false } }
+                            def remotePing = result['Ping Results']?.Remote
+                            def cpeOk = false
+                            if (remotePing instanceof Map) {
+                                cpeOk = true
+                                remotePing.each { k, v -> if (v != true) { cpeOk = false } }
                             } else {
-                                cpeOk = false
+                                cpeOk = (remotePing == true)
                             }
                             def cpePing = cpeOk ? "<span class='status-pass'>OK</span>" : "<span class='status-fail'>FAIL</span>"
                             def rfOk = (result['RF Link']?.ok == true)

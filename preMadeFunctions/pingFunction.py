@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 
-import platform
-import subprocess
 import time
 
-def Ping(host):
-    param = '-n' if platform.system().lower() == 'windows' else '-c'
-    command = ['ping', param, '3', host]
+from . import dualstack
 
-    return subprocess.call(command) == 0
+
+def Ping(host):
+    """Ping IPv4 or IPv6 (forces -4/-6 on Linux)."""
+    return dualstack.ping_one(str(host), quiet=True)
 
 
 def check_access(host):

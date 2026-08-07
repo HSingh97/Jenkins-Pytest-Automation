@@ -18,6 +18,8 @@ from datetime import datetime
 
 from netmiko import ConnectHandler
 
+from preMadeFunctions import dualstack
+
 USERNAME = "root"
 PASSWORD = "Sen@0ubRNwk" + "$"
 
@@ -42,29 +44,11 @@ def append_result_to_json(result, filename="iteration_results.json"):
         json.dump(data, f, indent=4)
 
 
-def ping(host, quiet=False):
-    param = "-n" if platform.system().lower() == "windows" else "-c"
-    with open(os.devnull, "w") as DEVNULL:
-        try:
-            result = (
-                subprocess.call(
-                    ["ping", param, "3", str(host)],
-                    stdout=DEVNULL,
-                    stderr=DEVNULL,
-                    timeout=10,
-                )
-                == 0
-            )
-            if not quiet:
-                print(
-                    f"{host} is {'Reachable' if result else 'Not Reachable'}",
-                    flush=True,
-                )
-            return result
-        except Exception:
-            if not quiet:
-                print(f"{host} ping timeout", flush=True)
-            return False
+def ping(host_or_addrs, quiet=False):
+    """Ping one address or any of a list (IPv4/IPv6)."""
+    if isinstance(host_or_addrs, (list, tuple)):
+        return dualstack.ping_any(host_or_addrs, quiet=quiet) is not None
+    return dualstack.ping_one(str(host_or_addrs), quiet=quiet)
 
 
 def radio_index(radio):
@@ -75,8 +59,18 @@ def radio_index(radio):
     return 1
 
 
-def ssh_run(host, command, timeout=60):
-    """Run one command over SSH as root; return stdout text."""
+def ssh_run(host_or_addrs, command, timeout=60):
+    """
+    Run one command over SSH as root.
+    host_or_addrs may be a single IP or a list (v4+v6); first reachable is used.
+    """
+    if isinstance(host_or_addrs, (list, tuple)):
+        host = dualstack.pick_ssh_host(host_or_addrs)
+        if not host:
+            raise RuntimeError(f"No SSH host available from {host_or_addrs}")
+    else:
+        host = dualstack.normalize_addr(str(host_or_addrs))
+    print(f"[SSH] {host} :: {command[:80]}{'...' if len(command) > 80 else ''}", flush=True)
     device = {
         "device_type": "linux",
         "host": host,
@@ -520,25 +514,47 @@ def channel_to_frequency(channel, band):
         return "?"
 
 
-def test_snr_tx_power_ssh(local_ip, remote_ip, radio, channels, powers):
+def test_snr_tx_power_ssh(
+    local_ip, remote_ip, radio, channels, powers, local_ipv6="", remote_ipv6=None
+):
     print(
         f"\nSTARTING SSH SNR vs TX POWER TEST at "
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         flush=True,
     )
 
+    # Dual-stack: try IPv4 and IPv6 for each device
     if isinstance(remote_ip, list):
-        target_remote = remote_ip[0]
+        remote_v4_list = remote_ip
     else:
-        target_remote = (
-            str(remote_ip)
+        remote_v4_list = [
+            p.strip()
+            for p in str(remote_ip)
             .replace("[", "")
             .replace("]", "")
             .replace("'", "")
             .replace('"', "")
-            .split(",")[0]
-            .strip()
+            .split(",")
+            if p.strip()
+        ]
+    remote_v6_list = remote_ipv6 if isinstance(remote_ipv6, list) else (
+        [remote_ipv6] if remote_ipv6 else []
+    )
+
+    local_addrs = dualstack.collect_addrs(local_ip, local_ipv6)
+    remote_addrs = dualstack.collect_addrs(*remote_v4_list, *remote_v6_list)
+    if not local_addrs or not remote_addrs:
+        raise AssertionError(
+            f"Need at least one local and one remote address "
+            f"(local={local_addrs}, remote={remote_addrs})"
         )
+
+    # Prefer IPv4 for display / prefer_ip matching when present
+    target_remote = remote_addrs[0]
+    for a in remote_addrs:
+        if not dualstack.is_ipv6(a):
+            target_remote = a
+            break
 
     channel_list = (
         channels
@@ -560,7 +576,8 @@ def test_snr_tx_power_ssh(local_ip, remote_ip, radio, channels, powers):
     band = "6GHz" if first_chan > 180 else "5GHz"
 
     print(
-        f"Local IP: {local_ip} | Remote IP: {target_remote} | "
+        f"Local addrs (BTS):  {local_addrs}\n"
+        f"Remote addrs (CPE): {remote_addrs}\n"
         f"Radio: {radio} (ath{ridx})",
         flush=True,
     )
@@ -572,11 +589,11 @@ def test_snr_tx_power_ssh(local_ip, remote_ip, radio, channels, powers):
     for channel in channel_list:
         print(f"\n====== SWITCHING TO CHANNEL: {channel} ({band}) ======", flush=True)
 
-        if ping(local_ip) and ping(target_remote):
+        if ping(local_addrs) and ping(remote_addrs):
             # 1) BTS AP: ACS off + HT80 + channel, then confirm beaconing
             # 2) CPE STA: do not force channel (breaks RF); reload so it rejoins
             try:
-                set_channel(local_ip, channel, ridx, role="bts")
+                set_channel(local_addrs, channel, ridx, role="bts")
             except RuntimeError as e:
                 print(f"BTS channel set rejected: {e}", flush=True)
                 for power in power_list:
@@ -597,7 +614,7 @@ def test_snr_tx_power_ssh(local_ip, remote_ip, radio, channels, powers):
                     )
                 continue
 
-            if not wait_bts_beaconing(local_ip, ridx, channel, timeout_s=180):
+            if not wait_bts_beaconing(local_addrs, ridx, channel, timeout_s=180):
                 print(
                     f"Skipping channel {channel} - BTS not beaconing after apply",
                     flush=True,
@@ -621,8 +638,8 @@ def test_snr_tx_power_ssh(local_ip, remote_ip, radio, channels, powers):
                 continue
 
             # CPE may already be unreachable over RF-bridged path; try reload if pingable
-            if ping(target_remote, quiet=True):
-                set_channel(target_remote, channel, ridx, role="cpe")
+            if ping(remote_addrs, quiet=True):
+                set_channel(remote_addrs, channel, ridx, role="cpe")
             else:
                 print(
                     "CPE not pingable after BTS channel change "
@@ -631,8 +648,8 @@ def test_snr_tx_power_ssh(local_ip, remote_ip, radio, channels, powers):
                 )
 
             link_ok = wait_for_link(
-                local_ip,
-                target_remote,
+                local_addrs,
+                remote_addrs,
                 ridx,
                 CHANNEL_LINK_TIMEOUT_S,
                 reason=f"channel {channel}",
@@ -660,7 +677,7 @@ def test_snr_tx_power_ssh(local_ip, remote_ip, radio, channels, powers):
                     )
                 continue
         else:
-            print("Devices not reachable before channel change", flush=True)
+            print("Devices not reachable before channel change (v4/v6)", flush=True)
             continue
 
         for power in power_list:
@@ -680,13 +697,13 @@ def test_snr_tx_power_ssh(local_ip, remote_ip, radio, channels, powers):
                 "status": "FAIL",
             }
 
-            if ping(local_ip) and ping(target_remote):
-                set_power(target_remote, power, ridx)
+            if ping(local_addrs) and ping(remote_addrs):
+                set_power(remote_addrs, power, ridx)
                 time.sleep(2)
-                set_power(local_ip, power, ridx)
+                set_power(local_addrs, power, ridx)
                 link_ok = wait_for_link(
-                    local_ip,
-                    target_remote,
+                    local_addrs,
+                    remote_addrs,
                     ridx,
                     POWER_LINK_TIMEOUT_S,
                     reason=f"power {power} dBm",
@@ -696,8 +713,8 @@ def test_snr_tx_power_ssh(local_ip, remote_ip, radio, channels, powers):
                     append_result_to_json(result_dict)
                     continue
 
-                stats = get_linkstats(local_ip, prefer_ip=target_remote)
-                current_channel = get_channel(local_ip, ridx)
+                stats = get_linkstats(local_addrs, prefer_ip=target_remote)
+                current_channel = get_channel(local_addrs, ridx)
 
                 if stats:
                     result_dict.update(
@@ -721,7 +738,7 @@ def test_snr_tx_power_ssh(local_ip, remote_ip, radio, channels, powers):
                 else:
                     print("No link stats retrieved via SSH sysfs", flush=True)
             else:
-                print("Link lost during test", flush=True)
+                print("Link lost during test (v4/v6 unreachable)", flush=True)
 
             append_result_to_json(result_dict)
 

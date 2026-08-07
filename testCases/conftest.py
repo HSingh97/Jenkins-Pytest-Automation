@@ -3,8 +3,10 @@ import pytest
 
 def pytest_addoption(parser):
     parser.addoption("--radio", action="store", default="Radio1", help="Radio")
-    parser.addoption("--local-ip", action="store", default="192.168.1.1", help="Local IP Address")
-    parser.addoption("--remote-ip", action="store", default="192.168.1.1", help="Remote IP Address (comma-separated for multiple)")
+    parser.addoption("--local-ip", action="store", default="", help="Local IP Address (IPv4 and/or IPv6, comma-separated)")
+    parser.addoption("--remote-ip", action="store", default="", help="Remote IP Address (comma-separated; IPv4 and/or IPv6)")
+    parser.addoption("--local-ipv6", action="store", default="", help="Optional Local IPv6 (in addition to --local-ip)")
+    parser.addoption("--remote-ipv6", action="store", default="", help="Optional Remote IPv6 (in addition to --remote-ip)")
     parser.addoption("--remote-pc-ip", action="store", default="192.168.1.1", help="Remote PC IP Address")
     parser.addoption("--local-pc-ip", action="store", default="192.168.1.1", help="Local PC IP Address")
     parser.addoption("--remote-pc-mgmt-ip", action="store", default="192.168.1.1", help="Remote PC Mgmt IP")
@@ -67,6 +69,16 @@ def remote_ip(request):
     # Split comma-separated IPs into a clean list so each IP is pinged individually
     raw = request.config.getoption("--remote-ip")
     return [ip.strip() for ip in raw.split(",") if ip.strip()]
+
+@pytest.fixture
+def local_ipv6(request):
+    return request.config.getoption("--local-ipv6")
+
+@pytest.fixture
+def remote_ipv6(request):
+    # Optional extra IPv6 for CPE (comma-separated allowed)
+    raw = request.config.getoption("--remote-ipv6") or ""
+    return [ip.strip() for ip in raw.replace(";", ",").split(",") if ip.strip()]
 
 @pytest.fixture
 def remote_pc_ip(request):

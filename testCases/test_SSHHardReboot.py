@@ -17,7 +17,7 @@ import warnings
 
 from netmiko import ConnectHandler
 
-from preMadeFunctions import digilogger_PDU, pingFunction
+from preMadeFunctions import digilogger_PDU, dualstack
 
 USERNAME = "root"
 PASSWORD = "Sen@0ubRNwk" + "$"
@@ -81,18 +81,26 @@ def pdu_hard_cycle_both(pdu_ip, bts_port, cpe_port):
     print("PDU hard-reboot cycle done (BTS + CPE)", flush=True)
 
 
-def wait_ping(host, label, timeout_s=DEVICE_UP_TIMEOUT_S):
-    """Poll ping until host is up or timeout (lab reboot can take several minutes)."""
+def wait_ping(host_or_addrs, label, timeout_s=DEVICE_UP_TIMEOUT_S):
+    """
+    Poll until any IPv4/IPv6 address responds (lab reboot can take several minutes).
+    host_or_addrs: one IP string or a list of candidates for the same device.
+    """
+    if isinstance(host_or_addrs, (list, tuple)):
+        addrs = dualstack.collect_addrs(*host_or_addrs)
+    else:
+        addrs = dualstack.collect_addrs(str(host_or_addrs))
     print(
-        f"--- Waiting up to {timeout_s}s for {label} ({host}) to come up ---",
+        f"--- Waiting up to {timeout_s}s for {label} ({addrs}) to come up ---",
         flush=True,
     )
     deadline = time.time() + timeout_s
     attempt = 0
     while time.time() < deadline:
         attempt += 1
-        if pingFunction.Ping(host):
-            print(f"{label} ping: OK (attempt {attempt})", flush=True)
+        live = dualstack.ping_any(addrs, quiet=True)
+        if live:
+            print(f"{label} ping: OK via {live} (attempt {attempt})", flush=True)
             return True
         remaining = int(deadline - time.time())
         if attempt == 1 or attempt % 6 == 0:
@@ -101,11 +109,23 @@ def wait_ping(host, label, timeout_s=DEVICE_UP_TIMEOUT_S):
                 flush=True,
             )
         time.sleep(RF_CHECK_INTERVAL_S)
-    print(f"{label} ping: FAIL (timeout {timeout_s}s)", flush=True)
+    print(f"{label} ping: FAIL (timeout {timeout_s}s) addrs={addrs}", flush=True)
     return False
 
 
-def _root_conn(host):
+def _ssh_host(host_or_addrs):
+    """Pick a live IPv4/IPv6 for SSH, or first configured address."""
+    if isinstance(host_or_addrs, (list, tuple)):
+        host = dualstack.pick_ssh_host(host_or_addrs)
+    else:
+        host = dualstack.pick_ssh_host([str(host_or_addrs)])
+    if not host:
+        raise RuntimeError(f"No SSH host available from {host_or_addrs}")
+    return host
+
+
+def _root_conn(host_or_addrs):
+    host = _ssh_host(host_or_addrs)
     return ConnectHandler(
         device_type="linux",
         host=host,
@@ -117,7 +137,8 @@ def _root_conn(host):
     )
 
 
-def _admin_conn(host):
+def _admin_conn(host_or_addrs):
+    host = _ssh_host(host_or_addrs)
     return ConnectHandler(
         device_type="linux",
         host=host,
@@ -143,7 +164,7 @@ def _match_dying_gasp(text):
     return False, ""
 
 
-def check_dying_gasp(host, label, prefer_remote_file=False):
+def check_dying_gasp(host_or_addrs, label, prefer_remote_file=False):
     """
     Verify Dying Gasp evidence after hard reboot.
 
@@ -153,14 +174,18 @@ def check_dying_gasp(host, label, prefer_remote_file=False):
       - root: /tmp/kwn-wifi1-events.log       (Power Off / link events)
       - root: logread | grep -Ei dying|gasp|power off
     """
-    print(f"--- Dying Gasp check on {label} ({host}) ---", flush=True)
+    try:
+        ssh_target = _ssh_host(host_or_addrs)
+    except RuntimeError:
+        ssh_target = str(host_or_addrs)
+    print(f"--- Dying Gasp check on {label} ({ssh_target}) ---", flush=True)
     evidence = []
     ok = False
     detail = ""
 
     # 1) Device log (same path Soft Reboot uses)
     try:
-        conn = _admin_conn(host)
+        conn = _admin_conn(host_or_addrs)
         logs = conn.send_command("show monitor logs devicelog all")
         conn.disconnect()
         matched, snippet = _match_dying_gasp(logs or "")
@@ -177,7 +202,7 @@ def check_dying_gasp(host, label, prefer_remote_file=False):
 
     # 2) Root file / syslog checks
     try:
-        conn = _root_conn(host)
+        conn = _root_conn(host_or_addrs)
         blobs = []
         if prefer_remote_file:
             blobs.append(
@@ -215,13 +240,13 @@ def check_dying_gasp(host, label, prefer_remote_file=False):
     return ok, detail, evidence
 
 
-def check_rf_link(local_ip, timeout_s=RF_LINK_TIMEOUT_S):
-    """SSH to BTS and poll until at least one STA associated on ath1 (up to timeout_s)."""
+def check_rf_link(local_addrs, timeout_s=RF_LINK_TIMEOUT_S):
+    """SSH to BTS (v4/v6) and poll until at least one STA associated on ath1."""
     last_detail = ""
     deadline = time.time() + timeout_s
     attempt = 0
     print(
-        f"--- Waiting up to {timeout_s}s for RF link on {local_ip} ---",
+        f"--- Waiting up to {timeout_s}s for RF link on {local_addrs} ---",
         flush=True,
     )
     while time.time() < deadline:
@@ -229,10 +254,10 @@ def check_rf_link(local_ip, timeout_s=RF_LINK_TIMEOUT_S):
         remaining = int(deadline - time.time())
         try:
             print(
-                f"--- RF link check {attempt} ({remaining}s left) on {local_ip} ---",
+                f"--- RF link check {attempt} ({remaining}s left) ---",
                 flush=True,
             )
-            conn = _root_conn(local_ip)
+            conn = _root_conn(local_addrs)
             count_raw = conn.send_command(
                 "wlanconfig ath1 list sta 2>/dev/null | "
                 "awk 'NR>1 && $1 ~ /:/ {c++} END{print c+0}'"
@@ -266,16 +291,37 @@ def check_rf_link(local_ip, timeout_s=RF_LINK_TIMEOUT_S):
     return False, last_detail or "no stations"
 
 
-def test_hard_reboot(local_ip, remote_ip, pdu_ip, pdu_port, pdu_port_cpe, iter):
-    remote_ips = remote_ip  # list from conftest
+def test_hard_reboot(
+    local_ip,
+    remote_ip,
+    pdu_ip,
+    pdu_port,
+    pdu_port_cpe,
+    iter,
+    local_ipv6="",
+    remote_ipv6=None,
+):
+    # Dual-stack: each device can have IPv4 and/or IPv6; any live address counts.
+    remote_v4 = remote_ip if isinstance(remote_ip, list) else [remote_ip]
+    remote_v6 = remote_ipv6 if isinstance(remote_ipv6, list) else (
+        [remote_ipv6] if remote_ipv6 else []
+    )
+    local_addrs = dualstack.collect_addrs(local_ip, local_ipv6)
+    remote_addrs = dualstack.collect_addrs(*remote_v4, *remote_v6)
+    if not local_addrs or not remote_addrs:
+        raise AssertionError(
+            f"Need at least one local and one remote address "
+            f"(local={local_addrs}, remote={remote_addrs})"
+        )
+
     bts_port = pdu_port
     cpe_port = pdu_port_cpe
 
     print("\n****************************************************", flush=True)
     print("  SSH Hard Reboot (PDU) - BTS + CPE", flush=True)
-    print("  Verify: Dying Gasp → RF link → ping", flush=True)
-    print(f"  Local (BTS)   : {local_ip}  PDU outlet={bts_port}", flush=True)
-    print(f"  Remote (CPE)  : {remote_ips}  PDU outlet={cpe_port}", flush=True)
+    print("  Verify: Dying Gasp → RF link → ping (IPv4/IPv6)", flush=True)
+    print(f"  Local (BTS)   : {local_addrs}  PDU outlet={bts_port}", flush=True)
+    print(f"  Remote (CPE)  : {remote_addrs}  PDU outlet={cpe_port}", flush=True)
     print(f"  PDU           : {pdu_ip}", flush=True)
     print(f"  Iteration     : {iter}", flush=True)
     print("****************************************************", flush=True)
@@ -284,20 +330,20 @@ def test_hard_reboot(local_ip, remote_ip, pdu_ip, pdu_port, pdu_port_cpe, iter):
         "iteration": iter,
         "test": "Test_SSH_HardReboot",
         "status": "FAIL",
-        "Local IP": local_ip,
-        "Remote IPs": remote_ips,
+        "Local IP": local_addrs,
+        "Remote IPs": remote_addrs,
         "PDU IP": pdu_ip,
         "PDU Port BTS": str(bts_port),
         "PDU Port CPE": str(cpe_port),
         "Ping Results": {
             "Local": False,
-            "Remote": {ip: False for ip in remote_ips},
+            "Remote": False,
             "After Link Local": False,
-            "After Link Remote": {ip: False for ip in remote_ips},
+            "After Link Remote": False,
         },
         "Dying Gasp": {
             "BTS": {"ok": False, "detail": ""},
-            "CPE": {},
+            "CPE": {"ok": False, "detail": ""},
         },
         "RF Link": {"ok": False, "detail": ""},
         "notes": "",
@@ -314,49 +360,40 @@ def test_hard_reboot(local_ip, remote_ip, pdu_ip, pdu_port, pdu_port_cpe, iter):
     print(f"--- Initial wait {POST_POWER_ON_WAIT_S}s after power-on ---", flush=True)
     time.sleep(POST_POWER_ON_WAIT_S)
 
-    # 2) Wait for devices up
-    result["Ping Results"]["Local"] = wait_ping(local_ip, "BTS")
+    # 2) Wait for devices up (v4 or v6)
+    result["Ping Results"]["Local"] = wait_ping(local_addrs, "BTS")
     if not result["Ping Results"]["Local"]:
-        result["notes"] = "BTS did not come up after hard reboot"
+        result["notes"] = "BTS did not come up after hard reboot (v4/v6)"
         append_result_to_json(result)
         raise AssertionError(result["notes"])
 
-    all_cpe_ok = True
-    for ip in remote_ips:
-        ok = wait_ping(ip, f"CPE {ip}")
-        result["Ping Results"]["Remote"][ip] = ok
-        if not ok:
-            all_cpe_ok = False
-    if not all_cpe_ok:
-        result["notes"] = "One or more CPE did not come up after hard reboot"
+    result["Ping Results"]["Remote"] = wait_ping(remote_addrs, "CPE")
+    if not result["Ping Results"]["Remote"]:
+        result["notes"] = "CPE did not come up after hard reboot (v4/v6)"
         append_result_to_json(result)
         raise AssertionError(result["notes"])
 
-    # 3) Dying Gasp logs (BTS + each CPE)
+    # 3) Dying Gasp logs (BTS + CPE) — SSH over whichever stack is live
     bts_dg_ok, bts_dg_detail, _ = check_dying_gasp(
-        local_ip, "BTS", prefer_remote_file=True
+        local_addrs, "BTS", prefer_remote_file=True
     )
     result["Dying Gasp"]["BTS"] = {"ok": bts_dg_ok, "detail": bts_dg_detail}
 
-    all_cpe_dg_ok = True
-    for ip in remote_ips:
-        cpe_dg_ok, cpe_dg_detail, _ = check_dying_gasp(
-            ip, f"CPE {ip}", prefer_remote_file=False
-        )
-        result["Dying Gasp"]["CPE"][ip] = {"ok": cpe_dg_ok, "detail": cpe_dg_detail}
-        if not cpe_dg_ok:
-            all_cpe_dg_ok = False
+    cpe_dg_ok, cpe_dg_detail, _ = check_dying_gasp(
+        remote_addrs, "CPE", prefer_remote_file=False
+    )
+    result["Dying Gasp"]["CPE"] = {"ok": cpe_dg_ok, "detail": cpe_dg_detail}
 
-    if not bts_dg_ok or not all_cpe_dg_ok:
+    if not bts_dg_ok or not cpe_dg_ok:
         result["notes"] = (
             f"Dying Gasp missing - BTS={bts_dg_ok} ({bts_dg_detail}); "
-            f"CPE={result['Dying Gasp']['CPE']}"
+            f"CPE={cpe_dg_ok} ({cpe_dg_detail})"
         )
         append_result_to_json(result)
         raise AssertionError(result["notes"])
 
     # 4) RF link forming
-    rf_ok, rf_detail = check_rf_link(local_ip)
+    rf_ok, rf_detail = check_rf_link(local_addrs)
     result["RF Link"] = {"ok": rf_ok, "detail": rf_detail}
     if not rf_ok:
         result["notes"] = f"Dying Gasp OK but RF link not formed: {rf_detail}"
@@ -364,21 +401,23 @@ def test_hard_reboot(local_ip, remote_ip, pdu_ip, pdu_port, pdu_port_cpe, iter):
         raise AssertionError(result["notes"])
 
     # 5) Ping again after link is up
-    result["Ping Results"]["After Link Local"] = wait_ping(local_ip, "BTS (post-link)")
-    all_post_ok = result["Ping Results"]["After Link Local"]
-    for ip in remote_ips:
-        ok = wait_ping(ip, f"CPE {ip} (post-link)")
-        result["Ping Results"]["After Link Remote"][ip] = ok
-        if not ok:
-            all_post_ok = False
-    if not all_post_ok:
-        result["notes"] = "RF link seen but post-link ping failed"
+    result["Ping Results"]["After Link Local"] = wait_ping(
+        local_addrs, "BTS (post-link)"
+    )
+    result["Ping Results"]["After Link Remote"] = wait_ping(
+        remote_addrs, "CPE (post-link)"
+    )
+    if not (
+        result["Ping Results"]["After Link Local"]
+        and result["Ping Results"]["After Link Remote"]
+    ):
+        result["notes"] = "RF link seen but post-link ping failed (v4/v6)"
         append_result_to_json(result)
         raise AssertionError(result["notes"])
 
     result["status"] = "PASS"
     result["notes"] = (
-        "Hard reboot OK - Dying Gasp verified, RF link formed, ping OK"
+        "Hard reboot OK - Dying Gasp verified, RF link formed, ping OK (v4/v6)"
     )
     print(f"\n✅ {result['notes']}", flush=True)
     append_result_to_json(result)
