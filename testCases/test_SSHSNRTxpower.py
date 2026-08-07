@@ -1,11 +1,3 @@
-"""
-SNR vs Tx Power - SSH (ucidyn / sysfs)
-
-Same sweep as test_SNRTxpower.py (SNMP), but:
-  - Set channel / Tx power via SSH (ucidyn)
-  - Read Local/Remote SNR + Tx/Rx rate from BTS sysfs sua statistics
-"""
-
 from __future__ import annotations
 
 import json
@@ -32,7 +24,7 @@ except ImportError:
 USERNAME = "root"
 PASSWORD = "Sen@0ubRNwk" + "$"
 
-APPLY_WAIT_S = 30          # short settle after ucidyn apply before polling
+APPLY_WAIT_S = 60         # short settle after ucidyn apply before polling
 LINK_POLL_INTERVAL_S = 10  # poll interval while waiting for RF link
 # Lab can take 7-8 min for RF link - allow 10 min after channel/power change
 CHANNEL_LINK_TIMEOUT_S = 600
@@ -73,13 +65,7 @@ def _fail_row(channel, band, power, remote_ip):
 
 
 def write_excel_report(iterations, channel_list, power_list, filename=EXCEL_REPORT):
-    """
-    Excel layout (power first, then channels under each power):
 
-      Power | Channel | Freq | Local SNR A1/A2 | Remote SNR A1/A2 | Tx/Rx | Status | ...
-
-    Plus matrix sheets: rows = Power, columns = Channel.
-    """
     if not _EXCEL_OK:
         print("openpyxl not installed - skipping Excel report", flush=True)
         return None
@@ -204,10 +190,6 @@ def radio_index(radio):
 
 
 def ssh_run(host_or_addrs, command, timeout=60):
-    """
-    Run one command over SSH as root.
-    host_or_addrs may be a single IP or a list (v4+v6); first reachable is used.
-    """
     if isinstance(host_or_addrs, (list, tuple)):
         host = dualstack.pick_ssh_host(host_or_addrs)
         if not host:
@@ -236,10 +218,6 @@ def ssh_run(host_or_addrs, command, timeout=60):
 
 
 def ssh_apply(host, commands, settle_s=APPLY_WAIT_S):
-    """
-    Run ucidyn set(s) then ucidyn apply.
-    Apply may drop the session - that is expected.
-    """
     cmds = list(commands) + ["ucidyn apply"]
     joined = " && ".join(cmds)
     print(f"[{host}] SSH: {joined}", flush=True)
@@ -260,7 +238,6 @@ def ssh_apply(host, commands, settle_s=APPLY_WAIT_S):
 
 
 def get_iface_mode(host, radio_idx):
-    """Return 'ap' or 'sta' (best effort)."""
     try:
         out = ssh_run(
             host,
@@ -324,12 +301,7 @@ def wait_bts_beaconing(local_ip, radio_idx, expect_chan, timeout_s=180):
 
 
 def set_channel_bts(ip, chan, radio_idx):
-    """
-    Set channel on BTS (AP) safely:
-      - turn ACS/DFS-ACS off
-      - force HT80
-      - set wifi + advwireless channel
-    """
+
     print(f"Setting BTS channel on {ip} to {chan} (ath{radio_idx})", flush=True)
     ssh_apply(
         ip,
@@ -344,12 +316,9 @@ def set_channel_bts(ip, chan, radio_idx):
 
 
 def set_channel_cpe_sta(ip, chan, radio_idx):
-    """
-    CPE is STA: do NOT pin channel (that often breaks rejoin).
-    Just nudge wireless reload so it scans/rejoins the BTS SSID.
-    """
+
     print(
-        f"CPE {ip} is STA - skip forced channel {chan}; wifi reload to rejoin",
+        f"CPE {ip} is STA - channel {chan}; wifi reload to rejoin",
     )
     try:
         ssh_run(ip, "wifi reload 2>/dev/null || wifi up 2>/dev/null || true", timeout=60)
@@ -416,10 +385,7 @@ def rf_stations_up(local_ip, radio_idx):
 
 
 def wait_for_link(local_ip, remote_ip, radio_idx, timeout_s, reason="link"):
-    """
-    Poll until BTS ping + CPE ping + RF association are all up,
-    or timeout_s expires. Returns True if link is up.
-    """
+
     print(
         f"--- Waiting up to {timeout_s}s for {reason} "
         f"(BTS+CPE ping + RF stations) ---",
@@ -493,10 +459,7 @@ def _read_sua_field_block(host, sua_idx, fields):
 
 
 def _bulk_read_all_sua(host, fields, max_sua=8):
-    """
-    Read sua1..max_sua statistics in ONE SSH session.
-    (Per-SU SSH loops looked 'stuck' for many minutes.)
-    """
+
     field_list = " ".join(fields)
     cmd = (
         f"for idx in $(seq 1 {max_sua}); do "
@@ -579,10 +542,7 @@ def _snr_positive(data):
 
 
 def get_linkstats(host, prefer_ip=None):
-    """
-    Read associated SU stats from BTS sysfs (one SSH bulk read).
-    Returns dict matching SNMP test field names, or None.
-    """
+
     fields = (
         "ip",
         "ipv6",
