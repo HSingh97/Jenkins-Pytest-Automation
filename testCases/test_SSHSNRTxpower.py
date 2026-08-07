@@ -206,7 +206,6 @@ def set_channel_cpe_sta(ip, chan, radio_idx):
     """
     print(
         f"CPE {ip} is STA - skip forced channel {chan}; wifi reload to rejoin",
-        flush=True,
     )
     try:
         ssh_run(ip, "wifi reload 2>/dev/null || wifi up 2>/dev/null || true", timeout=60)
@@ -216,10 +215,7 @@ def set_channel_cpe_sta(ip, chan, radio_idx):
 
 
 def set_channel(ip, chan, radio_idx, role="auto"):
-    """
-    role: 'bts' | 'cpe' | 'auto'
-    auto detects ap/sta via UCI.
-    """
+
     mode = get_iface_mode(ip, radio_idx) if role == "auto" else (
         "ap" if role == "bts" else "sta"
     )
