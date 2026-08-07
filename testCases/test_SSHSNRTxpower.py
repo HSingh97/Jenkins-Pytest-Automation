@@ -108,23 +108,131 @@ def ssh_apply(host, commands, settle_s=APPLY_WAIT_S):
     try:
         out = ssh_run(host, joined, timeout=120)
         if out:
-            print(f"[{host}] output: {out[:200]}", flush=True)
+            print(f"[{host}] output: {out[:300]}", flush=True)
+            # Hard fail on explicit reject so we do not wait 10 min on a dead radio
+            low = out.lower()
+            if "invalid channel" in low or "not support" in low:
+                raise RuntimeError(f"Device rejected config: {out.strip()[:200]}")
+    except RuntimeError:
+        raise
     except Exception as e:
         print(f"[{host}] SSH apply session ended (often expected): {e}", flush=True)
     if settle_s:
         time.sleep(settle_s)
 
 
-def set_channel(ip, chan, radio_idx):
-    print(f"Setting Channel on {ip} to {chan} (SSH ath{radio_idx})", flush=True)
+def get_iface_mode(host, radio_idx):
+    """Return 'ap' or 'sta' (best effort)."""
+    try:
+        out = ssh_run(
+            host,
+            f"uci -q get wireless.@wifi-iface[{radio_idx}].mode 2>/dev/null || "
+            f"uci -q get wireless.@wifi-iface[1].mode 2>/dev/null || echo ap",
+            timeout=20,
+        )
+        mode = (out or "ap").strip().splitlines()[-1].strip().lower()
+        return mode if mode in ("ap", "sta") else "ap"
+    except Exception:
+        return "ap"
+
+
+def bts_is_beaconing(local_ip, radio_idx, expect_chan=None):
+    """
+    True when athX is Master with a non-empty ESSID and Associated AP MAC.
+    Broken channel applies leave ESSID empty / Not-Associated / stuck on ch35.
+    """
+    ath = f"ath{radio_idx}"
+    try:
+        raw = ssh_run(
+            local_ip,
+            f"iwconfig {ath} 2>/dev/null | head -6; "
+            f"echo UCI=$(uci -q get wireless.wifi{radio_idx}.channel); "
+            f"echo ADV=$(uci -q get advwireless.ath{radio_idx}.channel); "
+            f"echo ACS=$(uci -q get advwireless.ath{radio_idx}.kwndfsacs)",
+            timeout=30,
+        )
+        print(f"BTS radio status:\n{raw}", flush=True)
+        text = raw or ""
+        essid_ok = 'ESSID:""' not in text and "ESSID:off" not in text.lower()
+        # Associated when Access Point shows a MAC (has colons), not "Not-Associated"
+        ap_ok = "Not-Associated" not in text and (
+            "Access Point:" in text and text.count(":") >= 5
+        )
+        master_ok = "Mode:Master" in text or "Mode: Master" in text
+        ok = essid_ok and ap_ok and master_ok
+        if expect_chan:
+            # Soft check - DFS CAC may delay exact channel briefly
+            print(f"Expected channel {expect_chan}; beaconing={ok}", flush=True)
+        return ok
+    except Exception as e:
+        print(f"BTS beacon check failed: {e}", flush=True)
+        return False
+
+
+def wait_bts_beaconing(local_ip, radio_idx, expect_chan, timeout_s=180):
+    """Wait until BTS is actually beaconing after channel apply."""
+    print(
+        f"--- Waiting up to {timeout_s}s for BTS to beacon on ch{expect_chan} ---",
+        flush=True,
+    )
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        if bts_is_beaconing(local_ip, radio_idx, expect_chan=expect_chan):
+            print("BTS beaconing OK", flush=True)
+            return True
+        time.sleep(LINK_POLL_INTERVAL_S)
+    print("BTS did not start beaconing - channel apply likely broke the radio", flush=True)
+    return False
+
+
+def set_channel_bts(ip, chan, radio_idx):
+    """
+    Set channel on BTS (AP) safely:
+      - turn ACS/DFS-ACS off
+      - force HT80
+      - set wifi + advwireless channel
+    """
+    print(f"Setting BTS channel on {ip} to {chan} (ath{radio_idx})", flush=True)
     ssh_apply(
         ip,
         [
+            f"ucidyn set advwireless.ath{radio_idx}.kwndfsacs 0",
+            f"ucidyn set wireless.wifi{radio_idx}.htmode HT80",
             f"ucidyn set wireless.wifi{radio_idx}.channel {chan}",
             f"ucidyn set advwireless.ath{radio_idx}.channel {chan}",
         ],
         settle_s=APPLY_WAIT_S,
     )
+
+
+def set_channel_cpe_sta(ip, chan, radio_idx):
+    """
+    CPE is STA: do NOT pin channel (that often breaks rejoin).
+    Just nudge wireless reload so it scans/rejoins the BTS SSID.
+    """
+    print(
+        f"CPE {ip} is STA - skip forced channel {chan}; wifi reload to rejoin",
+        flush=True,
+    )
+    try:
+        ssh_run(ip, "wifi reload 2>/dev/null || wifi up 2>/dev/null || true", timeout=60)
+    except Exception as e:
+        print(f"CPE wifi reload session ended (often expected): {e}", flush=True)
+    time.sleep(15)
+
+
+def set_channel(ip, chan, radio_idx, role="auto"):
+    """
+    role: 'bts' | 'cpe' | 'auto'
+    auto detects ap/sta via UCI.
+    """
+    mode = get_iface_mode(ip, radio_idx) if role == "auto" else (
+        "ap" if role == "bts" else "sta"
+    )
+    if mode == "sta" or role == "cpe":
+        set_channel_cpe_sta(ip, chan, radio_idx)
+    else:
+        set_channel_bts(ip, chan, radio_idx)
 
 
 def set_power(ip, power, radio_idx):
@@ -207,9 +315,12 @@ def wait_for_link(local_ip, remote_ip, radio_idx, timeout_s, reason="link"):
             # CPE may still be associating; still check RF on BTS
             rf_ok = rf_stations_up(local_ip, radio_idx)
 
-        if bts_ok and cpe_ok and rf_ok:
+        if bts_ok and rf_ok and cpe_ok:
             print(f"[{reason}] LINK UP", flush=True)
             return True
+        # RF-bridged CPE: stations may come up a few seconds before ping returns
+        if bts_ok and rf_ok and not cpe_ok:
+            print("  RF stations up; waiting for CPE ping...", flush=True)
 
         time.sleep(LINK_POLL_INTERVAL_S)
 
@@ -462,10 +573,63 @@ def test_snr_tx_power_ssh(local_ip, remote_ip, radio, channels, powers):
         print(f"\n====== SWITCHING TO CHANNEL: {channel} ({band}) ======", flush=True)
 
         if ping(local_ip) and ping(target_remote):
-            # Set BTS first (AP), then CPE (STA) so CPE can join the new channel
-            set_channel(local_ip, channel, ridx)
-            time.sleep(2)
-            set_channel(target_remote, channel, ridx)
+            # 1) BTS AP: ACS off + HT80 + channel, then confirm beaconing
+            # 2) CPE STA: do not force channel (breaks RF); reload so it rejoins
+            try:
+                set_channel(local_ip, channel, ridx, role="bts")
+            except RuntimeError as e:
+                print(f"BTS channel set rejected: {e}", flush=True)
+                for power in power_list:
+                    append_result_to_json(
+                        {
+                            "channel": channel,
+                            "freq": channel_to_frequency(channel, band),
+                            "power": power,
+                            "remote_ip": target_remote,
+                            "local_snr_a1": "-",
+                            "local_snr_a2": "-",
+                            "remote_snr_a1": "-",
+                            "remote_snr_a2": "-",
+                            "tx_rate": "-",
+                            "rx_rate": "-",
+                            "status": "FAIL",
+                        }
+                    )
+                continue
+
+            if not wait_bts_beaconing(local_ip, ridx, channel, timeout_s=180):
+                print(
+                    f"Skipping channel {channel} - BTS not beaconing after apply",
+                    flush=True,
+                )
+                for power in power_list:
+                    append_result_to_json(
+                        {
+                            "channel": channel,
+                            "freq": channel_to_frequency(channel, band),
+                            "power": power,
+                            "remote_ip": target_remote,
+                            "local_snr_a1": "-",
+                            "local_snr_a2": "-",
+                            "remote_snr_a1": "-",
+                            "remote_snr_a2": "-",
+                            "tx_rate": "-",
+                            "rx_rate": "-",
+                            "status": "FAIL",
+                        }
+                    )
+                continue
+
+            # CPE may already be unreachable over RF-bridged path; try reload if pingable
+            if ping(target_remote, quiet=True):
+                set_channel(target_remote, channel, ridx, role="cpe")
+            else:
+                print(
+                    "CPE not pingable after BTS channel change "
+                    "(normal if CPE mgmt is RF-bridged) - waiting for rejoin",
+                    flush=True,
+                )
+
             link_ok = wait_for_link(
                 local_ip,
                 target_remote,
